@@ -46,6 +46,7 @@ package sierraScraper;
 	my %e=();
 	my %f=();
 	my %g=();
+	my %h=();
 	my $mobutil = new Mobiusutil();
     my $self = 
 	{
@@ -55,9 +56,10 @@ package sierraScraper;
 		'mobiusutil' => $mobutil,
 		'nine45' =>  \%k,
 		'nine07' =>  \%d,
-		'leader' => \%e,
-		'standard' => \%f,
-		'nine98' => \%g,
+		'specials' => \%e,
+		'leader' => \%f,
+		'standard' => \%g,
+		'nine98' => \%h,
 		'selects' => ""
 	};
 	bless $self, $class;
@@ -70,10 +72,11 @@ package sierraScraper;
 	my $self = @_[0];
 	figureSelectStatement($self);
 	stuffStandardFields($self);
-	stuffLeader($self);
+	stuffSpecials($self);
 	stuff945($self);
 	stuff907($self);
 	stuff998($self);
+	stuffLeader($self);
  }
  
  sub getSingleStandardFields
@@ -115,7 +118,7 @@ package sierraScraper;
 			my @a = ();
 			$standard{$recordID} = \@a;
 		}
-		my $ind1 = @row[2]; #sprintf( "%\ 2d", @row[2] );
+		my $ind1 = @row[2];
 		my $ind2 = @row[3];
 		
 		if(length($ind1)<1)
@@ -134,12 +137,12 @@ package sierraScraper;
 	
  }
  
- sub stuffLeader
+ sub stuffSpecials
 {
 	my ($self) = @_[0];
 	my $dbHandler = $self->{'dbhandler'};
 	my $log = $self->{'log'};
-	my %leader = %{$self->{'leader'}};
+	my %specials = %{$self->{'specials'}};
 	my $mobiusUtil = $self->{'mobiusutil'};	
 	my $selects = $self->{'selects'};
 	
@@ -160,26 +163,67 @@ package sierraScraper;
 		my @row = @{$row};
 		my $recordID = @row[2];
 		my $recordItem;
+		if(!exists $specials{$recordID})
+		{
+			my @a = ();
+			$specials{$recordID} = \@a;
+		}
+		if(@row[0] eq '6')
+		{
+			push(@{$specials{$recordID}},new recordItem('006','','',$mobiusUtil->makeEvenWidth(@row[1],18)));
+		}
+		elsif(@row[0] eq '7')
+		{
+			push(@{$specials{$recordID}},new recordItem('007','','',$mobiusUtil->makeEvenWidth(@row[1],23)));
+		}
+		elsif(@row[0] eq '8')
+		{
+			push(@{$specials{$recordID}},new recordItem('008','','',$mobiusUtil->makeEvenWidth(@row[1],40)));
+		}
+	}
+	#print Dumper(\%specials);
+	$self->{'specials'} = \%specials;
+}
+
+sub stuffLeader
+{
+	my ($self) = @_[0];
+	my $dbHandler = $self->{'dbhandler'};
+	my $log = $self->{'log'};
+	my %leader = %{$self->{'leader'}};
+	my $mobiusUtil = $self->{'mobiusutil'};	
+	my $selects = $self->{'selects'};
+	
+	my $query = "SELECT
+	RECORD_ID,
+	RECORD_STATUS_CODE,
+	RECORD_TYPE_CODE,
+	BIB_LEVEL_CODE,
+	CONTROL_TYPE_CODE,
+	CHAR_ENCODING_SCHEME_CODE,
+	ENCODING_LEVEL_CODE,
+	DESCRIPTIVE_CAT_FORM_CODE        
+    FROM SIERRA_VIEW.LEADER_FIELD A WHERE A.RECORD_ID IN($selects)";
+	print "$query\n";
+	my @results = @{$dbHandler->query($query)};
+	foreach(@results)
+	{
+		my $row = $_;
+		my @row = @{$row};
+		my $recordID = @row[0];
+		
+		
 		if(!exists $leader{$recordID})
 		{
 			my @a = ();
 			$leader{$recordID} = \@a;
 		}
-		if(@row[0] eq '6')
-		{
-			push(@{$leader{$recordID}},new recordItem('006','','',$mobiusUtil->makeEvenWidth(@row[1],18)));
-		}
-		elsif(@row[0] eq '7')
-		{
-			push(@{$leader{$recordID}},new recordItem('007','','',$mobiusUtil->makeEvenWidth(@row[1],23)));
-		}
-		elsif(@row[0] eq '8')
-		{
-			push(@{$leader{$recordID}},new recordItem('008','','',$mobiusUtil->makeEvenWidth(@row[1],40)));
-		}
+		my $firstPart = @row[1].@row[2].@row[3].@row[4];
+		my $insert = $mobiusUtil->insertDataIntoColumn(" ",$firstPart,6);
+		print $insert."\n";
 	}
-	#print Dumper(\%leader);
-	$self->{'leader'} = \%leader;
+
+	
 }
 
 sub stuff945
@@ -237,18 +281,13 @@ sub stuff945
 		my $recordID = @row[0];		
 		my $subItemID = @row[1];
 		
-		#my $tag = @row[
+		
 		if(!exists $nineHundreds{$recordID})
 		{
-			#print "Tracking starting:\n";
-			#print Dumper(\%tracking);
-			#print "******Done dumping\n";
 			my @a = ();
 			my %b;
 			$nineHundreds{$recordID} = \@a;
 			$tracking{$recordID} = \%b;
-			#print "Tracking starting:\n";
-			#print Dumper(\%tracking);
 		}
 		
 		my %t = %{$tracking{$recordID}};
@@ -526,9 +565,9 @@ sub stuff998
 	my %nine45 = %{$self->{'nine45'}};
 	my %nine07 =%{$self->{'nine07'}};
 	my %nine98 =%{$self->{'nine98'}};
-	my %leader = %{$self->{'leader'}};
+	my %specials = %{$self->{'specials'}};
 	my %standard = %{$self->{'standard'}};
-	my @try = ('nine45','nine07','nine98','leader','standard');
+	my @try = ('nine45','nine07','nine98','specials','standard');
 	my @marcFields;
 	
 	foreach(@try)

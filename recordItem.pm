@@ -242,13 +242,14 @@ package recordItem;
 	else
 	{
 		
-		if($id eq '001' || $id eq '005' || $id eq '008')
+		if($id eq '001' || $id eq '002' || $id eq '003' || $id eq '004' || $id eq '005' || $id eq '006' || $id eq '007' || $id eq '008' || $id eq '009')
 		{
 			#Different Constructor for these fields
 			$ret = MARC::Field->new($id,$data);
 		}
 		else
 		{
+		print "Adding $id = $data\n";
 			eval{$ret = MARC::Field->new($id,$ind1,$ind2,$data)};
 			 if ($@) 
 			 {

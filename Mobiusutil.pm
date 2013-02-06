@@ -280,6 +280,31 @@ sub makeCommaFromArray
 	$ret= substr($ret,0,length($ret)-1);
 	return $ret;
  }
+ 
+ sub insertDataIntoColumn  #1 based column position
+ {
+	my $ret = @_[1];
+	my $data = @_[2];
+	my $column = @_[3];
+	my $len = length($ret);
+	print "ret = \"$ret\" Data = $data Length = $len column = $column\n";
+	if(length($ret)<($column-1))
+	{
+		while(length($ret)<($column-1))
+		{
+			$len = length($ret);
+			print "len(ret) = $len\n";
+			$ret.=" ";
+		}
+		$ret.=$data;
+	}
+	else
+	{
+	}
+	print "Returning \"$ret\"\n";
+	return $ret;
+	
+ }
 
 1;
 
