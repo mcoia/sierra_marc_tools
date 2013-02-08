@@ -38,6 +38,7 @@
  use sierraScraper;
  use Data::Dumper;
  use utf8;
+ no utf8;
  
  #use warnings;
  #use diagnostics; 

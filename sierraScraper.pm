@@ -36,6 +36,7 @@ package sierraScraper;
  use strict; 
  use Data::Dumper;
  use Mobiusutil;
+ no utf8;
  
  
  sub new   #DBhandler object,Loghandler object, Array of Bib Record ID's matching sierra_view.bib_record
@@ -154,7 +155,7 @@ package sierraScraper;
 	}
 	$concatPhrase=substr($concatPhrase,0,length($concatPhrase)-1).")";
 	my $query = "SELECT CONTROL_NUM,$concatPhrase,RECORD_ID FROM SIERRA_VIEW.CONTROL_FIELD WHERE RECORD_ID IN($selects)";
-	print "$query\n";
+	#print "$query\n";
 	my @results = @{$dbHandler->query($query)};
 	
 	foreach(@results)
@@ -205,7 +206,7 @@ sub stuffLeader
 	DESCRIPTIVE_CAT_FORM_CODE,
 	MULTIPART_LEVEL_CODE
     FROM SIERRA_VIEW.LEADER_FIELD A WHERE A.RECORD_ID IN($selects)";
-	print "$query\n";
+	#print "$query\n";
 	my @results = @{$dbHandler->query($query)};
 	foreach(@results)
 	{
@@ -272,7 +273,7 @@ sub stuff945
         CONCAT('|x',A.LAST_YEAR_TO_DATE_CHECKOUT_TOTAL) AS \"x\",
         (SELECT CONCAT('|z',TO_CHAR(CREATION_DATE_GMT, 'MM-DD-YY')) FROM SIERRA_VIEW.RECORD_METADATA WHERE ID=A.ID) AS \"z\"
         FROM SIERRA_VIEW.ITEM_RECORD A WHERE A.ID IN(SELECT ITEM_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_ITEM_RECORD_LINK WHERE BIB_RECORD_ID IN ($selects))";
-	print "$query\n";
+	#print "$query\n";
 	my @results = @{$dbHandler->query($query)};
 	my %tracking; # links recordItems objects to item Numbers without having to search everytime
 	
@@ -332,7 +333,7 @@ sub stuff945
 	RECORD_NUM
 	FROM SIERRA_VIEW.VARFIELD_VIEW A WHERE RECORD_ID IN(SELECT ITEM_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_ITEM_RECORD_LINK WHERE BIB_RECORD_ID IN($selects))
 	AND VARFIELD_TYPE_CODE !='a'";
-	print "$query\n";
+	#print "$query\n";
 	@results = @{$dbHandler->query($query)};
 	foreach(@results)
 	{
@@ -588,8 +589,9 @@ sub stuff998
 	
 	#create MARC:Record Object and stuff fields
 	my $ret = MARC::Record->new();
-	$ret->append_fields( @marcFields );
 	
+	$ret->append_fields( @marcFields );
+	#$ret->encoding( 'UTF-8' );
 	#Alter the Leader to match Sierra
 	my $leaderString = $ret->leader();
 	#print "Leader was $leaderString\n";
@@ -602,6 +604,7 @@ sub stuff998
 		#print "Leader is now $leaderString\n";
 		$ret->leader($leaderString);
 	}
+	$ret->encoding( 'UTF-8' );
 	return $ret;
  }
  

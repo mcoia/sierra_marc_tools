@@ -23,6 +23,7 @@ package Loghandler;
 use DateTime;
 use Mobiusutil;
 use utf8;
+no utf8;
 
 sub new
 {
@@ -95,6 +96,7 @@ sub addLine
 	my $file = $fileName->{_file};
 	my $line = @_[1];
 	open(OUTPUT, '>> '.$file) or die $!;
+	binmode(OUTPUT, ":utf8");
 	print OUTPUT "$line\n";
 	close(OUTPUT);
 }

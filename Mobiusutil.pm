@@ -41,6 +41,7 @@ package Mobiusutil;
  use Loghandler;
  use Data::Dumper;
  use utf8;
+ no utf8;
 
 sub new
 {
@@ -479,7 +480,7 @@ sub makeCommaFromArray
 		}
 		elsif($#matchPos2>0)
 		{
-			#print "There were more than 1 matching field tags for ".$thisField1->tag()."\n";
+			print "There were more than 1 matching field tags for ".$thisField1->tag()."\n";
 			my $errorCheck=-1;
 			my @check;
 			for my $pos(0..$#matchPos2)
@@ -488,13 +489,13 @@ sub makeCommaFromArray
 				if($thisField1->tag() eq '650')
 				{
 					#print Dumper(\@check);
-					print "Looking at ".$#{@check[$#check]}."\n";
+					#print "Looking at ".$#{@check[$#check]}."\n";
 				}
 				if($#{@check[$#check]}==-1)
 				{
 					if($thisField1->tag() eq '650')
 					{
-						print "Matched something pos = $pos\n";
+						#print "Matched something pos = $pos\n";
 					}
 					$errorCheck = $pos;
 				}
@@ -502,7 +503,7 @@ sub makeCommaFromArray
 			}
 			if($errorCheck==-1)
 			{
-			print "DIDNT MATCH\n";
+			#print "DIDNT MATCH\n";
 				push(@errors,"None of the sister tags(".$thisField1->tag().") matched and here are the errors:");
 				foreach(@check)
 				{
@@ -510,15 +511,16 @@ sub makeCommaFromArray
 					#print Dumper(\@subError);
 					foreach(@subError)
 					{
-						print "***********\n";
-						print "$_\n";
-						#$_ = utf8::upgrade($_);
+						#print "***********\n";
+						#print "$_\n";
+						
 						my @chars = split("",$_);
 						foreach(@chars)
 						{
-							print "\"$_\" = ".ord($_)."\n";
+							my $tem = utf8::upgrade($_);
+							#print "\"$_\" = ".ord($_)."\n";
 						}
-						print "***********\n";
+						#print "***********\n";
 							push(@error,"\t".$_);
 					}
 				}
@@ -565,7 +567,7 @@ sub makeCommaFromArray
 				for my $fieldPos2(0..$#subFields2)
 				{
 					my $thisField2 = @{@subFields2[$fieldPos2]}[0];
-					if($thisField2 eq $thisField1)
+					if($thisField1 eq $thisField2 )
 					{
 						push(@matchPos2, $fieldPos2);
 					}
@@ -575,7 +577,7 @@ sub makeCommaFromArray
 				{
 					my $comp1 = @{@subFields1[$fieldPos1]}[1];
 					my $comp2 = @{@subFields2[@matchPos2[0]]}[1];
-					if($comp1 ne $comp2)
+					if(!compareStrings("",$comp1,$comp2))
 					{
 						push(@errors,"Tag: $tag Subfield $thisField1 $comp1 != $comp2");
 					}
@@ -590,7 +592,7 @@ sub makeCommaFromArray
 					for my $pos(0..$#matchPos2)
 					{
 						my $comp2 = @{@subFields2[@matchPos2[$pos]]}[1];
-						if($comp1 eq $comp2)
+						if(compareStrings("",$comp1,$comp2))
 						{
 							$noErrors = $pos;
 						}
@@ -621,6 +623,42 @@ sub makeCommaFromArray
 	}
 	
 	return \@errors;
+	
+ }
+ 
+ sub compareStrings
+ {
+	my $string1 = @_[1];
+	my $string2 = @_[2];
+	if(length($string1)!=length($string2))
+	{
+	#print "\"$string1\" \"$string2\"\nDiffering Lengths\n";
+		return 0;
+	}
+	my @chars1 = split("",$string1);
+	my @chars2 = split("",$string2);
+	for my $i (0..$#chars1)
+	{
+		my $tem1 = @chars1[$i];
+		my $tem2 = @chars2[$i];
+		my $t1 = ord($tem1);
+		my $t2 = ord($tem2);
+		
+		if(0)
+		{
+		if(ord($tem1)!=ord($tem2))
+		{
+			return 0;
+		}
+		}
+		if(@chars1[$i] ne @chars2[$i])
+		{
+			#print "! $string1 != $string2 - \"".@chars1[$i]."\"($t1) to \"".@chars2[$i]."\"($t2)\n";
+			return 0;
+		}
+	}
+	
+	return 1;
 	
  }
 

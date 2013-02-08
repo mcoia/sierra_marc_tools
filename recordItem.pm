@@ -36,6 +36,8 @@ package recordItem;
  use strict; 
  use Data::Dumper;
  use utf8;
+ no utf8;
+ 
  
  sub new   #ID, indicator1, indicator2, data
  {
