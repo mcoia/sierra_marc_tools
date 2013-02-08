@@ -35,6 +35,7 @@ package recordItem;
  use MARC::Record;
  use strict; 
  use Data::Dumper;
+ use utf8;
  
  sub new   #ID, indicator1, indicator2, data
  {

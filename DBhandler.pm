@@ -40,6 +40,7 @@ package DBhandler;
  use DBI;
  use Loghandler;
  use strict; 
+ use utf8;
  
  sub new   #dbname,host,login,password
  {

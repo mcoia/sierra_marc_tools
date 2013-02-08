@@ -22,6 +22,7 @@ package Loghandler;
 
 use DateTime;
 use Mobiusutil;
+use utf8;
 
 sub new
 {
@@ -40,15 +41,15 @@ sub deleteFile
 		$worked = unlink($file);
 		if($worked)
 		{
-			return true;
+			return 1;
 		}
 	} 
 	else
 	{
-		return true;
+		return 1;
 	}
 	
-	return false;
+	return 0;
 
 }
 
@@ -58,9 +59,9 @@ sub fileExists
 	my $file = $fileName->{_file};
 	if (-e $file)
 	{
-		return true;
+		return 1;
 	}
-	return false;
+	return 0;
 }
 
 sub getFileName

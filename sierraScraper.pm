@@ -87,7 +87,7 @@ package sierraScraper;
 	my %standard = %{$self->{'standard'}};
 	if(exists $standard{$idInQuestion})
 	{
-		print "It exists\n";
+		#print "It exists\n";
 	}
 	return \@{$standard{$idInQuestion}};
  }
@@ -174,7 +174,7 @@ package sierraScraper;
 		}
 		elsif(@row[0] eq '7')
 		{
-			push(@{$specials{$recordID}},new recordItem('007','','',$mobiusUtil->makeEvenWidth(@row[1],23)));
+			push(@{$specials{$recordID}},new recordItem('007','','',$mobiusUtil->makeEvenWidth(@row[1],44)));
 		}
 		elsif(@row[0] eq '8')
 		{
@@ -202,7 +202,8 @@ sub stuffLeader
 	CONTROL_TYPE_CODE,
 	CHAR_ENCODING_SCHEME_CODE,
 	ENCODING_LEVEL_CODE,
-	DESCRIPTIVE_CAT_FORM_CODE        
+	DESCRIPTIVE_CAT_FORM_CODE,
+	MULTIPART_LEVEL_CODE
     FROM SIERRA_VIEW.LEADER_FIELD A WHERE A.RECORD_ID IN($selects)";
 	print "$query\n";
 	my @results = @{$dbHandler->query($query)};
@@ -212,18 +213,31 @@ sub stuffLeader
 		my @row = @{$row};
 		my $recordID = @row[0];
 		
+		for my $i (1..$#row)
+		{
+			if(length(@row[$i])!=1)
+			{
+				#print "Leader: Correcting empty field\n";
+				@row[$i] = " ";
+			}
+		}
 		
+		my $firstPart = @row[1].@row[2].@row[3].@row[4].@row[5];
+		my $lastPart = @row[6].@row[7].@row[8];
+		#print "First part: $firstPart Last Part: $lastPart\n";
+		my @add = ($firstPart,$lastPart);
 		if(!exists $leader{$recordID})
 		{
-			my @a = ();
-			$leader{$recordID} = \@a;
+			$leader{$recordID} = \@add;
 		}
-		my $firstPart = @row[1].@row[2].@row[3].@row[4];
-		my $insert = $mobiusUtil->insertDataIntoColumn(" ",$firstPart,6);
-		print $insert."\n";
+		else
+		{
+			$log->addLogLine("Leader Scrape: There were more than one leader row returned from query $query");
+		}
+		
 	}
-
-	
+	#print Dumper(\%leader);
+	$self->{'leader'} = \%leader;
 }
 
 sub stuff945
@@ -293,17 +307,13 @@ sub stuff945
 		my %t = %{$tracking{$recordID}};
 		if(!exists $t{$subItemID})
 		{
-			#print "SubID is $subItemID\n";
-			my @arr = @{$nineHundreds{$recordID}};
-			#print "Adding subitem $subItemID to tracking ".($#arr+1)."\n";
 			$t{$subItemID} = $#{$nineHundreds{$recordID}}+1;
 			$tracking{$recordID} = \%t;
 		}
 		else
 		{
-			print "Huston, we have a problem, the query returned more than one of the same item(duplicate 945 record) - $recordID\n";
+			$log->addLogLine("945 Scrape: Huston, we have a problem, the query returned more than one of the same item(duplicate 945 record) - $recordID");
 		}
-		#print "string = \"$string\"\n";
 		my $all;
 		foreach my $b (4..$#row)
 		{
@@ -312,7 +322,7 @@ sub stuff945
 		push(@{$nineHundreds{$recordID}},new recordItem('945',$ind1,$ind2,$all));
 		
 	}
-#print Dumper(\%nineHundreds);
+
 	$query = "SELECT
 	RECORD_ID,
 	VARFIELD_TYPE_CODE,
@@ -332,37 +342,24 @@ sub stuff945
 		if(exists $nineHundreds{@row[4]})
 		{
 			my @thisArray = @{$nineHundreds{@row[4]}};
-			#foreach(@thisArray)
-			#{
-			#	print $_->getData()."\n";
-			#}
-			#print Dumper(\%tracking);
 			if(exists ${$tracking{@row[4]}}{@row[0]})
 			{
-				my $thisArrayPosition = ${$tracking{@row[4]}}{@row[0]};
-				#print Dumper(\%tracking);
-				#print Dumper(\%nineHundreds);
+				my $thisArrayPosition = ${$tracking{@row[4]}}{@row[0]};				
 				if(($trimmedID eq '082') || ($trimmedID eq '090') || ($trimmedID eq '086'))
 				{
-				#print "Looking at bib: ".@row[4]." and subitem: ".@row[0]."\n";
+				
 					my $thisRecord = @thisArray[$thisArrayPosition];
-					#print "Getting Position $thisArrayPosition for bib ".@row[4]." and subitem ".@row[0]."\n";
 					$thisRecord->addData(@row[3]);
 					my $checkDigit = calcCheckDigit($self,@row[5]);
 					$thisRecord->addData("|y.i".@row[5].$checkDigit);
-					#print "Dumping This record\n";
-					#print Dumper($thisRecord);
-					#print "I got this record number in the array:\n$thisArrayPosition\n";
 					my $recordID = @row[4];
 					my $subItemID = @row[0];
-					foreach(@results) # Find Null marc_tag values related to 082
+					foreach(@results) # Find Null marc_tag values related to 082 and 090 and 086
 					{
 						my $rowsearch = $_;
 						my @rowsearch = @{$rowsearch};
 						if((@rowsearch[0] == @row[0]) && (@rowsearch[2] eq ''))
 						{
-							#print "matched: ".@rowsearch[0]." to ".@row[0]."\nThis record ID: ".$thisRecord->getID()."\n";
-							#print "Adding ".@rowsearch[3]." Onto:\n".$thisRecord->getData()."\n";
 							if(@rowsearch[1] eq 'b')
 							{
 								$thisRecord->addData('|i'.@rowsearch[3]);
@@ -385,22 +382,12 @@ sub stuff945
 							}
 						}
 					}
-					#print $thisRecord->getData()."\n";
-					#my @checking = @{$nineHundreds{@row[4]}};
-					#print "Dumping Checking\n";
-					#print Dumper(\@checking);
 					@{$nineHundreds{@row[4]}}[$thisArrayPosition] = $thisRecord;
-					#@checking = @{$nineHundreds{@row[4]}};
-					#print "Dumping Checking\n";
-					#print Dumper(\@checking);
-					#print "Dumping ninehundreds: \n";
-					#print Dumper(\%nineHundreds);
 				}
 				elsif( $trimmedID ne '')
 				{
-					print"I found a row and it looks like this \"$trimmedID\" = ".@row[3]."\n";
 					$log->addLogLine("I found a row and it looks like this \"$trimmedID\" = ".@row[3]);
-					push(@{$nineHundreds{@row[4]}},new recordItem(@row[2],'','',@row[3]));;
+					#push(@{$nineHundreds{@row[4]}},new recordItem(@row[2],'','',@row[3]));;
 				}
 			}
 			else
@@ -413,7 +400,7 @@ sub stuff945
 				}
 				else
 				{
-					print "Strange results: ".@row[0]." ".@row[1]." ".@row[2]." ".@row[3]." ".@row[4]."\n";
+					$log->addLogLine("945 scrape: Strange results: ".@row[0]." ".@row[1]." ".@row[2]." ".@row[3]." ".@row[4]);
 				}
 			}
 			
@@ -422,10 +409,9 @@ sub stuff945
 		{
 			$log->addLogLine("There were items in varfield_view that didn't appear before now:");
 			$log->addLogLine("Bib id  = ".@row[4]." Item id = ".@row[0].",$trimmedID = ".@row[3]);
-			$log->addLogLine("This was not added to the marc");
+			$log->addLogLine("This was not added to the marc array");
 		}
 	}
-	#print Dumper(\%nineHundreds);
 	$self->{'nine45'} = \%nineHundreds;
 }
 
@@ -442,7 +428,7 @@ sub stuff907
 	CONCAT('|c',TO_CHAR(A.CREATION_DATE_GMT, 'MM-DD-YY'))
 	)
 	FROM SIERRA_VIEW.RECORD_METADATA A WHERE A.ID IN($selects)";
-	print "$query\n";
+	#print "$query\n";
 	my @results = @{$dbHandler->query($query)};
 	
 	foreach(@results)
@@ -482,7 +468,7 @@ sub stuff998
 	CONCAT('|h',SKIP_NUM)
 	)
 	FROM SIERRA_VIEW.BIB_VIEW WHERE ID IN($selects)";
-	print "$query\n";
+	#print "$query\n";
 	my @results = @{$dbHandler->query($query)};
 	
 	foreach(@results)
@@ -497,7 +483,7 @@ sub stuff998
 		}
 		else
 		{
-			print "$recordID - Error - There is more than one row returned when creating the 998 record\n";
+			#print "$recordID - Error - There is more than one row returned when creating the 998 record\n";
 		}
 		push(@{$nine98{$recordID}},new recordItem('998','','',@row[1]));
 	}
@@ -505,7 +491,7 @@ sub stuff998
 	(SELECT BIB_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_ITEM_RECORD_LINK WHERE ITEM_RECORD_ID = A.ID),
 	SUBSTR(LOCATION_CODE,1,LENGTH(LOCATION_CODE)-2) FROM SIERRA_VIEW.ITEM_RECORD A WHERE A.ID IN(SELECT ITEM_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_ITEM_RECORD_LINK WHERE BIB_RECORD_ID IN($selects))";
 
-	print "$query\n";
+	#print "$query\n";
 	@results = @{$dbHandler->query($query)};
 	my %counts;
 	my %total;
@@ -562,11 +548,13 @@ sub stuff998
 	my $recID = @_[1];
 	my $dbHandler = $self->{'dbhandler'};
 	my $log = $self->{'log'};
+	my $mobiusUtil = $self->{'mobiusutil'};
 	my %nine45 = %{$self->{'nine45'}};
 	my %nine07 =%{$self->{'nine07'}};
 	my %nine98 =%{$self->{'nine98'}};
 	my %specials = %{$self->{'specials'}};
 	my %standard = %{$self->{'standard'}};
+	my %leader = %{$self->{'leader'}};
 	my @try = ('nine45','nine07','nine98','specials','standard');
 	my @marcFields;
 	
@@ -598,8 +586,22 @@ sub stuff998
 		}
 	}
 	
+	#create MARC:Record Object and stuff fields
 	my $ret = MARC::Record->new();
 	$ret->append_fields( @marcFields );
+	
+	#Alter the Leader to match Sierra
+	my $leaderString = $ret->leader();
+	#print "Leader was $leaderString\n";
+	if(exists $leader{$recID})
+	{
+		my @thisLeaderAdds = @{$leader{$recID}};
+		#print Dumper(\@thisLeaderAdds);
+		$leaderString = $mobiusUtil->insertDataIntoColumn($leaderString,@thisLeaderAdds[0],6);
+		$leaderString = $mobiusUtil->insertDataIntoColumn($leaderString,@thisLeaderAdds[1],18);
+		#print "Leader is now $leaderString\n";
+		$ret->leader($leaderString);
+	}
 	return $ret;
  }
  

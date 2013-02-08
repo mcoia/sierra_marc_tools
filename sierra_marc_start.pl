@@ -37,6 +37,7 @@
  use recordItem;
  use sierraScraper;
  use Data::Dumper;
+ use utf8;
  
  #use warnings;
  #use diagnostics; 
@@ -83,7 +84,7 @@
 			 {
 				#420908010009
 				my $marcOutFile = "/jail/marcout";#$mobUtil->chooseNewFileName($conf->{"marcoutdir"},"marcout","mrc");
-				my $sierraScraper = new sierraScraper($dbHandler,$log,"420908010009");#"SELECT RECORD_ID FROM SIERRA_VIEW.BIB_RECORD LIMIT 10");#['420907796199','420907798387']);
+				my $sierraScraper = new sierraScraper($dbHandler,$log,"SELECT ID FROM SIERRA_VIEW.BIB_VIEW WHERE RECORD_NUM=1215011");# >= 1215001 AND RECORD_NUM <= 1215021");#['420907796199','420907798387']);
 				my @marc = @{$sierraScraper->getAllMARC()};
 				 my $marcout = new Loghandler($marcOutFile);
 				$marcout->deleteFile();
@@ -94,6 +95,12 @@
 					$output.=$marc->as_usmarc();
 				}
 				$marcout->addLine($output);
+				
+				my @errors = @{$mobUtil->compare2MARCFiles($marcOutFile,"/tmp/run/BLAKE2.out", $log)};
+				foreach(@errors)
+				{
+					print $_."\n";
+				}
 				 if(0)
 				 {
 					 my $marcOutFile = $mobUtil->chooseNewFileName($conf->{"marcoutdir"},"marcout","mrc");
