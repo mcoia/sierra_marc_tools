@@ -40,10 +40,9 @@ package DBhandler;
  use DBI;
  use Loghandler;
  use strict; 
- use utf8;
- use Encode;
- use Test::utf8;
- use Unicode::Normalize;
+ 
+ 
+ 
  
  sub new   #dbname,host,login,password
  {
@@ -69,7 +68,7 @@ package DBhandler;
 	my $host = $self->{host};
 	my $login = $self->{login};
 	my $pass = $self->{password};
-	$conn =  DBI->connect("DBI:Pg:dbname=$dbname;host=$host;port=1032", $login, $pass, {'RaiseError' => 1, pg_utf8_strings => 1});
+	$conn =  DBI->connect("DBI:Pg:dbname=$dbname;host=$host;port=1032", $login, $pass, {'RaiseError' => 1});
 	$self->{conn} = $conn;
  }
  
@@ -87,37 +86,36 @@ package DBhandler;
 	
 	while (my $row = $query->fetchrow_arrayref())
 	{
-		my @pusher;
-		foreach(@$row)
-		{
-			my $pushChars=Encode::encode("UTF-8","");
-			my @chars = split("",$_);
+		#my @pusher;
+		#foreach(@$row)
+		#{
+			#my $pushChars=Encode::encode("UTF-8","");
+			#my @chars = split("",$_);
 			#if(!Test::utf8->is_sane_utf8(Encode::encode("UTF-8",$_)))
 			#{
 				#print "not an utf8 character\n";
 			#}
-			foreach(@chars)
-			{
+			#foreach(@chars)
+			#{
 				#my $test = Test::utf8->isnt_within_ascii();
-				print compose(reorder($_));
-				(my $str = $_) =~ s/(.|\n)/sprintf("%02lx", ord $1)/eg;
+				#print compose(reorder($_));
+				#(my $str = $_) =~ s/(.|\n)/sprintf("%02lx", ord $1)/eg;
 				#
-				my $encoded = $_;#Encode::encode("UTF-8",$_);#decode("UTF-8",$_);#
+				#my $encoded = $_;#Encode::encode("UTF-8",$_);#decode("UTF-8",$_);#
 				#if(Encode::is_utf8($_))
 				#{
 				#	$encoded = Encode::encode("UTF-8",$_);
 					#print "it's UTF-8";
 				#}
-				my $ord = ord($encoded);
-				$pushChars.=$encoded;
+				#my $ord = ord($encoded);
+				#$pushChars.=$encoded;
 				#my $temp = utf8::upgrade($_);
 				#print $encoded." $ord ";
-			}
-			print "$pushChars\n";
-			push(@pusher,$pushChars);
-		}
-		push(@ret,[@pusher]);
-		@pusher=undef;
+			#}
+			#print "$pushChars\n";
+		#}
+		push(@ret,[@$row]);
+		#@pusher=undef;
 	}
 
 	undef($querystring);

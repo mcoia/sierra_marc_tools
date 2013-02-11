@@ -36,8 +36,6 @@ package sierraScraper;
  use strict; 
  use Data::Dumper;
  use Mobiusutil;
- no utf8;
- 
  
  sub new   #DBhandler object,Loghandler object, Array of Bib Record ID's matching sierra_view.bib_record
  {
@@ -76,7 +74,7 @@ package sierraScraper;
 	stuffSpecials($self);
 	stuff945($self);
 	stuff907($self);
-	stuff998($self);
+	stuff998alternate($self);
 	stuffLeader($self);
  }
  
@@ -106,33 +104,36 @@ package sierraScraper;
 	(SELECT MARC_IND1 FROM SIERRA_VIEW.SUBFIELD_VIEW WHERE VARFIELD_ID=A.ID LIMIT 1),
 	(SELECT MARC_IND2 FROM SIERRA_VIEW.SUBFIELD_VIEW WHERE VARFIELD_ID=A.ID LIMIT 1),
 	RECORD_ID FROM SIERRA_VIEW.VARFIELD_VIEW A WHERE A.RECORD_ID IN($selects) ORDER BY A.MARC_TAG, A.OCC_NUM";
-	print $query."\n";
+	#print $query."\n";
 	my @results = @{$dbHandler->query($query)};
 	my @records;
 	foreach(@results)
 	{
 		my $row = $_;
 		my @row = @{$row};
-		my $recordID = @row[4];
-		if(!exists $standard{$recordID})
+		if(@row[0] ne '970' &&@row[0] ne '971' &&@row[0] ne '972')
 		{
-			my @a = ();
-			$standard{$recordID} = \@a;
+			my $recordID = @row[4];
+			if(!exists $standard{$recordID})
+			{
+				my @a = ();
+				$standard{$recordID} = \@a;
+			}
+			my $ind1 = @row[2];
+			my $ind2 = @row[3];
+			
+			if(length($ind1)<1)
+			{
+				$ind1=' ';
+			}
+			
+			if(length($ind2)<1)
+			{
+				$ind2=' ';
+			}
+			
+			push(@{$standard{$recordID}},new recordItem(@row[0],$ind1,$ind2,@row[1]));
 		}
-		my $ind1 = @row[2];
-		my $ind2 = @row[3];
-		
-		if(length($ind1)<1)
-		{
-			$ind1=' ';
-		}
-		
-		if(length($ind2)<1)
-		{
-			$ind2=' ';
-		}
-		push(@{$standard{$recordID}},new recordItem(@row[0],$ind1,$ind2,@row[1]));
-	
 	}
 	$self->{'standard'} = \%standard;
 	
@@ -542,6 +543,129 @@ sub stuff998
 	$self->{'nine98'} = \%nine98;
 }
 
+# This was created to try another method of counting the copies at each of the locations
+# based upon the information located in sierra_view.bib_record_location instead of sierra_view.item_record.
+# There is some sort of unusual behavior in the sierra desktop client when there is only 1 945 record.
+# It looks like it subtracts 1 from the copy number when there is only 1 row returned. Pretty odd.
+
+sub stuff998alternate
+{
+	my ($self) = @_[0];
+	my $dbHandler = $self->{'dbhandler'};
+	my $log = $self->{'log'};
+	my %nine98 = %{$self->{'nine98'}};
+	my $mobiusUtil = $self->{'mobiusutil'};
+	my $selects = $self->{'selects'};
+	my $query = "SELECT ID,
+	CONCAT(
+	CONCAT('|b',TO_CHAR(CATALOGING_DATE_GMT, 'MM-DD-YY')),
+	CONCAT('|c',BCODE1),
+	CONCAT('|d',BCODE2),
+	CONCAT('|e',BCODE3),
+	CONCAT('|f',LANGUAGE_CODE),
+	CONCAT('|g',COUNTRY_CODE),
+	CONCAT('|h',SKIP_NUM)
+	)
+	FROM SIERRA_VIEW.BIB_VIEW WHERE ID IN($selects)";
+	#print "$query\n";
+	my @results = @{$dbHandler->query($query)};
+	
+	foreach(@results)
+	{
+		my $row = $_;
+		my @row = @{$row};
+		my $recordID = @row[0];
+		if(!exists $nine98{$recordID})
+		{
+			my @a = ();
+			$nine98{$recordID} = \@a;
+		}
+		else
+		{
+			#print "$recordID - Error - There is more than one row returned when creating the 998 record\n";
+		}
+		push(@{$nine98{$recordID}},new recordItem('998','','',@row[1]));
+	}
+	$query = "SELECT 
+	BIB_RECORD_ID,LOCATION_CODE,COPIES
+	FROM SIERRA_VIEW.BIB_RECORD_LOCATION A WHERE A.BIB_RECORD_ID IN($selects) 
+	AND LOCATION_CODE!='multi'";
+	
+	my $query2="SELECT BIB_RECORD_ID,COUNT(*) FROM SIERRA_VIEW.BIB_RECORD_LOCATION WHERE BIB_RECORD_ID IN ($selects) GROUP BY BIB_RECORD_ID";
+	
+	#print "$query\n";
+	@results = @{$dbHandler->query($query)};
+	my @results2 = @{$dbHandler->query($query2)};
+	
+	my %counts;
+	my %total;
+	foreach(@results)
+	{
+		my $row = $_;
+		my @row = @{$row};
+		my $recordID = @row[0];
+		my $location = @row[1];
+		my $copies = @row[2];
+		if(!exists $nine98{$recordID})
+		{
+			$log->addLogLine("Stuffing 998 Field $recordID - Error - There is more than one row returned when creating the 998 record");
+		}
+		else
+		{
+			if(!exists $counts{$recordID})
+			{
+				#$counts{$recordID} = {};
+				${$counts{$recordID}}{$location}=0;
+				${$total{$recordID}}=0;
+			}
+			my $subtractBy=0;
+			foreach(@results2)
+			{
+				my $row2 = $_;
+				my @row2 = @{$row2};
+				if(@row2[0] eq $recordID)
+				{
+					if(@row2[1] eq '1')
+					{
+						$subtractBy=1;
+					}
+				}
+			}
+			my $total = $copies-$subtractBy;
+			if($total<1)
+			{
+				$total=1;
+			}
+			${$counts{$recordID}}{$location}+=$total;
+			${$total{$recordID}}+=$copies;
+		}
+	}
+	while ((my $internal, my $value ) = each(%counts))
+	{
+		my %tt = %{$value};
+		my $total = ${$total{$internal}};
+		my $addValue = "";
+		while((my $internal2, my $value2) = each(%tt))
+		{
+			if($value2 == 1)
+			{
+				$addValue.="|a".$internal2;
+			}
+			else
+			{
+				$addValue.="|a(".$value2.")".$internal2;
+			}
+		}
+		#print "Adding $addValue\n";
+		@{$nine98{$internal}}[0]->addData($addValue."|i$total");
+	}
+	
+	
+	$self->{'nine98'} = \%nine98;
+}
+
+
+
  
  sub getSingleMARC
  {
@@ -591,7 +715,6 @@ sub stuff998
 	my $ret = MARC::Record->new();
 	
 	$ret->append_fields( @marcFields );
-	#$ret->encoding( 'UTF-8' );
 	#Alter the Leader to match Sierra
 	my $leaderString = $ret->leader();
 	#print "Leader was $leaderString\n";
@@ -688,6 +811,10 @@ sub stuff998
 		$checkDigit += @chars[$i] * ($i+2);
 	}
 	$checkDigit =$checkDigit%11;
+	if($checkDigit>9)
+	{
+		$checkDigit='x';
+	}
 	return $checkDigit;
  }
  

@@ -40,8 +40,6 @@ package Mobiusutil;
  use Net::FTP;
  use Loghandler;
  use Data::Dumper;
- use utf8;
- no utf8;
 
 sub new
 {
@@ -339,7 +337,7 @@ sub makeCommaFromArray
 			
 			if(exists($file1{$recID}))
 			{
-				print "There were more than 1 of the same records containing same Record Num $recID in file $firstFile\n";
+				#print "There were more than 1 of the same records containing same Record Num $recID in file $firstFile\n";
 			}
 			else
 			{
@@ -354,7 +352,7 @@ sub makeCommaFromArray
 			my $recID = $marc->field('907')->subfield('a');
 			if(exists($file2{$recID}))
 			{
-				print "There were more than 1 of the same records containing same Record Num $recID in file $secondFile\n";
+				#print "There were more than 1 of the same records containing same Record Num $recID in file $secondFile\n";
 			}
 			else
 			{
@@ -455,7 +453,9 @@ sub makeCommaFromArray
 	for my $fieldPos1(0..$#marcFields1)
 	{
 		my @matchPos2;
-		my $thisField1 = @marcFields1[$fieldPos1];
+		my $thisField1 = @marcFields1[$fieldPos1];		
+		#if($thisField1->tag() ne'998')
+		#{
 		for my $fieldPos2(0..$#marcFields2)
 		{
 			my $thisField2 = @marcFields2[$fieldPos2];
@@ -480,48 +480,27 @@ sub makeCommaFromArray
 		}
 		elsif($#matchPos2>0)
 		{
-			print "There were more than 1 matching field tags for ".$thisField1->tag()."\n";
+			#print "There were more than 1 matching field tags for ".$thisField1->tag()."\n";
 			my $errorCheck=-1;
 			my @check;
 			for my $pos(0..$#matchPos2)
 			{
-				push(@check,[@{compare2MARCFields("",$thisField1,@marcFields2[@matchPos2[$pos]])}]);
-				if($thisField1->tag() eq '650')
-				{
-					#print Dumper(\@check);
-					#print "Looking at ".$#{@check[$#check]}."\n";
-				}
+				push(@check,[@{compare2MARCFields("",$thisField1,@marcFields2[@matchPos2[$pos]])}]);				
 				if($#{@check[$#check]}==-1)
 				{
-					if($thisField1->tag() eq '650')
-					{
-						#print "Matched something pos = $pos\n";
-					}
 					$errorCheck = $pos;
 				}
 				
 			}
 			if($errorCheck==-1)
 			{
-			#print "DIDNT MATCH\n";
 				push(@errors,"None of the sister tags(".$thisField1->tag().") matched and here are the errors:");
 				foreach(@check)
 				{
 					my @subError = @{$_};
-					#print Dumper(\@subError);
 					foreach(@subError)
 					{
-						#print "***********\n";
-						#print "$_\n";
-						
-						my @chars = split("",$_);
-						foreach(@chars)
-						{
-							my $tem = utf8::upgrade($_);
-							#print "\"$_\" = ".ord($_)."\n";
-						}
-						#print "***********\n";
-							push(@error,"\t".$_);
+						push(@errors,"\t".$_);
 					}
 				}
 			}
@@ -531,6 +510,7 @@ sub makeCommaFromArray
 			push(@errors,"Tag: ".$thisField1->tag()." did not match any tags on the sister MARC Record");
 		}
 		@matchPos2 = ();
+		#}
 	}
 	return \@errors;
  }
@@ -577,7 +557,7 @@ sub makeCommaFromArray
 				{
 					my $comp1 = @{@subFields1[$fieldPos1]}[1];
 					my $comp2 = @{@subFields2[@matchPos2[0]]}[1];
-					if(!compareStrings("",$comp1,$comp2))
+					if($comp1 ne $comp2)
 					{
 						push(@errors,"Tag: $tag Subfield $thisField1 $comp1 != $comp2");
 					}
@@ -592,7 +572,7 @@ sub makeCommaFromArray
 					for my $pos(0..$#matchPos2)
 					{
 						my $comp2 = @{@subFields2[@matchPos2[$pos]]}[1];
-						if(compareStrings("",$comp1,$comp2))
+						if($comp1 eq $comp2)
 						{
 							$noErrors = $pos;
 						}
