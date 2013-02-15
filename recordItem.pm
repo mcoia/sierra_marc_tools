@@ -35,6 +35,7 @@ package recordItem;
  use MARC::Record;
  use strict; 
  use Data::Dumper;
+ use Mobiusutil;
  
  
  sub new   #ID, indicator1, indicator2, data
@@ -64,37 +65,34 @@ package recordItem;
 	my $id = $self->{id};
 	my $indicator1 = $self->{indicator1};
 	my $indicator2 = $self->{indicator2};
+	my $mobiusUtil = new Mobiusutil();
 	
 	
 	my $indexDel = index($data, '|');
 	if ( $indexDel != -1) 
-	{
+	{		
 		#print "Splitting $data\n";
 		$self->{hasfields} = 1;
 		my @subSplits = split('\|', $data);
 		my @fields;
 		foreach(@subSplits)
 		{
-			my $field = substr($_,0,1);
-			my $content = substr($_,1);			
-			if($content ne '')
-			{	
-				my $temp = length($content);		
-				#print "$field = $content and content is $temp size\n";
-				my $rec = new recordItem($field,$indicator1,$indicator2,$content);
-				push(@brokenFields,$rec);
-				push(@fields,$field);
-			}
-			else
+			if(length($mobiusUtil->trim($_))>1)
 			{
-				#print "Subfield $field and content '$content' which is empty for $id and will not be added to marc\n";
-			}
-		}
-		foreach(@brokenFields)
-		{
-			if ($_->getID()eq 'c')
-			{
-				#print "It has c value:\n".$_->getData();
+				my $field = substr($_,0,1);
+				my $content = substr($_,1);			
+				if($content ne '')
+				{	
+					my $temp = length($content);		
+					#print "$field = $content and content is $temp size\n";
+					my $rec = new recordItem($field,$indicator1,$indicator2,$content);
+					push(@brokenFields,$rec);
+					push(@fields,$field);
+				}
+				else
+				{
+					#print "Subfield $field and content '$content' which is empty for $id and will not be added to marc\n";
+				}
 			}
 		}
 		
@@ -142,24 +140,26 @@ package recordItem;
 		
 		#sort by subfield ID
 		my $changed = 1;
-		
-		while($changed)
+		if($id ne '505')
 		{
-			$changed=0;			
-			for my $i(0..$#brokenFields)
+			while($changed)
 			{
-				my $thisRec = @brokenFields[$i]->getID();
-				if($i+1 <= $#brokenFields)
+				$changed=0;			
+				for my $i(0..$#brokenFields)
 				{
-					my $thisRecordItem = @brokenFields[$i+1];
-					my $nextRec = $thisRecordItem->getID();
-					if($nextRec lt $thisRec)
+					my $thisRec = @brokenFields[$i]->getID();
+					if($i+1 <= $#brokenFields)
 					{
-						#print "$nextRec was lower in the alphabet than $thisRec\n";
-						$thisRec = @brokenFields[$i];
-						@brokenFields[$i]=@brokenFields[$i+1];
-						@brokenFields[$i+1] = $thisRec;
-						$changed=1;
+						my $thisRecordItem = @brokenFields[$i+1];
+						my $nextRec = $thisRecordItem->getID();
+						if($nextRec lt $thisRec)
+						{
+							#print "$nextRec was lower in the alphabet than $thisRec\n";
+							$thisRec = @brokenFields[$i];
+							@brokenFields[$i]=@brokenFields[$i+1];
+							@brokenFields[$i+1] = $thisRec;
+							$changed=1;
+						}
 					}
 				}
 			}
@@ -225,7 +225,7 @@ package recordItem;
 	my $id = $self->{id};	
 	my $data = $self->{data};
 	my $ret;
-	if($self->{hasfields})
+	if($self->{hasfields} && $id>9)
 	{
 		for my $i (0..$#brokenFields)
 		{
@@ -250,11 +250,11 @@ package recordItem;
 		}
 		else
 		{
-		print "Adding $id = $data\n";
+		#print "Adding $id = $data\n";
 			eval{$ret = MARC::Field->new($id,$ind1,$ind2,$data)};
 			 if ($@) 
 			 {
-			 print "Could not create MARC Field object - trying to add subfield a\n";
+			 #print "Could not create MARC Field object - trying to add subfield a\n";
 				#errors usually due to a required subfield
 				eval{$ret = MARC::Field->new($id,$ind1,$ind2,"a"=>$data)};
 				if ($@) 
@@ -264,12 +264,14 @@ package recordItem;
 				 }
 				 else
 				 {
-					print "That worked\n";
+					#print "That worked\n";
+					#print Dumper($ret);
 				 }
 			 }
 			
 		}
 	}
+	
 	return $ret;
  }
  

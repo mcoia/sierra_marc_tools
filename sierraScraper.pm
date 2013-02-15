@@ -36,6 +36,7 @@ package sierraScraper;
  use strict; 
  use Data::Dumper;
  use Mobiusutil;
+ use Date::Manip;
  
  sub new   #DBhandler object,Loghandler object, Array of Bib Record ID's matching sierra_view.bib_record
  {
@@ -380,7 +381,10 @@ sub stuff945
 							}
 							else
 							{
-								$log->addLogLine("This was a related 082,090,086 item(".@row[0].") and bib($recordID)value but I don't know what it is: ".@rowsearch[1]." = ".@rowsearch[3]);
+								if((@rowsearch[1] ne 'n') && (@rowsearch[1] ne 'p')&& (@rowsearch[1] ne 'r'))
+								{
+									$log->addLogLine("This was a related 082,090,086 item(".@row[0].") and bib($recordID)value but I don't know what it is: ".@rowsearch[1]." = ".@rowsearch[3]);
+								}
 							}
 						}
 					}
@@ -696,16 +700,26 @@ sub stuff998alternate
 		$changed=0;
 		for my $i (0..$#marcFields)
 		{
-			if($i+1<=$#marcFields)
+			if($i+1<$#marcFields)
 			{
 				my $thisone = @marcFields[$i]->tag();
-				my $nextone = @marcFields[$i+1]->tag();
-				if($nextone lt $thisone)
+				my $nextone;
+				eval{$nextone = @marcFields[$i+1]->tag();};
+				if ($@) 
 				{
-					$changed=1;
-					my $temp = @marcFields[$i];
-					@marcFields[$i] = @marcFields[$i+1];
-					@marcFields[$i+1] = $temp;
+					print "Can't call method tag\ni= $i count = $#marcFields \nRecord ID = $recID";
+					#print Dumper(@marcFields);
+					$log->addLogLine("Can't call method \"tag\" on an undefined value");
+				}
+				else
+				{
+					if($nextone lt $thisone)
+					{
+						$changed=1;
+						my $temp = @marcFields[$i];
+						@marcFields[$i] = @marcFields[$i+1];
+						@marcFields[$i+1] = $temp;
+					}
 				}
 			}
 		}
@@ -748,7 +762,13 @@ sub stuff998alternate
 			my @recordItems = @{@fields[$i]};
 			foreach(@recordItems)
 			{
-				push(@marcFields,($_->getMARCField()));
+				##Sometimes there isn't enough data in the subfield to create a field object
+				# So we check for undef value returned from getMARCField()
+				my $mfield = $_->getMARCField();  
+				if($mfield!=undef)
+				{
+					push(@marcFields,$mfield);
+				}
 			}
 
 		}
@@ -784,7 +804,7 @@ sub stuff998alternate
 	else
 	{
 		$results = $test;
-		if(0)
+		if(1)
 		{
 		my @results = @{$dbHandler->query($test)};
 		my @ids;
@@ -816,6 +836,193 @@ sub stuff998alternate
 		$checkDigit='x';
 	}
 	return $checkDigit;
+ }
+ 
+ sub getBursarInfo
+ {
+	my $self = @_[0];
+	my $selects = $self->{'selects'};
+	my $log = $self->{'log'};
+	my $dbHandler = $self->{'dbhandler'};
+	my $outputPath = @_[1];
+	if(-d $outputPath)
+	{
+		my $query = "SELECT INVOICE_NUM,
+		TO_CHAR(ASSESSED_GMT, 'YYMMDD'),
+		CHARGE_LOCATION_CODE,
+		(SELECT RECORD_NUM FROM SIERRA_VIEW.PATRON_VIEW WHERE ID=A.PATRON_RECORD_ID),
+		CONCAT('b',(SELECT TRIM(CONTENT) FROM SIERRA_VIEW.SUBFIELD WHERE RECORD_ID=A.PATRON_RECORD_ID AND FIELD_TYPE_CODE='b')),
+		(SELECT CONCAT(LAST_NAME,', ',FIRST_NAME) FROM SIERRA_VIEW.PATRON_RECORD_FULLNAME WHERE PATRON_RECORD_ID=A.PATRON_RECORD_ID),
+		(SELECT CONCAT(
+	ADDR1,'\$',
+	ADDR2,'\$',ADDR3,'\$',CITY,'\$',REGION,'\$',POSTAL_CODE) FROM SIERRA_VIEW.PATRON_RECORD_ADDRESS WHERE PATRON_RECORD_ID=A.PATRON_RECORD_ID AND PATRON_RECORD_ADDRESS_TYPE_ID=1),
+		(SELECT 
+		CONCAT(
+		PCODE1,'|',
+		PCODE2,'|',
+		PCODE3,'|',
+		PTYPE_CODE)
+		FROM SIERRA_VIEW.PATRON_RECORD WHERE ID=A.PATRON_RECORD_ID),
+		TRIM(CONCAT('b',
+		(SELECT TRIM(CONTENT) FROM SIERRA_VIEW.SUBFIELD WHERE RECORD_ID=A.ITEM_RECORD_METADATA_ID AND FIELD_TYPE_CODE='b')
+		)),
+		
+		TRIM(CONCAT(	
+		(SELECT TRIM(CONTENT) FROM SIERRA_VIEW.SUBFIELD WHERE MARC_TAG='245' AND TAG='a' AND RECORD_ID=(SELECT BIB_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_ITEM_RECORD_LINK WHERE ITEM_RECORD_ID =A.ITEM_RECORD_METADATA_ID)),
+		' ',
+		(SELECT TRIM(CONTENT) FROM SIERRA_VIEW.SUBFIELD WHERE MARC_TAG='245' AND TAG='b' AND RECORD_ID=(SELECT BIB_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_ITEM_RECORD_LINK WHERE ITEM_RECORD_ID =A.ITEM_RECORD_METADATA_ID)),
+		' ',
+		(SELECT TRIM(CONTENT) FROM SIERRA_VIEW.SUBFIELD WHERE MARC_TAG='245' AND TAG='c' AND RECORD_ID=(SELECT BIB_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_ITEM_RECORD_LINK WHERE ITEM_RECORD_ID =A.ITEM_RECORD_METADATA_ID)),
+		' ',	
+		(SELECT TRIM(CONTENT) FROM SIERRA_VIEW.SUBFIELD WHERE MARC_TAG='245' AND TAG='d' AND RECORD_ID=(SELECT BIB_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_ITEM_RECORD_LINK WHERE ITEM_RECORD_ID =A.ITEM_RECORD_METADATA_ID))
+		)),
+		
+		TRIM(CONCAT(
+		(SELECT TRIM(CONTENT) FROM SIERRA_VIEW.SUBFIELD WHERE MARC_TAG='050' AND DISPLAY_ORDER=0 AND RECORD_ID=A.ITEM_RECORD_METADATA_ID),
+		' ',
+		(SELECT TRIM(CONTENT) FROM SIERRA_VIEW.SUBFIELD WHERE MARC_TAG='050' AND DISPLAY_ORDER=1 AND RECORD_ID=A.ITEM_RECORD_METADATA_ID),
+		' ',
+		(SELECT TRIM(CONTENT) FROM SIERRA_VIEW.SUBFIELD WHERE MARC_TAG='050' AND DISPLAY_ORDER=2 AND RECORD_ID=A.ITEM_RECORD_METADATA_ID),
+		' ',
+		(SELECT TRIM(CONTENT) FROM SIERRA_VIEW.SUBFIELD WHERE MARC_TAG='050' AND DISPLAY_ORDER=3 AND RECORD_ID=A.ITEM_RECORD_METADATA_ID),
+		' ',
+		(SELECT TRIM(CONTENT) FROM SIERRA_VIEW.SUBFIELD WHERE MARC_TAG='050' AND DISPLAY_ORDER=4 AND RECORD_ID=A.ITEM_RECORD_METADATA_ID)
+		)),
+		(CASE 
+			WHEN CHARGE_CODE='1' THEN 'MANUAL CHARGE'
+			WHEN CHARGE_CODE='2' THEN 'OVERDUE'
+			WHEN CHARGE_CODE='3' THEN 'REPLACEMENT'
+			WHEN CHARGE_CODE='4' THEN 'OVERDUEX'
+			WHEN CHARGE_CODE='5' THEN 'LOST BOOK'
+			WHEN CHARGE_CODE='6' THEN 'OVERDUE RENEWED'
+			WHEN CHARGE_CODE='7' THEN 'RENTAL'
+			WHEN CHARGE_CODE='8' THEN 'RENTALX'
+			WHEN CHARGE_CODE='9' THEN 'DEBIT'
+			WHEN CHARGE_CODE='a' THEN 'NOTICE'
+			WHEN CHARGE_CODE='b' THEN 'CREDIT CARD'
+			WHEN CHARGE_CODE='p' THEN 'PROGRAM'
+			END),
+		TRIM(TO_CHAR(ITEM_CHARGE_AMT,'9999999999990.00')),
+		TRIM(TO_CHAR(PROCESSING_FEE_AMT,'9999999999990.00')),
+		TRIM(TO_CHAR(BILLING_FEE_AMT,'9999999999990.00'))		
+		FROM SIERRA_VIEW.FINE A WHERE INVOICE_NUM IN ($selects)";
+		#print "$query\n";
+		my @results = @{$dbHandler->query($query)};		
+		my @output;
+		my $lowestInvoiceNum=0;
+		my $highestInvoiceNum=0;
+		my $recordCount = 0;
+		my $totalAmt1=0;
+		my $totalAmt2=0;
+		my $totalAmt3=0;
+		
+		foreach(@results)
+		{
+			$recordCount++;
+			my $row = $_;
+			my @row = @{$row};
+			
+			my $invoiceNum = @row[0];
+			if($lowestInvoiceNum==0)
+			{
+				$lowestInvoiceNum = $invoiceNum
+			}
+			elsif($invoiceNum<$lowestInvoiceNum)
+			{
+				$lowestInvoiceNum = $invoiceNum
+			}
+			if($highestInvoiceNum==0)
+			{
+				$highestInvoiceNum = $invoiceNum
+			}
+			elsif($invoiceNum>$highestInvoiceNum)
+			{
+				$highestInvoiceNum = $invoiceNum;
+			}
+			my $addThis;
+			
+			for my $i (0..$#row)
+			{
+				my $thisVal = @row[$i];
+				if($i==3)  #patronNumber
+				{
+					$thisVal = "p$thisVal".calcCheckDigit($self,$thisVal);
+				}
+				if($i==6)
+				{
+					while(index($thisVal,'$$')>-1)
+					{
+						$thisVal =~ s/\$\$/\$/; 
+					}
+					
+					if($thisVal eq "\$")
+					{
+						$thisVal="";
+					}
+					
+				}
+				if($i>11)
+				{
+					$thisVal =~ s/\.//;
+					if($i==12)
+					{
+						$totalAmt1+=$thisVal;
+					}
+					if($i==13)
+					{
+						$totalAmt2+=$thisVal;
+					}
+					if($i==14)
+					{
+						$totalAmt3+=$thisVal;
+					}
+				}
+				if($thisVal eq '')
+				{
+					$thisVal ="(no data)";
+				}
+				$addThis.=$thisVal.'|';
+			}
+			push(@output,$addThis);
+			$addThis=undef;
+		}
+		
+		if($#output > -1)
+		{
+			my $datestamp = UnixDate("today", "%Y-%m-%d");
+			my $mobiusUtil = new Mobiusutil();
+			my $header = "HEADER|";
+			$header.=$mobiusUtil->padLeft($recordCount,10,'0').'|';
+			$header.=$mobiusUtil->padLeft($totalAmt1,10,'0').'|';
+			$header.=$mobiusUtil->padLeft($totalAmt2,10,'0').'|';
+			$header.=$mobiusUtil->padLeft($totalAmt3,10,'0').'|';
+			$header.=$mobiusUtil->padLeft($totalAmt1+$totalAmt2+$totalAmt3,10,'0').'|';
+			$header.=$mobiusUtil->padLeft($lowestInvoiceNum,10,'0').'|';
+			$header.=$mobiusUtil->padLeft($highestInvoiceNum,10,'0').'|';
+			my $dt   = DateTime->now;			
+			$header.=substr($dt->year,2,2).$mobiusUtil->padLeft($dt->month,2,'0').$mobiusUtil->padLeft($dt->day,2,'0');
+			my @outputFiles = ("bursar.$datestamp.send","bursar.$datestamp.out");
+			foreach(@outputFiles)
+			{
+				my $bursarOut = new Loghandler($outputPath.'/'.$_);
+				$bursarOut->deleteFile();
+				$bursarOut->addLine($header);
+				foreach(@output)
+				{
+					$bursarOut->addLine($_);
+				}
+				$log->addLogLine("Outputted $recordCount record(s) into $outputPath/$_");
+			}
+			
+			return 1;
+		}
+	}
+	else
+	{
+		$log->addLogLine("Bursar - output path does not exist ($outputPath)");
+	}
+	return 0;
+	
  }
  
  

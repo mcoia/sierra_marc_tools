@@ -40,7 +40,8 @@ package Mobiusutil;
  use Net::FTP;
  use Loghandler;
  use Data::Dumper;
-
+ use DateTime;
+ 
 sub new
 {
     my $class = shift;
@@ -108,6 +109,35 @@ sub makeEvenWidth  #line, width
 		while(length($ret)<$width)
 		{
 			$ret=$ret." ";
+		}
+	}
+	#print "Returning \"$ret\"\nWidth: ".length($ret)."\n";
+	return $ret;
+	
+}
+
+sub padLeft  #line, width, fill char
+{
+	my $ret;
+	
+	if($#_+1 !=4)
+	{
+		return;
+	}
+	$line = @_[1];	
+	$width = @_[2];
+	$fillChar = @_[3];
+	#print "I got \"$line\" and width $width\n";
+	$ret=$line;
+	if(length($line)>=$width)
+	{
+		$ret=substr($ret,0,$width);
+	} 
+	else
+	{
+		while(length($ret)<$width)
+		{
+			$ret=$fillChar.$ret;
 		}
 	}
 	#print "Returning \"$ret\"\nWidth: ".length($ret)."\n";
@@ -232,15 +262,44 @@ sub makeEvenWidth  #line, width
 	return $string;
 }
 
-sub findSummonIDs		#DBhandler, #loghandler
+sub findSummonQuery		#self, DBhandler(object), cluster(string), addsorcancels(string)
 {
-	if($#_+1 !=3)
+	if($#_+1 !=4)
 	{
 		return 0;
 	}
 	my $dbHandler = @_[1];
-	my $log = @_[2];
+	my $cluster = @_[2];
+	my $addsOrCancels = @_[3];
+	my $dt   = DateTime->now;   # Stores current date and time as datetime object
+	my $yesterday = $dt->subtract(days=>1);
+	$yesterday = $yesterday->set_hour(5);
+	$yesterday = $yesterday->set_minute(0);
+	$yesterday = $yesterday->set_second(0);
+	if($dt->day_of_week == 1)
+	{
+		$yesterday->subtract(days=>2);
+	}
 	
+	my $date = $yesterday->ymd;   # Retrieves date as a string in 'yyyy-mm-dd' format
+	my $time = $yesterday->hms;   # Retrieves time as a string in 'hh:mm:ss' format
+	my $dbFromDate = "$date $time";
+	
+	if($cluster eq 'kansascity')
+	{
+		
+	
+		
+	}
+	
+	
+	my $query="
+	SELECT RECORD_ID,BCODE1,BCODE2,BCODE3,MARC_TYPE_CODE,IS_SUPPRESSED,
+(SELECT RECORD_LAST_UPDATED_GMT FROM SIERRA_VIEW.RECORD_METADATA B WHERE B.ID=A.RECORD_ID)
+
+ FROM SIERRA_VIEW.BIB_RECORD A WHERE (BCODE3 = '-' OR BCODE3='a' OR BCODE3='z' OR BCODE3='|')
+AND RECORD_ID IN (SELECT ID FROM SIERRA_VIEW.RECORD_METADATA C WHERE RECORD_LAST_UPDATED_GMT > TO_DATE('02-09-2013 ','MM-DD-YYYY')) limit 10";
+
 	
 	my $query = "SELECT RECORD_ID FROM SIERRA_VIEW.BIB_RECORD WHERE RECORD_ID=420907796199";
 	
@@ -396,18 +455,20 @@ sub makeCommaFromArray
 			}
 			
 		}
-		
+		print Dumper(@matched);
 		my @notMatchedList;
 		my $totalMatched=0;
 		while ((my $internal, my $value ) = each(%file1))
 		{
-			if(!exists $matched[$internal])
+			print "checking $internal\n";
+			if(exists $matched[$internal])
 			{
-				push(@notMatcheList,$internal);
+				$totalMatched++;
 			}
 			else
 			{
-				$totalMatched++;
+				print "Not Found\n";
+				push(@notMatcheList,$internal);
 			}
 		}
 		if($#notMatchedList>-1)
