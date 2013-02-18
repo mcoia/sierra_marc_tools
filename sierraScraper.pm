@@ -173,7 +173,7 @@ package sierraScraper;
 		}
 		if(@row[0] eq '6')
 		{
-			push(@{$specials{$recordID}},new recordItem('006','','',$mobiusUtil->makeEvenWidth(@row[1],18)));
+			push(@{$specials{$recordID}},new recordItem('006','','',$mobiusUtil->makeEvenWidth(@row[1],44)));
 		}
 		elsif(@row[0] eq '7')
 		{
@@ -804,17 +804,29 @@ sub stuff998alternate
 	else
 	{
 		$results = $test;
-		if(1)
+		if(0)
 		{
-		my @results = @{$dbHandler->query($test)};
-		my @ids;
-		foreach(@results)
-		{
-			my $row = $_;
-			my @row = @{$row};
-			push(@ids,@row[0]);
-		}
-		$results = $mobUtil->makeCommaFromArray(\@ids);
+			my @results;
+			eval{@results = @{$dbHandler->query($test)}};
+			if (!$@) 			
+			{
+				my @ids;
+				foreach(@results)
+				{
+					my $row = $_;
+					my @row = @{$row};
+					push(@ids,@row[0]);
+				}
+				$results = $mobUtil->makeCommaFromArray(\@ids);
+				if(length($results)==0)
+				{
+					$results=$test;
+				}
+			}
+			else
+			{
+				$results = $test;
+			}
 		}
 	}
 	$self->{'selects'}  = $results;
@@ -1009,7 +1021,7 @@ sub stuff998alternate
 				$bursarOut->addLine($header);
 				foreach(@output)
 				{
-					$bursarOut->addLine($_);
+					$bursarOut->addLine(substr($_,0,length($_)-1));
 				}
 				$log->addLogLine("Outputted $recordCount record(s) into $outputPath/$_");
 			}

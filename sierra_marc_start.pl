@@ -83,16 +83,8 @@
 			 {
 				#420908010009
 				my $marcOutFile = "/tmp/run/marcout";#$mobUtil->chooseNewFileName($conf->{"marcoutdir"},"marcout","mrc");
-				my $sierraScraper = new sierraScraper($dbHandler,$log,"SELECT RECORD_ID FROM SIERRA_VIEW.BIB_RECORD WHERE 
-(
-(RECORD_ID IN(SELECT BIB_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_LOCATION WHERE LOCATION_CODE BETWEEN 'wjb' AND 'wjt'))
-OR
-(RECORD_ID IN(SELECT BIB_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_LOCATION WHERE LOCATION_CODE BETWEEN 'wjx' AND 'wjy'))
-)
-AND
-(BCODE3='z' OR BCODE3='-')
-AND
-(RECORD_ID IN (SELECT ID FROM SIERRA_VIEW.RECORD_METADATA WHERE (RECORD_LAST_UPDATED_GMT > TO_DATE('02-12-2013 ','MM-DD-YYYY')) AND (RECORD_LAST_UPDATED_GMT < TO_DATE('02-14-2013 ','MM-DD-YYYY'))))");#"SELECT ID FROM SIERRA_VIEW.BIB_VIEW WHERE RECORD_NUM >= 1215001 AND RECORD_NUM <= 1215201");#['420907796199','420907798387']);
+				my $sierraScraper = new sierraScraper($dbHandler,$log,$mobUtil->findSummonQuery($dbHandler,'kansascity','cancels')); #"SELECT ID FROM SIERRA_VIEW.BIB_VIEW WHERE RECORD_NUM >= 1215001 AND RECORD_NUM <= 1215201");#['420907796199','420907798387']);
+
 				my @marc = @{$sierraScraper->getAllMARC()};
 				 my $marcout = new Loghandler($marcOutFile);
 				$marcout->deleteFile();

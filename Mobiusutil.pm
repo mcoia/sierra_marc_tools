@@ -281,28 +281,115 @@ sub findSummonQuery		#self, DBhandler(object), cluster(string), addsorcancels(st
 		$yesterday->subtract(days=>2);
 	}
 	
-	my $date = $yesterday->ymd;   # Retrieves date as a string in 'yyyy-mm-dd' format
-	my $time = $yesterday->hms;   # Retrieves time as a string in 'hh:mm:ss' format
-	my $dbFromDate = "$date $time";
+	my $fdate = $yesterday->ymd;   # Retrieves date as a string in 'yyyy-mm-dd' format
+	my $ftime = $yesterday->hms;   # Retrieves time as a string in 'hh:mm:ss' format
+	my $todate = $yesterday->add(days=>1);
+	my $tdate = $todate->ymd;
+	my $ttime = $yesterday->hms;
+	my $dbFromDate = "2013-02-16 05:00:00";#$fdate $ftime";
+	my $dbToDate = "$tdate $ttime";
+	my $summonClusters = ('kansascity','ucm');
+	
+	my $worked = exists ($summonClusters{$cluster});
+	my $query;
 	
 	if($cluster eq 'kansascity')
 	{
-		
-	
+		if($addsOrCancels eq 'adds')
+		{
+			$query = 
+			"SELECT RECORD_ID FROM SIERRA_VIEW.BIB_RECORD WHERE 
+			(
+			(RECORD_ID IN(SELECT BIB_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_LOCATION WHERE LOCATION_CODE BETWEEN 'wjb' AND 'wjt'))
+			OR
+			(RECORD_ID IN(SELECT BIB_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_LOCATION WHERE LOCATION_CODE BETWEEN 'wjx' AND 'wjy'))
+			)
+			AND
+			(BCODE3='z' OR BCODE3='-')
+			AND
+			(RECORD_ID IN (SELECT ID FROM SIERRA_VIEW.RECORD_METADATA WHERE 
+			(RECORD_LAST_UPDATED_GMT > TO_DATE('$dbFromDate','YYYY-MM-DD HH24:MI:MS')) AND 
+			(RECORD_LAST_UPDATED_GMT < TO_DATE('$dbToDate','YYYY-MM-DD HH24:MI:MS'))))"
+		}
+		else
+		{
+		$query = 
+			"SELECT RECORD_ID FROM SIERRA_VIEW.BIB_RECORD WHERE 
+			(
+				RECORD_ID IN
+				(
+					SELECT BIB_RECORD_ID FROM 
+					SIERRA_VIEW.BIB_RECORD_LOCATION WHERE 
+					LOCATION_CODE = 'wju' AND
+					LOCATION_CODE != 'wjb' AND
+					LOCATION_CODE != 'wjc' AND
+					LOCATION_CODE != 'wjd' AND
+					LOCATION_CODE != 'wji' AND
+					LOCATION_CODE != 'wjj' AND
+					LOCATION_CODE != 'wjo' AND
+					LOCATION_CODE != 'wjp' AND
+					LOCATION_CODE != 'wjr' AND
+					LOCATION_CODE != 'wjs' AND
+					LOCATION_CODE != 'wjx' AND
+					LOCATION_CODE != 'wjy'
+				)
+			)
+			AND
+			(RECORD_ID IN (SELECT ID FROM SIERRA_VIEW.RECORD_METADATA WHERE 
+			(RECORD_LAST_UPDATED_GMT > TO_DATE('$dbFromDate','YYYY-MM-DD HH24:MI:MS')) AND 
+			(RECORD_LAST_UPDATED_GMT < TO_DATE('$dbToDate','YYYY-MM-DD HH24:MI:MS'))))"
+		}
 		
 	}
+	elsif($cluster eq 'ucm')
+	{
+		if($addsOrCancels eq 'adds')
+		{
+			$query = 
+			"SELECT RECORD_ID FROM SIERRA_VIEW.BIB_RECORD WHERE 
+			(
+			(RECORD_ID IN(SELECT BIB_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_LOCATION WHERE LOCATION_CODE BETWEEN 'ckb' AND 'ckv'))
+			OR
+			(RECORD_ID IN(SELECT BIB_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_LOCATION WHERE LOCATION_CODE = ''))
+			)
+			AND
+			(BCODE3='z' OR BCODE3='-')
+			AND
+			(RECORD_ID IN (SELECT ID FROM SIERRA_VIEW.RECORD_METADATA WHERE 
+			(RECORD_LAST_UPDATED_GMT > TO_DATE('$dbFromDate','YYYY-MM-DD HH24:MI:MS')) AND 
+			(RECORD_LAST_UPDATED_GMT < TO_DATE('$dbToDate','YYYY-MM-DD HH24:MI:MS'))))"
+		}
+		else
+		{
+		$query = 
+			"SELECT RECORD_ID FROM SIERRA_VIEW.BIB_RECORD WHERE 
+			(
+				RECORD_ID IN
+				(
+					SELECT BIB_RECORD_ID FROM 
+					SIERRA_VIEW.BIB_RECORD_LOCATION WHERE 
+					LOCATION_CODE = 'wju' AND
+					LOCATION_CODE != 'wjb' AND
+					LOCATION_CODE != 'wjc' AND
+					LOCATION_CODE != 'wjd' AND
+					LOCATION_CODE != 'wji' AND
+					LOCATION_CODE != 'wjj' AND
+					LOCATION_CODE != 'wjo' AND
+					LOCATION_CODE != 'wjp' AND
+					LOCATION_CODE != 'wjr' AND
+					LOCATION_CODE != 'wjs' AND
+					LOCATION_CODE != 'wjx' AND
+					LOCATION_CODE != 'wjy'
+				)
+			)
+			AND
+			(RECORD_ID IN (SELECT ID FROM SIERRA_VIEW.RECORD_METADATA WHERE 
+			(RECORD_LAST_UPDATED_GMT > TO_DATE('$dbFromDate','YYYY-MM-DD HH24:MI:MS')) AND 
+			(RECORD_LAST_UPDATED_GMT < TO_DATE('$dbToDate','YYYY-MM-DD HH24:MI:MS'))))"
+		}
+	}
 	
-	
-	my $query="
-	SELECT RECORD_ID,BCODE1,BCODE2,BCODE3,MARC_TYPE_CODE,IS_SUPPRESSED,
-(SELECT RECORD_LAST_UPDATED_GMT FROM SIERRA_VIEW.RECORD_METADATA B WHERE B.ID=A.RECORD_ID)
-
- FROM SIERRA_VIEW.BIB_RECORD A WHERE (BCODE3 = '-' OR BCODE3='a' OR BCODE3='z' OR BCODE3='|')
-AND RECORD_ID IN (SELECT ID FROM SIERRA_VIEW.RECORD_METADATA C WHERE RECORD_LAST_UPDATED_GMT > TO_DATE('02-09-2013 ','MM-DD-YYYY')) limit 10";
-
-	
-	my $query = "SELECT RECORD_ID FROM SIERRA_VIEW.BIB_RECORD WHERE RECORD_ID=420907796199";
-	
+	print "$query\n";
 	my @ret;
 	my @results = @{$dbHandler->query($query)};
 				 
@@ -314,17 +401,17 @@ AND RECORD_ID IN (SELECT ID FROM SIERRA_VIEW.RECORD_METADATA C WHERE RECORD_LAST
 	{
 		my $row = $_;
 		my @row = @{$row};
-		print "::newrow::";
+		#print "::newrow::";
 		foreach my $val(@row)
 		{
 			push(@ret, $val);
-			print"$val\t";
+			#print"$val\t";
 		}
-		print "\n";
+		#print "\n";
 		
 	}
 	
-	return @ret;
+	return \@ret;
 	
 }
 
@@ -389,7 +476,7 @@ sub makeCommaFromArray
 		my $r =0;
 		while ( my $marc = $file->next() ) 
 		{
-			print "Record $r\n";
+			#print "Record $r\n";
 			$r++;
 			
 			my $recID = $marc->field('907')->subfield('a');
