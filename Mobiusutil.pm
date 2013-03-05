@@ -36,6 +36,7 @@
 package Mobiusutil;
  use MARC::Record;
  use MARC::File;
+ use MARC::File::USMARC;
  use ZOOM; 
  use Net::FTP;
  use Loghandler;
@@ -463,8 +464,11 @@ sub makeCommaFromArray
  sub compare2MARCFiles
  {
 	my $firstFile = @_[1];
-	my $secondFile = @_[2];
+	my $secondFile = @_[2];	
 	my $log = @_[3];
+	my $matchOnTag = @_[4];
+	my $matchOnSubField = @_[5];
+	
 	my $fileCheck1 = new Loghandler($firstFile);
 	my $fileCheck2 = new Loghandler($secondFile);
 	my %file1, %file2;
@@ -478,8 +482,15 @@ sub makeCommaFromArray
 		{
 			#print "Record $r\n";
 			$r++;
-			
-			my $recID = $marc->field('907')->subfield('a');
+			my $recID;
+			if($matchOnTag > 9)
+			{
+				$recID = $marc->field($matchOnTag)->subfield($matchOnSubField);
+			}
+			else
+			{
+				$recID = $marc->field($matchOnTag)->data();
+			}
 			
 			if(exists($file1{$recID}))
 			{
@@ -495,7 +506,14 @@ sub makeCommaFromArray
 		while ( my $marc = $file->next() ) 
 		{
 			
-			my $recID = $marc->field('907')->subfield('a');
+			if($matchOnTag > 9)
+			{
+				$recID = $marc->field($matchOnTag)->subfield($matchOnSubField);
+			}
+			else
+			{
+				$recID = $marc->field($matchOnTag)->data();
+			}
 			if(exists($file2{$recID}))
 			{
 				#print "There were more than 1 of the same records containing same Record Num $recID in file $secondFile\n";

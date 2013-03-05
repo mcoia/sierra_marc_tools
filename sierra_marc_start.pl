@@ -60,7 +60,7 @@
 		$log->addLogLine(" ---------------- Script Starting ---------------- ");
 		my @reqs = ("dbhost","db","dbuser","dbpass","z3950server","marcoutdir");
 		my $valid = 1;
-		for my $i (0..length(@reqs))
+		for my $i (0..$#@reqs)
 		{
 			if(!$conf{@reqs[$i]})
 			{
@@ -81,7 +81,7 @@
 			 }
 			 if($valid)
 			 {
-				#420908010009
+				
 				my $marcOutFile = "/tmp/run/marcout";#$mobUtil->chooseNewFileName($conf->{"marcoutdir"},"marcout","mrc");
 				my $sierraScraper = new sierraScraper($dbHandler,$log,$mobUtil->findSummonQuery($dbHandler,'kansascity','cancels')); #"SELECT ID FROM SIERRA_VIEW.BIB_VIEW WHERE RECORD_NUM >= 1215001 AND RECORD_NUM <= 1215201");#['420907796199','420907798387']);
 
@@ -96,11 +96,12 @@
 				}
 				$marcout->addLine($output);
 				
-				my @errors = @{$mobUtil->compare2MARCFiles($marcOutFile,"/tmp/run/jewell-catalog-updates-2013-02-13.out", $log)};
+				my @errors = @{$mobUtil->compare2MARCFiles($marcOutFile,"/tmp/run/jewell-catalog-updates-2013-02-13.out", $log, 907, "a" )};
 				foreach(@errors)
 				{
 					print $_."\n";
 				}
+			
 				 if(0)
 				 {
 					 my $marcOutFile = $mobUtil->chooseNewFileName($conf->{"z3950server"},"marcout","mrc");

@@ -804,7 +804,7 @@ sub stuff998alternate
 	else
 	{
 		$results = $test;
-		if(0)
+		if(1)
 		{
 			my @results;
 			eval{@results = @{$dbHandler->query($test)}};
@@ -825,7 +825,7 @@ sub stuff998alternate
 			}
 			else
 			{
-				$results = $test;
+				$results = "-1";#$test;
 			}
 		}
 	}
@@ -1013,7 +1013,7 @@ sub stuff998alternate
 			$header.=$mobiusUtil->padLeft($highestInvoiceNum,10,'0').'|';
 			my $dt   = DateTime->now;			
 			$header.=substr($dt->year,2,2).$mobiusUtil->padLeft($dt->month,2,'0').$mobiusUtil->padLeft($dt->day,2,'0');
-			my @outputFiles = ("bursar.$datestamp.send","bursar.$datestamp.out");
+			my @outputFiles = ("bursar.$datestamp.send","bursar2.$datestamp.out");
 			foreach(@outputFiles)
 			{
 				my $bursarOut = new Loghandler($outputPath.'/'.$_);
