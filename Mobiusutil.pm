@@ -11,6 +11,10 @@
 # Mobiusutil.pm
 # MARC::Record (from CPAN)
 # Net::FTP
+# IO::Pty
+# IO::Stty
+# Expect;
+# Net::SSH::Expect;
 # 
 # This is a simple utility class that provides some common functions
 #
@@ -42,6 +46,8 @@ package Mobiusutil;
  use Loghandler;
  use Data::Dumper;
  use DateTime;
+ use Expect;
+ use Net::SSH::Expect;
  
 sub new
 {
@@ -805,6 +811,153 @@ sub makeCommaFromArray
 	}
 	
 	return 1;
+	
+ }
+ 
+ sub expectSSHConnect
+ {
+	my $login = @_[1];
+	my $pass = @_[2];
+	my $host = @_[3];
+	my @loginPrompt = @{@_[4]};
+	my @allPrompts = @{@_[5]};
+	my $errorMessage = 1;
+	
+	my $h = Net::SSH::Expect->new (
+				host => $host, 
+				password=> $pass, 
+				user => $login,
+				raw_pty => 1
+			);
+			
+	$h->timeout(30);
+	my $login_output = $h->login();
+	
+	if(index($login_output,"Choose one (D,C,M,B,A,Q)")>-1)
+	{
+		$h->send("c");
+		$i=0;
+		my $screen = $h->read_all();
+		foreach(@allPrompts)
+		{
+			if($i <= $#allPrompts)
+			{
+				my @thisArray = @{$_};
+				my $b = 0;
+				foreach(@thisArray)
+				{
+					if($b <= $#thisArray)
+					{
+						if(index($screen,@thisArray[$b])>-1)
+						{
+						## CANNOT GET A CARRIAGE RETURN TO SEND TO THE SSH PROMPT
+						## HERE IS SOME OF THE CODE I HAVE TRIED (COMMENTED OUT)
+						## BGH
+							#if(index(@thisArray[$b+1],"\r")>-1)
+							#{	
+							#my $l = length(@thisArray[$b+1]);
+							#my $in = index(@thisArray[$b+1],"\r");
+							#my $pos = $in;
+							#print "Len: $l index: $in $pos: $pos\n";
+							
+								#my $cmd = substr(@thisArray[$b+1],0,index(@thisArray[$b+1],"\r"));
+								#print "Converted cmd to \"$cmd\"\n";
+								#$screen = $h->exec($cmd);
+								
+							#}
+							#else
+							#{
+								$h->send(@thisArray[$b+1]);
+								$screen = $h->read_all();
+							#}
+							#print "Found \"".@thisArray[$b]."\"\nSending (\"".@thisArray[$b+1]."\")\n";
+							$b++;
+							
+						}
+						else
+						{
+							#print "Didn't find \"".@thisArray[$b]."\" - Moving onto the next set of prompts\n";
+							#print "Screen is now\n$screen\n";
+							$b = $#thisArray;  ## Stop looping in this sub prompt tree
+						}
+					}
+					$b++;
+				}
+				$i++;
+			}
+			
+		}
+
+	}
+	else
+	{
+		$errorMessage = "Didn't get the expected login prompt";
+	}
+	 
+	eval{$h->close();};
+	if ($@) 
+	{
+		$errorMessage = "Error closing SSH connect";
+	}
+	return $errorMessage;
+	
+ }
+ 
+ sub expectConnect
+ {
+	my $login = @_[1];
+	my $pass = @_[2];
+	my $host = @_[3];
+	my @allPrompts = @{@_[4]};
+	my $errorMessage = 1;
+	my $timeout  = 10;
+	
+	my $h = Expect->spawn("ssh $login\@$host");
+	#$h->log_stdout(0);
+	unless ($h->expect($timeout, "password")) {print "not logging in"; return "No Password Prompt"; }
+	print $h $pass."\r";
+	unless ($h->expect($timeout, ":")) { }  #there is a quick screen directly after logging in 
+	
+	$i=0;
+	#print Dumper(@allPrompts);
+	foreach(@allPrompts)
+	{
+		if($i <= $#allPrompts)
+		{
+			my @thisArray = @{$_};
+			my $b = 0;
+			foreach(@thisArray)
+			{
+				if($b < ($#thisArray-1))
+				{
+				#Turn on debugging:
+				#$h->exp_internal(1);
+					my $go = 1;
+					unless ($h->expect(@thisArray[$b], @thisArray[$b+1])) 
+					{
+					
+						$errorMessage.="\r\nPrompt not found: ".@thisArray[$b+1]." in ".@thisArray[$b]." seconds\r\n\r\n";
+						$b = $#thisArray;
+						$go=0;
+					}
+					if($go)
+					{
+						print $h @thisArray[$b+2];					
+					}
+					$b++;
+					$b++;
+				}
+				$b++;
+			}
+			$i++;
+		}
+	}
+	 
+	$h->soft_close();
+  
+	$h->hard_close();
+	
+	return $errorMessage;
 	
  }
 

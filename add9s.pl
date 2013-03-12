@@ -6,13 +6,17 @@
 #
 # Example Configure file:
 # 
-# logfile = /tmp/log.log marcoutdir = /tmp z3950server = server.address.org/INNOPAC dbhost = 192.168.12.45 
-# db = postgresDB_Name dbuser = dbuser dbpass = dbpassword
+# logfile = /tmp/log.log 
+# outputfile = /tmp/run/corrected9s.mrc
+# schols = PB,GC,LLCL
 #
 #
 # This script requires:
 #
-# recordItem.pm sierraScraper.pm DBhandler.pm Loghandler.pm Mobiusutil.pm MARC::Record (from CPAN)
+# Loghandler.pm
+# Mobiusutil.pm
+# MARC::Record
+# MARC::File
 # 
 # Blake Graham-Henderson MOBIUS blake@mobiusconsortium.org 2013-1-24
  
@@ -51,8 +55,7 @@
 				$log->addLogLine(@reqs[$i]." required");
 				$valid = 0;
 			}
-		}
-		print $valid;
+		}		
 		if($valid)
 		{
 			my $inputError = 0;

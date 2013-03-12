@@ -37,6 +37,7 @@
  use recordItem;
  use sierraScraper;
  use Data::Dumper;
+ use email;
  
  #use warnings;
  #use diagnostics; 
@@ -97,11 +98,16 @@
 				$marcout->addLine($output);
 				
 				my @errors = @{$mobUtil->compare2MARCFiles($marcOutFile,"/tmp/run/jewell-catalog-updates-2013-02-13.out", $log, 907, "a" )};
+				my $errors;
 				foreach(@errors)
 				{
-					print $_."\n";
+					$errors.= $_."\n";
 				}
-			
+		
+		my @arr;
+				my $email = new email("junk@monsterfro.com",\@arr,0,0,\@conf,$log);
+				$email->send("Errors",$errors);
+				
 				 if(0)
 				 {
 					 my $marcOutFile = $mobUtil->chooseNewFileName($conf->{"z3950server"},"marcout","mrc");
