@@ -92,12 +92,13 @@ sub send  	#subject, body
 
 	for my $r (0.. $#additionalEmails)
 	{
+#	print "Adding To : ".@additionalEmails[$r]."\n";
 		push(@toEmails, "To");
 		push(@toEmails, @additionalEmails[$r]);
 	}
 	push(@toEmails, "Subject");
 	push(@toEmails, $subject);
-
+#print Dumper(@toEmails);
 	my $message;
 	
 	$message = Email::MIME->create(

@@ -280,7 +280,7 @@ sub findSummonQuery		#self, DBhandler(object), cluster(string), addsorcancels(st
 	my $addsOrCancels = @_[3];
 	my $dt   = DateTime->now;   # Stores current date and time as datetime object
 	my $yesterday = $dt->subtract(days=>1);
-	$yesterday = $yesterday->set_hour(5);
+	$yesterday = $yesterday->set_hour(0);
 	$yesterday = $yesterday->set_minute(0);
 	$yesterday = $yesterday->set_second(0);
 	if($dt->day_of_week == 1)
@@ -293,7 +293,7 @@ sub findSummonQuery		#self, DBhandler(object), cluster(string), addsorcancels(st
 	my $todate = $yesterday->add(days=>1);
 	my $tdate = $todate->ymd;
 	my $ttime = $yesterday->hms;
-	my $dbFromDate = "2013-02-16 05:00:00";#$fdate $ftime";
+	my $dbFromDate = "$fdate $ftime";  # "2013-02-16 05:00:00";
 	my $dbToDate = "$tdate $ttime";
 	my $summonClusters = ('kansascity','ucm');
 	
@@ -315,8 +315,8 @@ sub findSummonQuery		#self, DBhandler(object), cluster(string), addsorcancels(st
 			(BCODE3='z' OR BCODE3='-')
 			AND
 			(RECORD_ID IN (SELECT ID FROM SIERRA_VIEW.RECORD_METADATA WHERE 
-			(RECORD_LAST_UPDATED_GMT > TO_DATE('$dbFromDate','YYYY-MM-DD HH24:MI:MS')) AND 
-			(RECORD_LAST_UPDATED_GMT < TO_DATE('$dbToDate','YYYY-MM-DD HH24:MI:MS'))))"
+			(RECORD_LAST_UPDATED_GMT > TO_DATE('$dbFromDate','YYYY-MM-DD HH24:MI:MS')) ))"; #AND 
+			#(RECORD_LAST_UPDATED_GMT < TO_DATE('$dbToDate','YYYY-MM-DD HH24:MI:MS'))))";
 		}
 		else
 		{
@@ -344,7 +344,7 @@ sub findSummonQuery		#self, DBhandler(object), cluster(string), addsorcancels(st
 			AND
 			(RECORD_ID IN (SELECT ID FROM SIERRA_VIEW.RECORD_METADATA WHERE 
 			(RECORD_LAST_UPDATED_GMT > TO_DATE('$dbFromDate','YYYY-MM-DD HH24:MI:MS')) AND 
-			(RECORD_LAST_UPDATED_GMT < TO_DATE('$dbToDate','YYYY-MM-DD HH24:MI:MS'))))"
+			(RECORD_LAST_UPDATED_GMT < TO_DATE('$dbToDate','YYYY-MM-DD HH24:MI:MS'))))";
 		}
 		
 	}
@@ -566,7 +566,7 @@ sub makeCommaFromArray
 			}
 			
 		}
-		print Dumper(@matched);
+		#print Dumper(@matched);
 		my @notMatchedList;
 		my $totalMatched=0;
 		while ((my $internal, my $value ) = each(%file1))
@@ -909,12 +909,17 @@ sub makeCommaFromArray
 	my $pass = @_[2];
 	my $host = @_[3];
 	my @allPrompts = @{@_[4]};
-	my $errorMessage = 1;
+	my $errorMessage = "";
+	my @promptsResponded;
 	my $timeout  = 10;
 	
 	my $h = Expect->spawn("ssh $login\@$host");
-	#$h->log_stdout(0);
-	unless ($h->expect($timeout, "password")) {print "not logging in"; return "No Password Prompt"; }
+	#turn off command output to the screen
+	$h->log_stdout(0);
+	my $acceptkey=1;
+	unless ($h->expect($timeout, "yes/no")){$acceptkey=0;}
+	if($acceptkey){print $h "yes\r";}
+	unless ($h->expect($timeout, "password")) { return "No Password Prompt"; }
 	print $h $pass."\r";
 	unless ($h->expect($timeout, ":")) { }  #there is a quick screen directly after logging in 
 	
@@ -935,15 +940,41 @@ sub makeCommaFromArray
 					my $go = 1;
 					unless ($h->expect(@thisArray[$b], @thisArray[$b+1])) 
 					{
-					
-						$errorMessage.="\r\nPrompt not found: ".@thisArray[$b+1]." in ".@thisArray[$b]." seconds\r\n\r\n";
+						if(@thisArray[$b+3] == 1)  #This value tells us weather it's ok or not if that prompt was not found
+						{
+							my $screen = $h->before();
+							$screen =~s/\[/\r/g;
+							my @chars1 = split("",$screen);
+							my $output;
+							my $pos=0;
+							for my $i (0..$#chars1)
+							{
+								if($pos < $#chars1)
+								{
+									if(@chars1[$pos] eq ';')
+									{
+										$pos+=4;
+									}
+									else
+									{
+										$output.=@chars1[$pos];
+										$pos++;
+									}
+								}
+							}
+							$errorMessage.="Prompt not found: '".@thisArray[$b+1]."' in ".@thisArray[$b]." seconds\r\n\r\nScreen looks like this:\r\n$output\r\n";
+						}
 						$b = $#thisArray;
 						$go=0;
 					}
 					if($go)
 					{
-						print $h @thisArray[$b+2];					
+						print $h @thisArray[$b+2];
+						my $t = @thisArray[$b+2];
+						$t =~ s/\r//g;
+						push(@promptsResponded, "'".@thisArray[$b+1]."' answered '$t'");
 					}
+					$b++;
 					$b++;
 					$b++;
 				}
@@ -956,8 +987,12 @@ sub makeCommaFromArray
 	$h->soft_close();
   
 	$h->hard_close();
-	
-	return $errorMessage;
+	if(length($errorMessage)==0)
+	{
+		$errorMessage=1;
+	}
+	push(@promptsResponded, $errorMessage);
+	return \@promptsResponded;
 	
  }
 

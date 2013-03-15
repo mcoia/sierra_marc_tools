@@ -61,7 +61,7 @@
 		$log->addLogLine(" ---------------- Script Starting ---------------- ");
 		my @reqs = ("dbhost","db","dbuser","dbpass","z3950server","marcoutdir");
 		my $valid = 1;
-		for my $i (0..$#@reqs)
+		for my $i (0..$#reqs)
 		{
 			if(!$conf{@reqs[$i]})
 			{
@@ -84,7 +84,7 @@
 			 {
 				
 				my $marcOutFile = "/tmp/run/marcout";#$mobUtil->chooseNewFileName($conf->{"marcoutdir"},"marcout","mrc");
-				my $sierraScraper = new sierraScraper($dbHandler,$log,$mobUtil->findSummonQuery($dbHandler,'kansascity','cancels')); #"SELECT ID FROM SIERRA_VIEW.BIB_VIEW WHERE RECORD_NUM >= 1215001 AND RECORD_NUM <= 1215201");#['420907796199','420907798387']);
+				my $sierraScraper = new sierraScraper($dbHandler,$log,$mobUtil->findSummonQuery($dbHandler,'kansascity','adds')); #"SELECT ID FROM SIERRA_VIEW.BIB_VIEW WHERE RECORD_NUM >= 1215001 AND RECORD_NUM <= 1215201");#['420907796199','420907798387']);
 
 				my @marc = @{$sierraScraper->getAllMARC()};
 				 my $marcout = new Loghandler($marcOutFile);
@@ -97,15 +97,16 @@
 				}
 				$marcout->addLine($output);
 				
-				my @errors = @{$mobUtil->compare2MARCFiles($marcOutFile,"/tmp/run/jewell-catalog-updates-2013-02-13.out", $log, 907, "a" )};
+				my @errors = @{$mobUtil->compare2MARCFiles($marcOutFile,"/tmp/run/test.out", $log, 907, "a" )};
 				my $errors;
 				foreach(@errors)
 				{
-					$errors.= $_."\n";
+					$errors.= $_."\r\n";
 				}
 		
-		my @arr;
-				my $email = new email("junk@monsterfro.com",\@arr,0,0,\@conf,$log);
+		
+		my @tos = ('junk@monsterfro.com');
+				my $email = new email('junk@monsterfro.com',\@tos,0,0,\%conf);
 				$email->send("Errors",$errors);
 				
 				 if(0)
