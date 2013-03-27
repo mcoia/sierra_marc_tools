@@ -40,8 +40,13 @@ package DBhandler;
  use DBI;
  use Loghandler;
  use strict; 
+ #use Unicode::Normalize;
+ use Encode;
+ use utf8;
+ use Data::Dumper;
  
  
+ use String::Multibyte;
  
  
  sub new   #dbname,host,login,password
@@ -68,24 +73,95 @@ package DBhandler;
 	my $host = $self->{host};
 	my $login = $self->{login};
 	my $pass = $self->{password};
-	$conn =  DBI->connect("DBI:Pg:dbname=$dbname;host=$host;port=1032", $login, $pass, {'RaiseError' => 1});
+	$conn =  DBI->connect("DBI:Pg:dbname=$dbname;host=$host;port=1032", $login, $pass, {'RaiseError' => 1, pg_utf8_strings => 1,post_connect_sql => "SET CLIENT_ENCODING TO 'UTF8'"});
 	$self->{conn} = $conn;
  }
  
  sub query
  {
+ 
+ #
+ #All of this messed up code commented out were different efforts to work out some strange
+ #and unusual characters coming out of the database. Some of them still throw warnings to the 
+ #console but don't seem to halt execution. Example: 
+ #"\x{2113}" does not map to iso-8859-1 at /usr/lib64/perl5/Encode.pm line 158.
+ #Right now the output to the marc records are correct but output to the console looks wrong.
+ #This is probably due to multibyte unicode characters not being shown for the locale of my session.
+ #
 	my ($self) = @_[0];
 	my $conn = $self->{conn};
 	my $querystring =  @_[1];
 	my @ret;
-	
-	#$conn->do("SET DateStyle = 'European'");
+	#print "$querystring\n";
 
 	my $query = $conn->prepare($querystring);
 	$query->execute();
-	
+	my %ar;
+	#mb_internal_encoding("UTF-8");
 	while (my $row = $query->fetchrow_arrayref())
 	{
+		my @pusher;
+		foreach(@$row)
+		{
+			my $utf8 = String::Multibyte->new('UTF8');
+			#print "Raw = $_\n";
+			#my $teststring = "ṭṭār";
+			#print "testing $teststring\n";
+			my $conv = $utf8->substr($_,0,$utf8->length($_));#Encode::encode_utf8($_);
+			#$conv = Encode::encode_utf8($decode);
+			#print "Enc = $conv\n";
+			#print "conv = $conv\n";
+			
+# ------------ This if statement doesn't execute
+			if(0)
+			{
+			
+				if(Encode::is_utf8($conv))	
+				{
+				
+				}
+				else
+				{
+					print "$_\nIS NOT UTF8\n";
+				}
+				
+				my @mchars = $utf8->strsplit('', $conv);
+				foreach(@mchars)
+				{
+					
+					my $ord = $_; #ord $_;
+					#print "$_ = $ord\n";
+					
+					if(exists($ar{$ord}))
+					{
+						$ar{$ord}++;
+					}
+					else
+					{
+						$ar{$ord}=1;
+					}
+				}
+				
+				my $str = Encode::encode_utf8($_);
+				if(0)
+				{
+					# this code is borrowed from the evergreen git repository 
+					# (I added a few more unicode characters to the regex)
+					#$str = uc $str;
+					$str =~ s/\x{0098}.*?\x{009C}//g;   
+					$str = NFKD($str);
+					$str =~ s/\x{00C6}/AE/g;
+					$str =~ s/\x{00DE}/TH/g;
+					$str =~ s/\x{0152}/OE/g;
+					$str =~ tr/\x81\x84\xAD\xA1\xBB\x8A\x{0302}\x{0303}\x{0110}\x{00D0}\x{00D8}\x{0141}\x{2113}\x{02BB}\x{02BC}\x{0117}][/DDOLl/d;
+				}
+			}
+# ------------ END OF DISABLED CODE			
+			#print "Enc = $str\n";
+
+			push(@pusher, $conv);
+			#print "done testing $teststring\n";
+		}
 		#my @pusher;
 		#foreach(@$row)
 		#{
@@ -114,9 +190,18 @@ package DBhandler;
 			#}
 			#print "$pushChars\n";
 		#}
-		push(@ret,[@$row]);
-		#@pusher=undef;
+		push(@ret,[@pusher]);  #@$row   @pusher
+		@pusher=undef;
 	}
+	#print $querystring."\n";
+	#while ((my $internal, my $value ) = each(%ar))
+	#{
+		#if($value<20)
+		#{
+			#my $in = ord $internal;
+			#print "$internal = $in occured $value time(s)\n";
+		#}
+	#}
 
 	undef($querystring);
 	return \@ret;

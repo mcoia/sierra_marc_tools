@@ -148,7 +148,7 @@
 	}
 	else
 	{
-		print "Config file does not define 'logfile' and 'marcoutdir'\n";
+		print "Config file does not define 'logfile'\n";
 		
 	}
 }

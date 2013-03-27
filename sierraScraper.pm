@@ -37,6 +37,9 @@ package sierraScraper;
  use Data::Dumper;
  use Mobiusutil;
  use Date::Manip;
+ use String::Multibyte;
+ use utf8;
+ use Encode;
  
  sub new   #DBhandler object,Loghandler object, Array of Bib Record ID's matching sierra_view.bib_record
  {
@@ -114,7 +117,7 @@ package sierraScraper;
 		my @row = @{$row};
 		if(@row[0] ne '970' &&@row[0] ne '971' &&@row[0] ne '972')
 		{
-			my $recordID = @row[4];
+			my $recordID = @row[4];			
 			if(!exists $standard{$recordID})
 			{
 				my @a = ();
@@ -132,7 +135,7 @@ package sierraScraper;
 			{
 				$ind2=' ';
 			}
-			
+			#print "Pushing ".@row[1]."\n";
 			push(@{$standard{$recordID}},new recordItem(@row[0],$ind1,$ind2,@row[1]));
 		}
 	}
@@ -361,29 +364,32 @@ sub stuff945
 					{
 						my $rowsearch = $_;
 						my @rowsearch = @{$rowsearch};
-						if((@rowsearch[0] == @row[0]) && (@rowsearch[2] eq ''))
+						if($mobiusUtil->trim(@rowsearch[3]) ne '')
 						{
-							if(@rowsearch[1] eq 'b')
+							if((@rowsearch[0] == @row[0]) && (@rowsearch[2] eq ''))
 							{
-								$thisRecord->addData('|i'.@rowsearch[3]);
-							}
-							elsif(@rowsearch[1] eq 'v')
-							{
-								$thisRecord->addData('|c'.@rowsearch[3]);
-							}
-							elsif(@rowsearch[1] eq 'x')
-							{
-								$thisRecord->addData('|n'.@rowsearch[3]);
-							}
-							elsif(@rowsearch[1] eq 'm')
-							{
-								$thisRecord->addData('|m'.@rowsearch[3]);
-							}
-							else
-							{
-								if((@rowsearch[1] ne 'n') && (@rowsearch[1] ne 'p')&& (@rowsearch[1] ne 'r'))
+								if(@rowsearch[1] eq 'b')
 								{
-									$log->addLogLine("This was a related 082,090,086 item(".@row[0].") and bib($recordID)value but I don't know what it is: ".@rowsearch[1]." = ".@rowsearch[3]);
+									$thisRecord->addData('|i'.@rowsearch[3]);
+								}
+								elsif(@rowsearch[1] eq 'v')
+								{
+									$thisRecord->addData('|c'.@rowsearch[3]);
+								}
+								elsif(@rowsearch[1] eq 'x')
+								{
+									$thisRecord->addData('|n'.@rowsearch[3]);
+								}
+								elsif(@rowsearch[1] eq 'm')
+								{
+									$thisRecord->addData('|m'.@rowsearch[3]);
+								}
+								else
+								{
+									if((@rowsearch[1] ne 'n') && (@rowsearch[1] ne 'p')&& (@rowsearch[1] ne 'r'))
+									{
+										$log->addLogLine("This was a related 082,090,086 item(".@row[0].") and bib($recordID)value but I don't know what it is: ".@rowsearch[1]." = ".@rowsearch[3]);
+									}
 								}
 							}
 						}
@@ -392,7 +398,7 @@ sub stuff945
 				}
 				elsif( $trimmedID ne '')
 				{
-					$log->addLogLine("I found a row and it looks like this \"$trimmedID\" = ".@row[3]);
+					$log->addLogLine(@row[4]." not added \"$trimmedID\" = ".@row[3]);
 					#push(@{$nineHundreds{@row[4]}},new recordItem(@row[2],'','',@row[3]));;
 				}
 			}
@@ -551,6 +557,7 @@ sub stuff998
 # based upon the information located in sierra_view.bib_record_location instead of sierra_view.item_record.
 # There is some sort of unusual behavior in the sierra desktop client when there is only 1 945 record.
 # It looks like it subtracts 1 from the copy number when there is only 1 row returned. Pretty odd.
+# "Multi" is directly inputted into the "i" field.
 
 sub stuff998alternate
 {
@@ -571,7 +578,7 @@ sub stuff998alternate
 	CONCAT('|h',SKIP_NUM)
 	)
 	FROM SIERRA_VIEW.BIB_VIEW WHERE ID IN($selects)";
-	#print "$query\n";
+	print "$query\n";
 	my @results = @{$dbHandler->query($query)};
 	
 	foreach(@results)
@@ -592,17 +599,18 @@ sub stuff998alternate
 	}
 	$query = "SELECT 
 	BIB_RECORD_ID,LOCATION_CODE,COPIES
-	FROM SIERRA_VIEW.BIB_RECORD_LOCATION A WHERE A.BIB_RECORD_ID IN($selects) 
-	AND LOCATION_CODE!='multi'";
+	FROM SIERRA_VIEW.BIB_RECORD_LOCATION A WHERE A.BIB_RECORD_ID IN($selects) ";
+	#AND LOCATION_CODE!='multi'";
 	
 	my $query2="SELECT BIB_RECORD_ID,COUNT(*) FROM SIERRA_VIEW.BIB_RECORD_LOCATION WHERE BIB_RECORD_ID IN ($selects) GROUP BY BIB_RECORD_ID";
 	
-	#print "$query\n";
+	print "$query\n$query2\n";
 	@results = @{$dbHandler->query($query)};
 	my @results2 = @{$dbHandler->query($query2)};
 	
 	my %counts;
 	my %total;
+	my %multicheck;
 	foreach(@results)
 	{
 		my $row = $_;
@@ -616,38 +624,54 @@ sub stuff998alternate
 		}
 		else
 		{
-			if(!exists $counts{$recordID})
+			if($location eq 'multi')
 			{
-				#$counts{$recordID} = {};
-				${$counts{$recordID}}{$location}=0;
-				${$total{$recordID}}=0;
-			}
-			my $subtractBy=0;
-			foreach(@results2)
-			{
-				my $row2 = $_;
-				my @row2 = @{$row2};
-				if(@row2[0] eq $recordID)
+				if(!exists $multicheck{$recordID})
 				{
-					if(@row2[1] eq '1')
-					{
-						$subtractBy=1;
-					}
+					${$multicheck{$recordID}} = $copies;
 				}
 			}
-			my $total = $copies-$subtractBy;
-			if($total<1)
+			else
 			{
-				$total=1;
+				if(!exists $counts{$recordID})
+				{
+					#$counts{$recordID} = {};
+					${$counts{$recordID}}{$location}=0;
+					${$total{$recordID}}=0;
+				}
+				my $subtractBy=0;
+				foreach(@results2)
+				{
+					my $row2 = $_;
+					my @row2 = @{$row2};
+					if(@row2[0] eq $recordID)
+					{
+						if(@row2[1] eq '1')
+						{
+							$subtractBy=$copies-1;
+						}
+					}
+				}
+				my $total = $copies-$subtractBy;
+				if($total<1)
+				{
+					$total=1;
+				}
+				${$counts{$recordID}}{$location}+=$total;
+				${$total{$recordID}}+=$copies;
 			}
-			${$counts{$recordID}}{$location}+=$total;
-			${$total{$recordID}}+=$copies;
 		}
 	}
 	while ((my $internal, my $value ) = each(%counts))
 	{
 		my %tt = %{$value};
 		my $total = ${$total{$internal}};
+		if(exists($multicheck{$internal}))
+		{
+		
+			$total = ${$multicheck{$internal}};
+			#print "$internal - Multi existed so total will be trumped with $total\n";
+		}
 		my $addValue = "";
 		while((my $internal2, my $value2) = each(%tt))
 		{
@@ -667,9 +691,6 @@ sub stuff998alternate
 	
 	$self->{'nine98'} = \%nine98;
 }
-
-
-
  
  sub getSingleMARC
  {
@@ -707,7 +728,7 @@ sub stuff998alternate
 				eval{$nextone = @marcFields[$i+1]->tag();};
 				if ($@) 
 				{
-					print "Can't call method tag\ni= $i count = $#marcFields \nRecord ID = $recID";
+					#print "Can't call method tag\ni= $i count = $#marcFields \nRecord ID = $recID";
 					#print Dumper(@marcFields);
 					$log->addLogLine("Can't call method \"tag\" on an undefined value");
 				}
@@ -804,6 +825,7 @@ sub stuff998alternate
 	else
 	{
 		$results = $test;
+		#print "$test\n";
 		if(1)
 		{
 			my @results;
@@ -817,15 +839,19 @@ sub stuff998alternate
 					my @row = @{$row};
 					push(@ids,@row[0]);
 				}
-				$results = $mobUtil->makeCommaFromArray(\@ids);
-				if(length($results)==0)
+				#print "ID count = $#ids\n";
+				if($#ids<0)
 				{
-					$results=$test;
+					$results="-1";
+				}
+				else
+				{
+					$results = $test;
 				}
 			}
 			else
 			{
-				$results = "-1";#$test;
+				$results = $test;
 			}
 		}
 	}

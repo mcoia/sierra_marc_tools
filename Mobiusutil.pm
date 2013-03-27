@@ -48,6 +48,8 @@ package Mobiusutil;
  use DateTime;
  use Expect;
  use Net::SSH::Expect;
+ use Encode;
+ use utf8;
  
 sub new
 {
@@ -228,10 +230,7 @@ sub padLeft  #line, width, fill char
  
  sub chooseNewFileName   #path to output folder,file prefix, file extention    returns full path to new file name
 {
-	if($#_+1 !=4)
-	{
-		return 0;
-	}
+	
 	my $path = @_[1];
 # Add trailing slash if there isn't one	
 	if(substr($path,length($path)-1,1) ne '/')
@@ -239,15 +238,20 @@ sub padLeft  #line, width, fill char
 		$path = $path.'/';
 	}
 	
+	
 	my $seed = @_[2];
 	my $ext = @_[3];
 	my $ret="";
 	if( -d $path)
 	{
-		my $num=0;
+		my $num="";
 		$ret = $path . $seed . $num . '.' . $ext;
 		while(-e $ret)
 		{
+			if($num eq "")
+			{
+				$num=-1;
+			}
 			$num = $num+1;
 			$ret = $path . $seed . $num . '.' . $ext;
 		}
@@ -293,8 +297,8 @@ sub findSummonQuery		#self, DBhandler(object), cluster(string), addsorcancels(st
 	my $todate = $yesterday->add(days=>1);
 	my $tdate = $todate->ymd;
 	my $ttime = $yesterday->hms;
-	my $dbFromDate = "$fdate $ftime";  # "2013-02-16 05:00:00";
-	my $dbToDate = "$tdate $ttime";
+	my $dbFromDate = "2013-03-08 00:00:00"; #"$fdate $ftime";  # "2013-02-16 05:00:00";
+	my $dbToDate = "2013-03-15 00:00:00"; #"$tdate $ttime";
 	my $summonClusters = ('kansascity','ucm');
 	
 	my $worked = exists ($summonClusters{$cluster});
@@ -315,8 +319,8 @@ sub findSummonQuery		#self, DBhandler(object), cluster(string), addsorcancels(st
 			(BCODE3='z' OR BCODE3='-')
 			AND
 			(RECORD_ID IN (SELECT ID FROM SIERRA_VIEW.RECORD_METADATA WHERE 
-			(RECORD_LAST_UPDATED_GMT > TO_DATE('$dbFromDate','YYYY-MM-DD HH24:MI:MS')) ))"; #AND 
-			#(RECORD_LAST_UPDATED_GMT < TO_DATE('$dbToDate','YYYY-MM-DD HH24:MI:MS'))))";
+			(RECORD_LAST_UPDATED_GMT > TO_DATE('$dbFromDate','YYYY-MM-DD HH24:MI:MS')) AND 
+			(RECORD_LAST_UPDATED_GMT < TO_DATE('$dbToDate','YYYY-MM-DD HH24:MI:MS'))))";
 		}
 		else
 		{
@@ -348,23 +352,19 @@ sub findSummonQuery		#self, DBhandler(object), cluster(string), addsorcancels(st
 		}
 		
 	}
-	elsif($cluster eq 'ucm')
+	elsif($cluster eq 'galahad')
 	{
 		if($addsOrCancels eq 'adds')
 		{
 			$query = 
 			"SELECT RECORD_ID FROM SIERRA_VIEW.BIB_RECORD WHERE 
-			(
-			(RECORD_ID IN(SELECT BIB_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_LOCATION WHERE LOCATION_CODE BETWEEN 'ckb' AND 'ckv'))
-			OR
-			(RECORD_ID IN(SELECT BIB_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_LOCATION WHERE LOCATION_CODE = ''))
-			)
-			AND
-			(BCODE3='z' OR BCODE3='-')
+			(RECORD_ID IN(SELECT BIB_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_LOCATION WHERE LOCATION_CODE BETWEEN 'tr' AND 'trzzz'))
+			AND			
+			(BCODE3='z' OR BCODE3='-' OR BCODE3='|')
 			AND
 			(RECORD_ID IN (SELECT ID FROM SIERRA_VIEW.RECORD_METADATA WHERE 
 			(RECORD_LAST_UPDATED_GMT > TO_DATE('$dbFromDate','YYYY-MM-DD HH24:MI:MS')) AND 
-			(RECORD_LAST_UPDATED_GMT < TO_DATE('$dbToDate','YYYY-MM-DD HH24:MI:MS'))))"
+			(RECORD_LAST_UPDATED_GMT < TO_DATE('$dbToDate','YYYY-MM-DD HH24:MI:MS'))))";
 		}
 		else
 		{
@@ -397,28 +397,8 @@ sub findSummonQuery		#self, DBhandler(object), cluster(string), addsorcancels(st
 	}
 	
 	print "$query\n";
-	my @ret;
-	my @results = @{$dbHandler->query($query)};
-				 
-	 my $size = length(@results);
-	 #print @results;
-	 #print "recieved $size results\n";
-	 
-	foreach(@results)
-	{
-		my $row = $_;
-		my @row = @{$row};
-		#print "::newrow::";
-		foreach my $val(@row)
-		{
-			push(@ret, $val);
-			#print"$val\t";
-		}
-		#print "\n";
-		
-	}
 	
-	return \@ret;
+	return $query;
 	
 }
 
@@ -497,7 +477,7 @@ sub makeCommaFromArray
 			{
 				$recID = $marc->field($matchOnTag)->data();
 			}
-			
+			$recID = uc $recID;
 			if(exists($file1{$recID}))
 			{
 				#print "There were more than 1 of the same records containing same Record Num $recID in file $firstFile\n";
@@ -520,6 +500,7 @@ sub makeCommaFromArray
 			{
 				$recID = $marc->field($matchOnTag)->data();
 			}
+			$recID = uc $recID;
 			if(exists($file2{$recID}))
 			{
 				#print "There were more than 1 of the same records containing same Record Num $recID in file $secondFile\n";
@@ -571,7 +552,7 @@ sub makeCommaFromArray
 		my $totalMatched=0;
 		while ((my $internal, my $value ) = each(%file1))
 		{
-			print "checking $internal\n";
+			#print "checking $internal\n";
 			if(exists $matched[$internal])
 			{
 				$totalMatched++;
@@ -718,7 +699,7 @@ sub makeCommaFromArray
 				
 				for my $fieldPos2(0..$#subFields2)
 				{
-					my $thisField2 = @{@subFields2[$fieldPos2]}[0];
+					my $thisField2 = @{@subFields2[$fieldPos2]}[0];					
 					if($thisField1 eq $thisField2 )
 					{
 						push(@matchPos2, $fieldPos2);
@@ -727,8 +708,9 @@ sub makeCommaFromArray
 				
 				if($#matchPos2==0)  #only 1 field
 				{
-					my $comp1 = @{@subFields1[$fieldPos1]}[1];
-					my $comp2 = @{@subFields2[@matchPos2[0]]}[1];
+					my $comp1 = Encode::encode_utf8(@{@subFields1[$fieldPos1]}[1]);
+					my $comp2 = Encode::encode_utf8(@{@subFields2[@matchPos2[0]]}[1]);
+					#print "$comp1  ne  $comp2\n";
 					if($comp1 ne $comp2)
 					{
 						push(@errors,"Tag: $tag Subfield $thisField1 $comp1 != $comp2");
@@ -739,11 +721,12 @@ sub makeCommaFromArray
 				{
 					#print "There were more than 1 matching subfield tags for tag: $tag Subfield: $thisField1\n";
 					my $noErrors=-1;
-					my $comp1 = @{@subFields1[$fieldPos1]}[1];
+					my $comp1 = Encode::encode_utf8(@{@subFields1[$fieldPos1]}[1]);
 					my $errorListString="";
 					for my $pos(0..$#matchPos2)
 					{
-						my $comp2 = @{@subFields2[@matchPos2[$pos]]}[1];
+						my $comp2 = Encode::encode_utf8(@{@subFields2[@matchPos2[$pos]]}[1]);
+						#print "$comp1  eq  $comp2\n";
 						if($comp1 eq $comp2)
 						{
 							$noErrors = $pos;
