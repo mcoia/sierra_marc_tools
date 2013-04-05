@@ -45,7 +45,7 @@
 	
 		my $log = new Loghandler($conf->{"logfile"});
 		$log->addLogLine(" ---------------- Script Starting ---------------- ");
-		my @reqs = ("schools","outputfile"); 
+		my @reqs = ("shortnames","outputfile"); 
 		my $valid = 1;
 		for my $i (0..$#reqs)
 		{
@@ -81,7 +81,7 @@
 			else
 			{
 				my @marcOutputRecords;
-				my @schools = split(/,/,$conf{"schools"});
+				my @schools = split(/,/,$conf{"shortnames"});
 				for my $y(0.. $#schools)
 				{
 				print "Reading ".@schools[$y]."\n";

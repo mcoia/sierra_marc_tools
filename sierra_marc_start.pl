@@ -84,7 +84,7 @@
 			 {
 				
 				my $marcOutFile = "/tmp/run/marcout";#$mobUtil->chooseNewFileName($conf->{"marcoutdir"},"marcout","mrc");
-				my $sierraScraper = new sierraScraper($dbHandler,$log,$mobUtil->findSummonQuery($dbHandler,'kansascity','adds')); #"SELECT ID FROM SIERRA_VIEW.BIB_VIEW WHERE RECORD_NUM >= 1215001 AND RECORD_NUM <= 1215201");#['420907796199','420907798387']);
+				my $sierraScraper = new sierraScraper($dbHandler,$log,"SELECT ID FROM SIERRA_VIEW.BIB_VIEW WHERE RECORD_NUM >= 1998915 AND RECORD_NUM <= 1999115");#['420907796199','420907798387']);
 
 				my @marc = @{$sierraScraper->getAllMARC()};
 				 my $marcout = new Loghandler($marcOutFile);

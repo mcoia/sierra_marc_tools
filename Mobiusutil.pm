@@ -46,8 +46,8 @@ package Mobiusutil;
  use Loghandler;
  use Data::Dumper;
  use DateTime;
- use Expect;
- use Net::SSH::Expect;
+ #use Expect;
+ #use Net::SSH::Expect;
  use Encode;
  use utf8;
  
@@ -523,10 +523,10 @@ sub makeCommaFromArray
 			{
 				if(@matchedFile1[$onePos] eq @matchedFile2[$twoPos])
 				{
-					my $leader1 = $file1{@matchedFile1[$onePos]}->leader();					
+					my $leader1 = $file1{@matchedFile1[$onePos]}->leader();
 					my $leader2 = $file2{@matchedFile2[$twoPos]}->leader();
 					my $leaderMatchErrorString="";
-					if($leader1 ne $leader2)
+					if(substr($leader1,5,4).substr($leader1,17,3) ne substr($leader2,5,4).substr($leader2,17,3))
 					{
 						$leaderMatchErrorString="Leader \"$leader1\" != \"$leader2\"";
 					}

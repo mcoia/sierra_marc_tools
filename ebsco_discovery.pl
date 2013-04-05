@@ -66,9 +66,12 @@
 				my $file = MARC::File::USMARC->in($files[$b]);
 				while ( my $marc = $file->next() ) 
 				{	
+					my $id = $marc->subfield('907',"a");
 					my @recID = $marc->field('856');
 					if(defined @recID)
 					{
+						my $index = 0;
+						my $makeFirst = -1;
 						if($#recID>0)
 						{
 							for my $rec(0..$#recID)
@@ -94,18 +97,31 @@
 								my $combine=$foundu+$foundz;
 								if($combine==2)
 								{
-									
+									$makeFirst = $index;
 								}
 								elsif($combine==1)
 								{
+									$log->addLogLine("Record $id partially matched the 856 z and/or 856 u");
+									$log->addLogLine("Record $id is not going to be move to the first position");
 								}
-								else
-								{
-								}
-							
+								
+								$index++;
 							}
 						}
-						#$marc->insert_fields_ordered(@recID);
+						if($index>0)
+						{
+							$marc->delete_fields(@recID);
+							my @therest = ($first856);
+							for my $rec(0..$#recID)
+							{
+								if($rec!=$index)
+								{
+									push(@therest,$rec);
+								}
+							}
+							$marc->append_fields(@therest);
+						}
+						
 					}
 					push(@marcOutputRecords,$marc);
 					

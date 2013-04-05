@@ -94,7 +94,17 @@ sub addLine
 	my $file = $fileName->{_file};
 	my $line = @_[1];
 	open(OUTPUT, '>> '.$file) or die $!;
-	#binmode(OUTPUT, ":utf8");
+	binmode(OUTPUT, ":utf8");
+	print OUTPUT "$line\n";
+	close(OUTPUT);
+}
+
+sub truncFile
+{
+	my ($fileName) = @_[0];
+	my $file = $fileName->{_file};
+	my $line = @_[1];
+	open(OUTPUT, '> '.$file) or die $!;
 	print OUTPUT "$line\n";
 	close(OUTPUT);
 }

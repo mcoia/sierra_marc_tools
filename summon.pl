@@ -119,7 +119,7 @@
 				 }
 				 if($valid)
 				 {
-# galahad funky characters record = 420908433903
+
 					my $dt   = DateTime->now(time_zone => "local"); 	
 					my $fdate = $dt->ymd;
 					if($cluster eq "ucm")
@@ -138,7 +138,7 @@
 						my $ftime = $dt->hms;   # Retrieves time as a string in 'hh:mm:ss' format
 						my $dateString = "$fdate $ftime";  # "2013-02-16 05:00:00";
 						my @tolist = ($conf{"alwaysemail"});
-						$email = new email($conf{"fromemail"},\@tolist,0,1,\%conf);
+						my $email = new email($conf{"fromemail"},\@tolist,0,0,\%conf);
 						$email->send("RMO $cluster - Summon $type Winding Up - Job # $dateString","I have started this process.\r\n\r\nYou will be notified when I am finished\r\n\r\n-MOBIUS Perl Squad-");
 					#Logging and emailing
 					
@@ -167,7 +167,7 @@
 						}
 						
 						my @tos = ('junk@monsterfro.com');
-						my $email = new email('junk@monsterfro.com',\@tos,0,0,\%conf);
+						$email = new email('junk@monsterfro.com',\@tos,0,0,\%conf);
 						$email->send("Errors",$errors);
 						print "done emailing\n";
 						
@@ -183,13 +183,13 @@
 							{
 								$log->addLogLine("$cluster $type: ERROR: $errors");
 								$email = new email($conf{"fromemail"},\@tolist,1,0,\%conf);
-								$email->send("RMO $cluster - $friendlyType Fail - Job # $dateString","Duration: $duration\r\n\r\nUnfortunately, there are some errors. Here are all of the prompts that I answered:\r\n\r\n$emailBody\r\n\r\nAnd here are the errors:\r\n\r\n$errors\r\n\r\n-MOBIUS Perl Squad-");
+								$email->send("RMO $cluster - Summon $type Error - Job # $dateString","Duration: $duration\r\n\r\nUnfortunately, there are some errors. Here are all of the prompts that I answered:\r\n\r\n   \r\n\r\nAnd here are the errors:\r\n\r\n$errors\r\n\r\n-MOBIUS Perl Squad-");
 							}
 							else
 							{
 								$log->addLogLine("$cluster $type: Success!");
 								$email = new email($conf{"fromemail"},\@tolist,0,1,\%conf);
-								$email->send("RMO $cluster - $friendlyType Success - Job # $dateString","Duration: $duration\r\n\r\nThis process finished without any errors!\r\n\r\nIsn't that WONDERFUL?!\r\n\r\nHere are all of the prompts that I answered:\r\n\r\n$emailBody\r\n\r\n-MOBIUS Perl Squad-");
+								$email->send("RMO $cluster - Summon $type Success - Job # $dateString","Duration: $duration\r\n\r\nThis process finished without any errors!\r\n\r\nIsn't that WONDERFUL?!\r\n\r\nHere are all of the prompts that I answered:\r\n\r\n  \r\n\r\n-MOBIUS Perl Squad-");
 							}
 						}
 						

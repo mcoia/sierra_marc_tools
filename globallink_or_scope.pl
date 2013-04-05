@@ -93,7 +93,7 @@
 				10,"Password",$conf{"secondpassword"}."\r",1,
 				10,"Scope authority records now? (y/n)","y",1,
 				10,"(Press <RETURN> to start)","\r",1,
-				84600,"Choose one","q",1,
+				352800,"Choose one","q",1,
 				10,"Choose on","q",1
 				);
 				my @allPrompts = ([@firstPrompts]);
@@ -121,7 +121,7 @@
 					10,"Is the range correct?","y",1,
 					10,"Choose one (C,I,O,A,Q)","a",1,
 					10,"Begin processing?","y",1,
-					82800,"records examined","a",1###########
+					352800,"records examined","a",1###########
 					);
 					
 					my @second = (				
