@@ -8,7 +8,7 @@
 # 
 # logfile = /tmp/log.log 
 # outputfile = /tmp/run/corrected9s.mrc
-# schols = PB,GC,LLCL
+# shortnames = PB,GC,LLCL
 #
 #
 # This script requires:
@@ -81,11 +81,10 @@
 			else
 			{
 				my @marcOutputRecords;
-				my @schools = split(/,/,$conf{"shortnames"});
-				for my $y(0.. $#schools)
-				{
-				print "Reading ".@schools[$y]."\n";
-					@schools[$y]=$mobUtil->trim(@schools[$y]);
+				my @shortnames = split(/,/,$conf{"shortnames"});
+				for my $y(0.. $#shortnames)
+				{				
+					@shortnames[$y]=$mobUtil->trim(@shortnames[$y]);
 				}
 				for my $b(0..$#files)
 				{
@@ -100,24 +99,24 @@
 							for my $rec(0..$#recID)
 							{
 								#print Dumper(@recID[$rec]);
-								for my $t(0.. $#schools)
+								for my $t(0.. $#shortnames)
 								{
 									my @subfields = @recID[$rec]->subfield( '9' );
-									my $schoolexists=0;
+									my $shortnameexists=0;
 									for my $subs(0..$#subfields)
 									{
-									#print "Comparing ".@subfields[$subs]. " to ".@schools[$t]."\n";
-										if(@subfields[$subs] eq @schools[$t])
+									#print "Comparing ".@subfields[$subs]. " to ".@shortnames[$t]."\n";
+										if(@subfields[$subs] eq @shortnames[$t])
 										{
 											print "Same!\n";
-											$schoolexists=1;
+											$shortnameexists=1;
 										}
 									}
-									#print "School exists: $schoolexists\n";
-									if(!$schoolexists)
+									#print "shortname exists: $shortnameexists\n";
+									if(!$shortnameexists)
 									{
-										#print "adding ".@schools[$t]."\n";
-										@recID[$rec]->add_subfields('9'=>@schools[$t]);
+										#print "adding ".@shortnames[$t]."\n";
+										@recID[$rec]->add_subfields('9'=>@shortnames[$t]);
 									}
 								}
 							}

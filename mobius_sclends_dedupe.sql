@@ -25,6 +25,18 @@
 -- based on the advice of the Indiana State Library on the behalf
 -- of the Evergreen Indiana project.
 
+
+-- This script has been expanded to merge the 856 fields of the duplicates
+-- ADDED:
+-- m_dedupe.updateboth()
+-- m_dedupe.melt856s
+-- m_dedupe.update_lead
+-- m_dedupe.update_sub
+-- Added 2 columns to merge_map
+-- MOBIUS 04-08-2013
+
+
+-- DROP SCHEMA m_dedupe CASCADE;
 -- schema to store the dedupe routine and intermediate data
 CREATE SCHEMA m_dedupe;
 
@@ -186,11 +198,8 @@ CREATE OR REPLACE FUNCTION m_dedupe.get_isbn_match_key (bib_id BIGINT, marc TEXT
 			my $str = @_[0];
 			my $logf = @_[1];
 			my $norm = '';
-
 			return '' unless defined $str;
-			#$logf->addLine("********Working on ISBN $str");
 		#added because our test data only has 1 digit
-		#$logf->addLine("Returning $str");
 			#return $str;
 			
 
@@ -215,8 +224,8 @@ $func$ LANGUAGE PLPERLU;
 
 
 -- Setup trigger to update marc xml cells on m_dedupe.merge_map when the xml on biblio.record_entry is updated
-DROP FUNCTION updateboth() CASCADE;
-CREATE FUNCTION updateboth() RETURNS trigger AS $updateboth$
+DROP FUNCTION m_dedupe.updateboth() CASCADE;
+CREATE FUNCTION m_dedupe.updateboth() RETURNS trigger AS $updateboth$
     BEGIN
 		UPDATE m_dedupe.merge_map SET lead_marc = NEW.marc WHERE lead_bibid = NEW.id;
 		UPDATE m_dedupe.merge_map SET sub_marc = NEW.marc WHERE sub_bibid = NEW.id;
@@ -226,8 +235,9 @@ $updateboth$ LANGUAGE plpgsql;
 
 
 -- Setup Custom 856 copy from duplicated record
-DROP TYPE eight56s_melt CASCADE; 
+DROP TYPE  eight56s_melt CASCADE; 
 CREATE TYPE eight56s_melt AS (bibid BIGINT, marc TEXT);
+
 
 CREATE OR REPLACE FUNCTION m_dedupe.melt856s(bib_id BIGINT,marc_primary TEXT, sub_bib_id BIGINT, marc_secondary TEXT) RETURNS SETOF eight56s_melt AS $functwo$
 		use strict;
@@ -247,13 +257,11 @@ CREATE OR REPLACE FUNCTION m_dedupe.melt856s(bib_id BIGINT,marc_primary TEXT, su
 		my $logf = new Loghandler("/tmp/log.log");
 
 
-		$logf->addLine("Started my new function");
-
+		$logf->addLine("*********************Started new function*********************");
 
 
 		my ($bibid, $xml, $bibid2, $xml2) = @_;
-
-		$logf->addLine("read the variables");
+		$logf->addLine("$bibid, $bibid2");
 
 
 		$xml =~ s/(<leader>.........)./${1}a/;
@@ -276,55 +284,55 @@ CREATE OR REPLACE FUNCTION m_dedupe.melt856s(bib_id BIGINT,marc_primary TEXT, su
 		my @eights;
 		
 #LOGGING
-	$logf->addLine("First 856's (DB ID: $bibid)\n{");
-		foreach(@eight56s)
-		{
-		$logf->addLine("\t{");
-			@eights = $_->subfield('u');
-				$logf->addLine("\tu fields:");
-				foreach(@eights)
-				{
-					$logf->addLine("\t\t$_");
-				}
-				@eights = $_->subfield('z');
-				$logf->addLine("\tz fields:");
-				foreach(@eights)
-				{
-					$logf->addLine("\t\t$_");
-				}
-				@eights = $_->subfield('9');
-				$logf->addLine("\t9 fields:");
-				foreach(@eights)
-				{
-					$logf->addLine("\t\t$_");
-				}
-		$logf->addLine("\t}");
-		}
-		$logf->addLine("}\nSecond 856's (DB ID: $bibid2)\n{");		
-		foreach(@eight56s_2)
-		{
-		$logf->addLine("\t{");
-			@eights = $_->subfield('u');
-				$logf->addLine("\tu fields:");
-				foreach(@eights)
-				{
-					$logf->addLine("\t\t$_");
-				}
-				@eights = $_->subfield('z');
-				$logf->addLine("\tz fields:");
-				foreach(@eights)
-				{
-					$logf->addLine("\t\t$_");
-				}
-				@eights = $_->subfield('9');
-				$logf->addLine("\t9 fields:");
-				foreach(@eights)
-				{
-					$logf->addLine("\t\t$_");
-				}
-		$logf->addLine("\t}");
-		}
-		$logf->addLine("}");	
+#	$logf->addLine("First 856's (DB ID: $bibid)\n{");
+#		foreach(@eight56s)
+#		{
+#		$logf->addLine("\t{");
+#			@eights = $_->subfield('u');
+#				$logf->addLine("\tu fields:");
+#				foreach(@eights)
+#				{
+#					$logf->addLine("\t\t$_");
+#				}
+#				@eights = $_->subfield('z');
+#				$logf->addLine("\tz fields:");
+#				foreach(@eights)
+#				{
+#					$logf->addLine("\t\t$_");
+#				}
+#				@eights = $_->subfield('9');
+#				$logf->addLine("\t9 fields:");
+#				foreach(@eights)
+#				{
+#					$logf->addLine("\t\t$_");
+#				}
+#		$logf->addLine("\t}");
+#		}
+#		$logf->addLine("}\nSecond 856's (DB ID: $bibid2)\n{");		
+#		foreach(@eight56s_2)
+#		{
+#		$logf->addLine("\t{");
+#			@eights = $_->subfield('u');
+#				$logf->addLine("\tu fields:");
+#				foreach(@eights)
+#				{
+#					$logf->addLine("\t\t$_");
+#				}
+#				@eights = $_->subfield('z');
+#				$logf->addLine("\tz fields:");
+#				foreach(@eights)
+#				{
+#					$logf->addLine("\t\t$_");
+#				}
+#				@eights = $_->subfield('9');
+#				$logf->addLine("\t9 fields:");
+#				foreach(@eights)
+#				{
+#					$logf->addLine("\t\t$_");
+#				}
+#		$logf->addLine("\t}");
+#		}
+#		$logf->addLine("}");	
 # ENDING LOGGING
 		@eight56s = (@eight56s,@eight56s_2);
 
@@ -353,11 +361,11 @@ CREATE OR REPLACE FUNCTION m_dedupe.melt856s(bib_id BIGINT,marc_primary TEXT, su
 				my $otherZ = $otherField->subfield("z");		
 				if(!$otherZ)
 				{
-				$logf->addLine("z didnt exist");
+#				$logf->addLine("z didnt exist");
 					if($z)
 					{
 						$otherField->add_subfields('z'=>$z);
-						$logf->addLine("it exists here, so im adding it to og");
+#						$logf->addLine("it exists here, so im adding it to og");
 					}
 				}
 				foreach(@nines)
@@ -366,7 +374,7 @@ CREATE OR REPLACE FUNCTION m_dedupe.melt856s(bib_id BIGINT,marc_primary TEXT, su
 					my $found = 0;
 					foreach(@otherNines)
 					{
-					$logf->addLine("Searching for $looking");
+#					$logf->addLine("Searching for $looking");
 						if($looking eq $_)
 						{
 							$found=1;
@@ -374,7 +382,7 @@ CREATE OR REPLACE FUNCTION m_dedupe.melt856s(bib_id BIGINT,marc_primary TEXT, su
 					}
 					if($found==0)
 					{
-					$logf->addLine("Didnt find $looking so adding it to og");
+#					$logf->addLine("Didnt find $looking so adding it to og");
 						$otherField->add_subfields('9' => $looking);
 					}
 				}
@@ -383,40 +391,40 @@ CREATE OR REPLACE FUNCTION m_dedupe.melt856s(bib_id BIGINT,marc_primary TEXT, su
 		}
 #my		$dump1=Dumper(\%urls);
 		#$logf->addLine("$dump1");
-		$logf->addLine("Melted\n{");
+#		$logf->addLine("Melted\n{");
 		my @remove = $marc->field('856');
-		$logf->addLine("Removing ".$#remove." 856 records");
+#		$logf->addLine("Removing ".$#remove." 856 records");
 		$marc->delete_fields(@remove);
 
 
 		while ((my $internal, my $mvalue ) = each(%urls))
 			{
 #LOGGING METHODS
-			$logf->addLine("\t{");
+#			$logf->addLine("\t{");
 				@eights = $mvalue->subfield('u');
-				$logf->addLine("\tu fields:");
+#				$logf->addLine("\tu fields:");
 				foreach(@eights)
 				{
-					$logf->addLine("\t\t$_");
+#					$logf->addLine("\t\t$_");
 				}
 				@eights = $mvalue->subfield('z');
-				$logf->addLine("\tz fields:");
+#				$logf->addLine("\tz fields:");
 				foreach(@eights)
 				{
-					$logf->addLine("\t\t$_");
+#					$logf->addLine("\t\t$_");
 				}
 				@eights = $mvalue->subfield('9');
-				$logf->addLine("\t9 fields:");
+#				$logf->addLine("\t9 fields:");
 				foreach(@eights)
 				{
-					$logf->addLine("\t\t$_");
+#					$logf->addLine("\t\t$_");
 				}
-				$logf->addLine("\t}");
+#				$logf->addLine("\t}");
 #LOGGING METHODS ENDING
 				$marc->insert_grouped_field( $mvalue );
-				$logf->addLine("Inserted 856 back in");
+#				$logf->addLine("Inserted 856 back in");
 			}
-		$logf->addLine("}");
+#		$logf->addLine("}");
 		my $mobutil = new Mobiusutil();
 		my @errors = @{$mobutil->compare2MARCObjects($marc,$marc2)};
 						my $errors;
@@ -424,18 +432,67 @@ CREATE OR REPLACE FUNCTION m_dedupe.melt856s(bib_id BIGINT,marc_primary TEXT, su
 						{
 							$errors.= $_."\r\n";
 						}
-		$logf->addLine("$errors");
+		#$logf->addLine("$errors");
 		my $returning = $marc->as_xml_record();
 		$returning =~ s/\n//g;
 		$returning =~ s/\<\?xml version="1.0" encoding="UTF-8"\?\>//g;
-		$logf->addLine("$returning");
+		#$logf->addLine("$returning");
 
 
 		return_next({ bibid => $bibid, marc => $returning });
-
+		
+$logf->addLine("*********************Ended new function*********************");
 		return undef;
 
 $functwo$ LANGUAGE PLPERLU;
+
+
+DROP FUNCTION update_lead(dedupeid BIGINT, thisbidid BIGINT);
+CREATE OR REPLACE FUNCTION m_dedupe.update_lead(dedupeid BIGINT, thisbidid BIGINT) RETURNS text AS $functhree$	
+BEGIN
+	UPDATE biblio.record_entry bre SET marc=
+		(
+			SELECT marc FROM
+			(
+				SELECT (a.melt856s::eight56s_melt).marc AS marc,(a.melt856s::eight56s_melt).bibid as bibid
+				FROM (		
+				SELECT m_dedupe.melt856s(
+				mm.lead_bibid, mm.lead_marc,
+				mm.sub_bibid, mm.sub_marc )
+				FROM 
+				 m_dedupe.merge_map mm WHERE id=dedupeid
+				) as a
+			) as b WHERE b.bibid=bre.id
+		)
+		WHERE bre.id = thisbidid;
+--Return nothing because the work has been done
+RETURN '';
+END;
+$functhree$ LANGUAGE plpgsql;
+
+DROP FUNCTION update_sub(dedupeid BIGINT, thisbidid BIGINT);
+CREATE OR REPLACE FUNCTION m_dedupe.update_sub(dedupeid BIGINT, thisbidid BIGINT) RETURNS text AS $funcfour$	
+BEGIN
+	UPDATE biblio.record_entry bre SET marc=
+		(
+			SELECT marc FROM
+			(
+				SELECT (a.melt856s::eight56s_melt).marc AS marc,(a.melt856s::eight56s_melt).bibid as bibid
+				FROM (		
+				SELECT m_dedupe.melt856s(
+				mm.sub_bibid, mm.sub_marc,
+				mm.lead_bibid, mm.lead_marc )
+				FROM 
+				 m_dedupe.merge_map mm WHERE id=dedupeid
+				) as a
+			) as b WHERE b.bibid=bre.id
+		)
+		WHERE bre.id = thisbidid;
+--Return nothing because the work has been done
+RETURN '';
+END;
+$funcfour$ LANGUAGE plpgsql;
+
 
 
 -- Specify set of bibs to dedupe.  This version
@@ -490,8 +547,6 @@ CREATE INDEX norm_qual_idx2 ON m_dedupe.lead_quals(norm_isbn, norm_title, max_qu
 
 -- identify prospective lead bibs
 
---count(ac.id)
-
 --start a table with a count of 0 in order to include bibs that have 
 --no copies but still need to have something in the asset.call_number table (hopefully 856 lines ##URI##)
 CREATE TABLE m_dedupe.prospective_leads AS
@@ -505,29 +560,33 @@ WHERE not acn.deleted
 GROUP BY bibid, a.norm_isbn, a.norm_title, b.max_qual;
 
 -- now populate the counts and 0 for no items (instead of null which is why so my subqueries)
-update m_dedupe.prospective_leads mdpl set copy_count = 
-(select count from
-	(
-		select bibid,(case when count is null then 0 else count end) as count from(
-		select bibid, (select count from
-		(
-			select b.bib as "bib",count from
+
+update m_dedupe.prospective_leads mdpl set copy_count = (case when 
+		(select (case when count is null then 0 else count end) as count from(
+			select bib as bibid, count from
 			(
-				select (select record from asset.call_number where id = a.id) as "bib","id",count from 
+				select (select record from asset.call_number where id = a.id) as "bib",count from 
 				(
-					select ac.id as "id",count(*) as "count" from asset.copy ac
-					WHERE ac.call_number in (select id from asset.call_number acn where record in (
+					select ac.call_number as "id",count(*) as "count" from asset.copy ac
+					WHERE ac.call_number in (select call_number from asset.call_number acn where record in (
 					select bibid from m_dedupe.prospective_leads))
 					group by ac.id
-				) as "a"
-			) as "b"
-		) as c
-		where bibid = c.bib
-		) as count from m_dedupe.prospective_leads) as d
-	) as e
-	where mdpl.bibid = e.bibid
-);
-
+				) as a
+			) as b
+		) as d
+	where bibid=mdpl.bibid) is null then 0 else (select (case when count is null then 0 else count end) as count from(
+			select bib as bibid, count from
+			(
+				select (select record from asset.call_number where id = a.id) as "bib",count from 
+				(
+					select ac.call_number as "id",count(*) as "count" from asset.copy ac
+					WHERE ac.call_number in (select call_number from asset.call_number acn where record in (
+					select bibid from m_dedupe.prospective_leads))
+					group by ac.id
+				) as a
+			) as b
+		) as d
+	where bibid=mdpl.bibid) end);
 
 -- and use number of copies to break ties
 CREATE TABLE m_dedupe.best_lead_keys AS
@@ -575,13 +634,14 @@ AS SELECT min(lead_bibid) as lead_bibid, sub_bibid
 FROM m_dedupe.merge_map_pre
 GROUP BY sub_bibid;
 
+-- Add some columns making for easy queries to pass the corrisponding xml to the melt856s
 ALTER TABLE m_dedupe.merge_map ADD COLUMN lead_marc TEXT, ADD COLUMN sub_marc TEXT;
-
+-- Fill the new columns with the marc xml from record_entry
 UPDATE m_dedupe.merge_map SET lead_marc = (SELECT marc FROM biblio.record_entry where id=lead_bibid);
 UPDATE m_dedupe.merge_map SET sub_marc = (SELECT marc FROM biblio.record_entry where id=sub_bibid);
 
 
-
+-- Wipe out all of the 856 data because we are about to replace it all with merged $u $z $9 info
 DELETE FROM asset.uri_call_number_map WHERE call_number in 
 (
 	SELECT id from asset.call_number WHERE record in
@@ -605,59 +665,38 @@ DELETE FROM asset.call_number WHERE record in
 DELETE FROM asset.call_number WHERE record in
 	(SELECT sub_bibid from m_dedupe.merge_map) AND label = '##URI##';
 
--- NON-destructive column for saving the altered marc
--- 
---ALTER TABLE biblio.record_entry ADD COLUMN marc_altered TEXT;
 
-
---CREATE TRIGGER updateboth AFTER UPDATE ON biblio.record_entry
-    --FOR EACH ROW EXECUTE PROCEDURE updateboth();
+-- Create a trigger to fire when the marc xml is updated
+-- This will update the m_dedupe.merge_map.lead_xml and m_dedupe.merge_map.sub_xml
+-- which will be nice when there are many to one merges	
+CREATE TRIGGER updateboth AFTER UPDATE ON biblio.record_entry
+    FOR EACH ROW EXECUTE PROCEDURE updateboth();
 	
-		-- For reference:
-		--
-		--CREATE TYPE eight56s_melt AS (bibid BIGINT, marc TEXT);
-		--CREATE OR REPLACE FUNCTION m_dedupe.melt856s (bib_id BIGINT,marc_primary TEXT, sub_bib_id BIGINT, marc_secondary TEXT) RETURNS SETOF eight56s_melt AS $eight56$
-		--(select marc from biblio.record_entry where id=mm.lead_bibid)
-		--(select marc from biblio.record_entry where id=mm.sub_bibid)
-			
-			
-		UPDATE biblio.record_entry bre SET marc=
-		(
-			SELECT marc FROM
-			(
-				SELECT (a.melt856s::eight56s_melt).marc AS marc,(a.melt856s::eight56s_melt).bibid as bibid
-				FROM (		
-				SELECT m_dedupe.melt856s(
-				mm.lead_bibid, mm.lead_marc,
-				mm.sub_bibid, mm.sub_marc )
-				FROM 
-				 m_dedupe.merge_map mm WHERE lead_bibid=bre.id
-				) as a
-			) as b WHERE b.bibid=bre.id
-		)
-		WHERE bre.id in (select lead_bibid from m_dedupe.merge_map);
-
-		UPDATE biblio.record_entry bre SET marc=
-		(
-			SELECT marc FROM
-			(
-				SELECT (a.melt856s::eight56s_melt).marc AS marc,(a.melt856s::eight56s_melt).bibid as bibid
-				FROM (		
-				SELECT m_dedupe.melt856s(
-				mm.sub_bibid, mm.sub_marc,
-				mm.lead_bibid, mm.lead_marc )
-				FROM 
-				 m_dedupe.merge_map mm WHERE sub_bibid=bre.id
-				) as a
-			) as b WHERE b.bibid=bre.id
-		)
-		WHERE bre.id in (select sub_bibid from m_dedupe.merge_map);
-
-DROP FUNCTION updateboth() CASCADE;
 
 -- add a unique ID to the merge map so that
 -- we can do the actual record merging in chunks
 ALTER TABLE m_dedupe.merge_map ADD COLUMN id serial, ADD COLUMN done BOOLEAN DEFAULT FALSE;
+
+
+-- Activate the 2 marc update functions
+-- This will update the marc xml on both soon-to-be-deleted records and the winning record
+
+SELECT * FROM 
+(SELECT m_dedupe.update_lead(
+mm.id,mm.lead_bibid)
+from m_dedupe.merge_map mm) as a;
+
+
+-- Perhaps this is not required because this is supposedly the soon-to-be-deleted record
+-- But just for assurance! But at a cost of time!
+SELECT * FROM 
+(SELECT m_dedupe.update_sub(
+mm.id,mm.sub_bibid)
+from m_dedupe.merge_map mm) as a;
+-- Get rid of the trigger because we only needed it for the updating marc xml
+DROP FUNCTION m_dedupe.updateboth() CASCADE;
+
+	
 
 -- and here's an example of processing a chunk of a 1000
 -- merges
