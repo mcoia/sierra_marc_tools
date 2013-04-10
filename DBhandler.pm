@@ -49,7 +49,7 @@ package DBhandler;
  use String::Multibyte;
  
  
- sub new   #dbname,host,login,password
+ sub new   #dbname,host,login,password,port
  {
 	my $class = shift;
     my $self = 

@@ -11,10 +11,10 @@
 # Mobiusutil.pm
 # MARC::Record (from CPAN)
 # Net::FTP
-# IO::Pty
-# IO::Stty
-# Expect;
-# Net::SSH::Expect;
+# Expect
+# Net::SSH::Expect
+# Encode
+# utf8
 # 
 # This is a simple utility class that provides some common functions
 #
@@ -28,26 +28,33 @@
 #	getMarcFromZ3950
 #	chooseNewFileName
 #	trim
-#	findSummonIDs
+#	findSummonQuery
 #	makeCommaFromArray
+#	insertDataIntoColumn
+#	compare2MARCFiles
+#	compare2MARCObjects
+#	compare2MARCFields
+#	compareStrings
+#	expectConnect
+#	expectSSHConnect
 #
 # Blake Graham-Henderson 
 # MOBIUS
 # blake@mobiusconsortium.org
-# 2013-1-24
+# 2013-4-8
 
 
 package Mobiusutil;
  use MARC::Record;
  use MARC::File;
  use MARC::File::USMARC;
- #use ZOOM; 
- #use Net::FTP;
+ use ZOOM; 
+ use Net::FTP;
  use Loghandler;
  use Data::Dumper;
  use DateTime;
- #use Expect;
- #use Net::SSH::Expect;
+ use Expect;
+ use Net::SSH::Expect;
  use Encode;
  use utf8;
  

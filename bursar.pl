@@ -29,7 +29,7 @@
 	{
 		my $log = new Loghandler($conf->{"logfile"});
 		$log->addLogLine(" ---------------- Script Starting ---------------- ");
-		my @reqs = ("dbhost","db","dbuser","dbpass","bursaroutputdir");
+		my @reqs = ("dbhost","db","dbuser","dbpass","port",,"bursaroutputdir");
 		my $valid = 1;
 		for my $i (0..length(@reqs))
 		{
@@ -45,7 +45,7 @@
 		{
 		
 			my $dbHandler;
-			 eval{$dbHandler = new DBhandler($conf{"db"},$conf{"dbhost"},$conf{"dbuser"},$conf{"dbpass"});};
+			 eval{$dbHandler = new DBhandler($conf{"db"},$conf{"dbhost"},$conf{"dbuser"},$conf{"dbpass"},$conf{"port"});};
 			 if ($@) {
 				$log->addLogLine("Could not establish a connection to the database");
 				$valid = 0;

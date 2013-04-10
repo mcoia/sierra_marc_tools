@@ -1,34 +1,5 @@
 #!/usr/bin/perl
 # 
-# sierra_marc_start.pl
-#
-# Usage:
-# ./summon.pl conf_file.conf [adds / cancels]
-#
-# Example Configure file:
-# 
-# logfile = /tmp/log.log
-# marcoutdir = /tmp
-# z3950server = server.address.org/INNOPAC
-# dbhost = 192.168.12.45
-# db = postgresDB_Name
-# dbuser = dbuser
-# dbpass = dbpassword
-#
-#
-# This script requires:
-#
-# recordItem.pm
-# sierraScraper.pm
-# DBhandler.pm
-# Loghandler.pm
-# Mobiusutil.pm
-# MARC::Record (from CPAN)
-# 
-# Blake Graham-Henderson 
-# MOBIUS
-# blake@mobiusconsortium.org
-# 2013-1-24
 
  use strict; 
  use Loghandler;
@@ -62,7 +33,7 @@
 		my $log = new Loghandler($conf->{"logfile"});
 		
 		$log->addLogLine(" ---------------- Script Starting ---------------- ");
-		my @reqs = ("dbhost","db","dbuser","dbpass","alwaysemail","fromemail","results","searchprefix");
+		my @reqs = ("dbhost","db","dbuser","port","dbpass","alwaysemail","fromemail","results","searchprefix");
 		my $valid = 1;
 		for my $i (0..$#reqs)
 		{
@@ -79,7 +50,7 @@
 			my $output="";
 			my $brokenresults = new Loghandler($conf->{"results"});
 			my $dbHandler;
-			 eval{$dbHandler = new DBhandler($conf{"db"},$conf{"dbhost"},$conf{"dbuser"},$conf{"dbpass"});};
+			 eval{$dbHandler = new DBhandler($conf{"db"},$conf{"dbhost"},$conf{"dbuser"},$conf{"dbpass"},$conf{"port"});};
 			 if ($@) {
 				$log->addLogLine("$cluster Could not establish a connection to the database");
 				$valid = 0;
