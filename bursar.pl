@@ -29,7 +29,7 @@
 	{
 		my $log = new Loghandler($conf->{"logfile"});
 		$log->addLogLine(" ---------------- Script Starting ---------------- ");
-		my @reqs = ("dbhost","db","dbuser","dbpass","port",,"bursaroutputdir");
+		my @reqs = ("dbhost","db","dbuser","dbpass","port","bursaroutputdir");
 		my $valid = 1;
 		for my $i (0..length(@reqs))
 		{

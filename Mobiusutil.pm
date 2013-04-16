@@ -48,6 +48,7 @@ package Mobiusutil;
  use MARC::Record;
  use MARC::File;
  use MARC::File::USMARC;
+ use MARC::Charset 'marc8_to_utf8';
  use ZOOM; 
  use Net::FTP;
  use Loghandler;
@@ -289,27 +290,78 @@ sub findSummonQuery		#self, DBhandler(object), cluster(string), addsorcancels(st
 	my $dbHandler = @_[1];
 	my $cluster = @_[2];
 	my $addsOrCancels = @_[3];
-	my $dt   = DateTime->now;   # Stores current date and time as datetime object
+	my $dt = DateTime->now;   # Stores current date and time as datetime object
 	my $yesterday = $dt->subtract(days=>1);
 	$yesterday = $yesterday->set_hour(0);
 	$yesterday = $yesterday->set_minute(0);
 	$yesterday = $yesterday->set_second(0);
+	$dt = $yesterday->add(days=>1); #midnight to midnight
+	
 	if($dt->day_of_week == 1)
 	{
 		$yesterday->subtract(days=>2);
 	}
-	
+#
+# Correct for each clusters schedule!
+# KC Adds = Monday - Friday
+# KC Cancels = Monday and Thursday only
+# Galahad Adds = Friday
+# Galahad Cancels = Friday
+# Quest(UCM) Adds = Monday - Friday
+# Quest(UCM) Cancels = Monday and Thursday only
+#
+	if(($cluster eq 'kansascity')||($cluster eq 'ucm'))
+	{
+		if($addsOrCancels eq 'cancels')
+		{
+			if($dt->day_of_week == 1)
+			{
+				$yesterday->subtract(days=>2);
+			}
+			elsif($dt->day_of_week == 4)
+			{
+				$yesterday->subtract(days=>3);
+			}
+			else
+			{
+				return "-1";
+			}
+		}
+		else
+		{
+			#KC and UCM adds runs every week day (which is default for this code above)
+		}
+	}
+	elsif($cluster eq 'galahad')
+	{
+		if($dt->day_of_week == 5)
+		{
+			$yesterday->subtract(days=>7);
+		}
+		else
+		{
+			return "-1";
+		}
+	}	
+	else
+	{
+		return "-1";
+	}
+#
+# Now create the time string for the SQL query
+#
 	my $fdate = $yesterday->ymd;   # Retrieves date as a string in 'yyyy-mm-dd' format
 	my $ftime = $yesterday->hms;   # Retrieves time as a string in 'hh:mm:ss' format
-	my $todate = $yesterday->add(days=>1);
+	my $todate = $dt;
 	my $tdate = $todate->ymd;
 	my $ttime = $yesterday->hms;
-	my $dbFromDate = "2013-03-08 00:00:00"; #"$fdate $ftime";  # "2013-02-16 05:00:00";
-	my $dbToDate = "2013-03-15 00:00:00"; #"$tdate $ttime";
-	my $summonClusters = ('kansascity','ucm');
-	
-	my $worked = exists ($summonClusters{$cluster});
+	my $dbFromDate = "$fdate $ftime";  # "2013-02-16 05:00:00";
+	my $dbToDate = "$tdate $ttime";
 	my $query;
+	
+#
+#I think that these queries need to be re-worked. These are exactly copied from scheduler.
+#	
 	
 	if($cluster eq 'kansascity')
 	{
@@ -318,9 +370,11 @@ sub findSummonQuery		#self, DBhandler(object), cluster(string), addsorcancels(st
 			$query = 
 			"SELECT RECORD_ID FROM SIERRA_VIEW.BIB_RECORD WHERE 
 			(
-			(RECORD_ID IN(SELECT BIB_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_LOCATION WHERE LOCATION_CODE BETWEEN 'wjb' AND 'wjt'))
-			OR
-			(RECORD_ID IN(SELECT BIB_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_LOCATION WHERE LOCATION_CODE BETWEEN 'wjx' AND 'wjy'))
+				RECORD_ID IN
+				(
+					SELECT BIB_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_LOCATION WHERE 
+					LOCATION_CODE !='wju'
+				)
 			)
 			AND
 			(BCODE3='z' OR BCODE3='-')
@@ -338,18 +392,7 @@ sub findSummonQuery		#self, DBhandler(object), cluster(string), addsorcancels(st
 				(
 					SELECT BIB_RECORD_ID FROM 
 					SIERRA_VIEW.BIB_RECORD_LOCATION WHERE 
-					LOCATION_CODE = 'wju' AND
-					LOCATION_CODE != 'wjb' AND
-					LOCATION_CODE != 'wjc' AND
-					LOCATION_CODE != 'wjd' AND
-					LOCATION_CODE != 'wji' AND
-					LOCATION_CODE != 'wjj' AND
-					LOCATION_CODE != 'wjo' AND
-					LOCATION_CODE != 'wjp' AND
-					LOCATION_CODE != 'wjr' AND
-					LOCATION_CODE != 'wjs' AND
-					LOCATION_CODE != 'wjx' AND
-					LOCATION_CODE != 'wjy'
+					LOCATION_CODE = 'wju'
 				)
 			)
 			AND
@@ -382,28 +425,58 @@ sub findSummonQuery		#self, DBhandler(object), cluster(string), addsorcancels(st
 				(
 					SELECT BIB_RECORD_ID FROM 
 					SIERRA_VIEW.BIB_RECORD_LOCATION WHERE 
-					LOCATION_CODE = 'wju' AND
-					LOCATION_CODE != 'wjb' AND
-					LOCATION_CODE != 'wjc' AND
-					LOCATION_CODE != 'wjd' AND
-					LOCATION_CODE != 'wji' AND
-					LOCATION_CODE != 'wjj' AND
-					LOCATION_CODE != 'wjo' AND
-					LOCATION_CODE != 'wjp' AND
-					LOCATION_CODE != 'wjr' AND
-					LOCATION_CODE != 'wjs' AND
-					LOCATION_CODE != 'wjx' AND
-					LOCATION_CODE != 'wjy'
+					LOCATION_CODE = 'tub' AND
 				)
 			)
 			AND
 			(RECORD_ID IN (SELECT ID FROM SIERRA_VIEW.RECORD_METADATA WHERE 
 			(RECORD_LAST_UPDATED_GMT > TO_DATE('$dbFromDate','YYYY-MM-DD HH24:MI:MS')) AND 
-			(RECORD_LAST_UPDATED_GMT < TO_DATE('$dbToDate','YYYY-MM-DD HH24:MI:MS'))))"
+			(RECORD_LAST_UPDATED_GMT < TO_DATE('$dbToDate','YYYY-MM-DD HH24:MI:MS'))))";
+		}
+	}
+	elsif($cluster eq 'ucm')
+	{
+		if($addsOrCancels eq 'adds')
+		{
+			$query = 
+			"SELECT RECORD_ID FROM SIERRA_VIEW.BIB_RECORD WHERE 				
+			(BCODE3!='c' AND BCODE3!='d' AND BCODE3!='l' AND BCODE3!='m' AND BCODE3!='n' AND BCODE3!='s' AND BCODE3!='t' )
+			AND
+			RECORD_ID IN
+				(
+					SELECT BIB_RECORD_ID FROM 
+					SIERRA_VIEW.BIB_RECORD_LOCATION WHERE 
+					LOCATION_CODE BETWEEN 'ckb' AND 'ckv'
+					OR					
+					LOCATION_CODE = 'cky'
+				)
+			AND
+			(RECORD_ID IN (SELECT ID FROM SIERRA_VIEW.RECORD_METADATA WHERE 
+			(RECORD_LAST_UPDATED_GMT > TO_DATE('$dbFromDate','YYYY-MM-DD HH24:MI:MS')) AND 
+			(RECORD_LAST_UPDATED_GMT < TO_DATE('$dbToDate','YYYY-MM-DD HH24:MI:MS'))))";
+		}
+		else
+		{
+		$query = 
+			"SELECT RECORD_ID FROM SIERRA_VIEW.BIB_RECORD WHERE 
+			(
+				RECORD_ID IN
+				(
+					SELECT BIB_RECORD_ID FROM 
+					SIERRA_VIEW.BIB_RECORD_LOCATION WHERE 
+					LOCATION_CODE = 'ckw' AND
+				)
+			)
+			AND			
+			(BCODE3!='-' AND BCODE3!='a' AND BCODE3!='z' )
+			AND
+			(RECORD_ID IN (SELECT ID FROM SIERRA_VIEW.RECORD_METADATA WHERE 
+			(RECORD_LAST_UPDATED_GMT > TO_DATE('$dbFromDate','YYYY-MM-DD HH24:MI:MS')) AND 
+			(RECORD_LAST_UPDATED_GMT < TO_DATE('$dbToDate','YYYY-MM-DD HH24:MI:MS'))))";
 		}
 	}
 	
-	print "$query\n";
+	#print "$query\n";
 	
 	return $query;
 	
@@ -497,8 +570,7 @@ sub makeCommaFromArray
 		}
 		$file = MARC::File::USMARC->in( $secondFile );
 		while ( my $marc = $file->next() ) 
-		{
-			
+		{	
 			if($matchOnTag > 9)
 			{
 				$recID = $marc->field($matchOnTag)->subfield($matchOnSubField);
@@ -525,6 +597,8 @@ sub makeCommaFromArray
 		for my $onePos (0..$#matchedFile1)
 		{
 			$thisOCLCNum = @matchedFile1[$onePos];
+			#if($thisOCLCNum eq '.B20004047')
+			#{
 			#print "$thisOCLCNum\n";
 			for my $twoPos(0.. $#matchedFile2)
 			{
@@ -537,8 +611,11 @@ sub makeCommaFromArray
 					{
 						$leaderMatchErrorString="Leader \"$leader1\" != \"$leader2\"";
 					}
-					
-					my @theseErrors = @{compare2MARCObjects("",$file1{@matchedFile1[$onePos]},$file2{@matchedFile2[$twoPos]})};
+					#print "First = ".$file1{@matchedFile1[$onePos]}->encoding()."\n";
+					#print "Second = ".$file2{@matchedFile2[$twoPos]}->encoding()."\n";
+					my $first_utf8_flag = $file1{@matchedFile1[$onePos]}->encoding() eq 'MARC-8'?0:1;
+					my $second_utf8_flag = $file2{@matchedFile2[$twoPos]}->encoding() eq 'MARC-8'?0:1;
+					my @theseErrors = @{compare2MARCObjects("",$file1{@matchedFile1[$onePos]},$first_utf8_flag,$file2{@matchedFile2[$twoPos]},$second_utf8_flag)};
 					push(@matched,@matchedFile1[$onePos]);
 					if(($#theseErrors>-1) || (length($leaderMatchErrorString)!=0))
 					{
@@ -552,6 +629,7 @@ sub makeCommaFromArray
 					push(@errors,"\n");
 				}
 			}
+			#}
 			
 		}
 		#print Dumper(@matched);
@@ -595,7 +673,9 @@ sub makeCommaFromArray
  sub compare2MARCObjects
  {
 	my $marc1 = @_[1];
-	my $marc2 = @_[2];
+	my $first_utf8_flag = @_[2];
+	my $marc2 = @_[3];
+	my $second_utf8_flag = @_[4];
 	my @errors;
 	my @remainingFields1,@remainingFields2;
 	my @marcFields1 = $marc1->fields();
@@ -627,7 +707,7 @@ sub makeCommaFromArray
 		
 		if($#matchPos2==0)  #only 1 field
 		{
-			my @thisErrorList = @{compare2MARCFields("",$thisField1,@marcFields2[@matchPos2[0]])};
+			my @thisErrorList = @{compare2MARCFields("",$thisField1,$first_utf8_flag,@marcFields2[@matchPos2[0]],$second_utf8_flag)};
 			if($#thisErrorList>-1)
 			{
 				push(@errors,"Errors for ".$thisField1->tag());
@@ -645,7 +725,7 @@ sub makeCommaFromArray
 			my @check;
 			for my $pos(0..$#matchPos2)
 			{
-				push(@check,[@{compare2MARCFields("",$thisField1,@marcFields2[@matchPos2[$pos]])}]);				
+				push(@check,[@{compare2MARCFields("",$thisField1,$first_utf8_flag,@marcFields2[@matchPos2[$pos]],$second_utf8_flag)}]);				
 				if($#{@check[$#check]}==-1)
 				{
 					$errorCheck = $pos;
@@ -677,9 +757,11 @@ sub makeCommaFromArray
  
  sub compare2MARCFields
  {
- 
 	my $field1 = @_[1];
-	my $field2 = @_[2];
+	my $first_utf8_flag = @_[2];
+	my $field2 = @_[3];
+	my $second_utf8_flag = @_[4];
+	
 	my $tag = $field1->tag();
 	
 	my @errors;
@@ -715,8 +797,28 @@ sub makeCommaFromArray
 				
 				if($#matchPos2==0)  #only 1 field
 				{
-					my $comp1 = Encode::encode_utf8(@{@subFields1[$fieldPos1]}[1]);
-					my $comp2 = Encode::encode_utf8(@{@subFields2[@matchPos2[0]]}[1]);
+				#Compare apples to apples AKA UTF-8 to UTF-8 and not MARC-8 to UTF-8
+				#Thank you MARC::Charset!
+				#It seems that the conversion picks a different character from the UTF-8 Chart and prints the same
+				#but of course they compare different
+					my $comp1 = $first_utf8_flag?(@{@subFields1[$fieldPos1]}[1]):marc8_to_utf8(@{@subFields1[$fieldPos1]}[1]);
+					my $comp2 = $second_utf8_flag?(@{@subFields2[@matchPos2[0]]}[1]):marc8_to_utf8(@{@subFields2[@matchPos2[0]]}[1]);
+					$comp1 = decode_utf8($comp1);
+					$comp2 = decode_utf8($comp2);
+					
+														if(0)#Stop this code from running
+														{ 
+															my @chars1 = split("",$comp1);
+															my @chars2 = split("",$comp2);
+															for my $i (0..$#chars1)
+															{
+																my $tem1 = @chars1[$i];
+																my $tem2 = @chars2[$i];
+																my $t1 = ord($tem1);
+																my $t2 = ord($tem2);
+																print encode('utf-8',"$tem1 = $t1\n$tem2 = $t2\n");
+															}
+														}
 					#print "$comp1  ne  $comp2\n";
 					if($comp1 ne $comp2)
 					{
@@ -728,12 +830,27 @@ sub makeCommaFromArray
 				{
 					#print "There were more than 1 matching subfield tags for tag: $tag Subfield: $thisField1\n";
 					my $noErrors=-1;
-					my $comp1 = Encode::encode_utf8(@{@subFields1[$fieldPos1]}[1]);
+					my $comp1 = $first_utf8_flag?(@{@subFields1[$fieldPos1]}[1]):marc8_to_utf8(@{@subFields1[$fieldPos1]}[1]);
 					my $errorListString="";
 					for my $pos(0..$#matchPos2)
 					{
-						my $comp2 = Encode::encode_utf8(@{@subFields2[@matchPos2[$pos]]}[1]);
-						#print "$comp1  eq  $comp2\n";
+						my $comp2 =  $second_utf8_flag?(@{@subFields2[@matchPos2[$pos]]}[1]):marc8_to_utf8(@{@subFields2[@matchPos2[$pos]]}[1]);
+						$comp1 = decode_utf8($comp1);
+						$comp2 = decode_utf8($comp2);
+
+															if(0)#Stop this code from running
+															{ 
+																my @chars1 = split("",$comp1);
+																my @chars2 = split("",$comp2);
+																for my $i (0..$#chars1)
+																{
+																	my $tem1 = @chars1[$i];
+																	my $tem2 = @chars2[$i];
+																	my $t1 = ord($tem1);
+																	my $t2 = ord($tem2);
+																	print encode('utf-8',"$tem1 = $t1\n$tem2 = $t2\n");
+																}
+															}
 						if($comp1 eq $comp2)
 						{
 							$noErrors = $pos;

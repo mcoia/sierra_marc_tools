@@ -37,10 +37,11 @@
 # 2013-1-24
 
 package DBhandler;
- use DBI;
+ #use DBI;
+ use DBD::Pg;
  use Loghandler;
  use strict; 
- #use Unicode::Normalize;
+ use Unicode::Normalize;
  use Encode;
  use utf8;
  use Data::Dumper;
@@ -76,6 +77,7 @@ package DBhandler;
 	my $pass = $self->{password};#1032
 	my $port = $self->{port};
 	$conn =  DBI->connect("DBI:Pg:dbname=$dbname;host=$host;port=$port", $login, $pass, {'RaiseError' => 1, pg_utf8_strings => 1,post_connect_sql => "SET CLIENT_ENCODING TO 'UTF8'"});
+	
 	$self->{conn} = $conn;
  }
  
@@ -92,9 +94,9 @@ package DBhandler;
  #
 	my ($self) = @_[0];
 	my $conn = $self->{conn};
-	my $querystring =  @_[1];
+	my $querystring =  @_[1];	
 	my @ret;
-	#print "$querystring\n";
+#	print "$querystring\n";
 
 	my $query = $conn->prepare($querystring);
 	$query->execute();
@@ -109,7 +111,8 @@ package DBhandler;
 			#print "Raw = $_\n";
 			#my $teststring = "ṭṭār";
 			#print "testing $teststring\n";
-			my $conv = $utf8->substr($_,0,$utf8->length($_));#Encode::encode_utf8($_);
+			#Encode::_set_utf8_on($_);
+			my $conv = decode_utf8($_);# Encode::decode("utf8",$_);#Encode::_set_utf8_on($_);# $utf8->substr($_,0,$utf8->length($_));#$_;#Encode::encode_utf8($_);#$utf8->substr($_,0,$utf8->length($_));#Encode::encode_utf8($_);
 			#$conv = Encode::encode_utf8($decode);
 			#print "Enc = $conv\n";
 			#print "conv = $conv\n";
@@ -124,7 +127,7 @@ package DBhandler;
 				}
 				else
 				{
-					print "$_\nIS NOT UTF8\n";
+					#print "$_\nIS NOT UTF8\n";
 				}
 				
 				my @mchars = $utf8->strsplit('', $conv);
@@ -144,8 +147,8 @@ package DBhandler;
 					}
 				}
 				
-				my $str = Encode::encode_utf8($_);
-				if(0)
+				my $str = $conv;#Encode::encode_utf8($_);
+				if(1)
 				{
 					# this code is borrowed from the evergreen git repository 
 					# (I added a few more unicode characters to the regex)
@@ -155,7 +158,8 @@ package DBhandler;
 					$str =~ s/\x{00C6}/AE/g;
 					$str =~ s/\x{00DE}/TH/g;
 					$str =~ s/\x{0152}/OE/g;
-					$str =~ tr/\x81\x84\xAD\xA1\xBB\x8A\x{0302}\x{0303}\x{0110}\x{00D0}\x{00D8}\x{0141}\x{2113}\x{02BB}\x{02BC}\x{0117}][/DDOLl/d;
+					$str =~ tr/\xC3\x81\x84\xAD\xA1\xBB\x8A\x{0302}\x{0303}\x{0110}\x{00D0}\x{00D8}\x{0141}\x{2113}\x{02BB}\x{02BC}\x{0117}][/DDOLl/d;
+					$conv = $str;
 				}
 			}
 # ------------ END OF DISABLED CODE			

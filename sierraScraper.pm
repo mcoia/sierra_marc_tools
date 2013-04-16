@@ -258,7 +258,7 @@ sub stuff945
 	
 	
 	my $query = "SELECT
-        (SELECT BIB_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_ITEM_RECORD_LINK WHERE ITEM_RECORD_ID = A.ID),
+        (SELECT BIB_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_ITEM_RECORD_LINK WHERE ITEM_RECORD_ID = A.ID AND BIB_RECORD_ID IN($selects)),
         A.ID,
         (SELECT MARC_IND1 FROM SIERRA_VIEW.SUBFIELD_VIEW WHERE VARFIELD_ID=A.ID LIMIT 1),
         (SELECT MARC_IND2 FROM SIERRA_VIEW.SUBFIELD_VIEW WHERE VARFIELD_ID=A.ID LIMIT 1),
@@ -334,7 +334,7 @@ sub stuff945
 	VARFIELD_TYPE_CODE,
 	MARC_TAG,
 	FIELD_CONTENT,
-	(SELECT BIB_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_ITEM_RECORD_LINK WHERE ITEM_RECORD_ID=A.RECORD_ID) AS \"BIB_ID\",
+	(SELECT BIB_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_ITEM_RECORD_LINK WHERE ITEM_RECORD_ID=A.RECORD_ID AND BIB_RECORD_ID IN ($selects)) AS \"BIB_ID\",
 	RECORD_NUM
 	FROM SIERRA_VIEW.VARFIELD_VIEW A WHERE RECORD_ID IN(SELECT ITEM_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_ITEM_RECORD_LINK WHERE BIB_RECORD_ID IN($selects))
 	AND VARFIELD_TYPE_CODE !='a'";
@@ -351,7 +351,7 @@ sub stuff945
 			if(exists ${$tracking{@row[4]}}{@row[0]})
 			{
 				my $thisArrayPosition = ${$tracking{@row[4]}}{@row[0]};				
-				if(($trimmedID eq '082') || ($trimmedID eq '090') || ($trimmedID eq '086'))
+				if(($trimmedID eq '082') || ($trimmedID eq '090') || ($trimmedID eq '086') || ($trimmedID eq '099') || ($trimmedID eq '866') || ($trimmedID eq '050') || ($trimmedID eq '912'))
 				{
 				
 					my $thisRecord = @thisArray[$thisArrayPosition];
@@ -360,7 +360,7 @@ sub stuff945
 					$thisRecord->addData("|y.i".@row[5].$checkDigit);
 					my $recordID = @row[4];
 					my $subItemID = @row[0];
-					foreach(@results) # Find Null marc_tag values related to 082 and 090 and 086
+					foreach(@results) # Find Null marc_tag values related to 082,090,086,099,866,050,912
 					{
 						my $rowsearch = $_;
 						my @rowsearch = @{$rowsearch};
@@ -368,27 +368,40 @@ sub stuff945
 						{
 							if((@rowsearch[0] == @row[0]) && (@rowsearch[2] eq ''))
 							{
-								if(@rowsearch[1] eq 'b')
+								my @chars = split("",$rowsearch[3]);
+								if((@rowsearch[1] eq 'b') && (@chars[0] ne '|'))
 								{
 									$thisRecord->addData('|i'.@rowsearch[3]);
 								}
-								elsif(@rowsearch[1] eq 'v')
+								elsif((@rowsearch[1] eq 'v') && (@chars[0] ne '|'))
 								{
 									$thisRecord->addData('|c'.@rowsearch[3]);
 								}
-								elsif(@rowsearch[1] eq 'x')
+								elsif((@rowsearch[1] eq 'x') && (@chars[0] ne '|'))
 								{
 									$thisRecord->addData('|n'.@rowsearch[3]);
 								}
-								elsif(@rowsearch[1] eq 'm')
+								elsif((@rowsearch[1] eq 'm') && (@chars[0] ne '|'))
 								{
 									$thisRecord->addData('|m'.@rowsearch[3]);
+								}
+								elsif((@rowsearch[1] eq 'c') && (@chars[0] eq '|'))
+								{
+									$thisRecord->addData(@rowsearch[3]);
+								}
+								elsif((@rowsearch[1] eq 'v') && (@chars[0] eq '|'))
+								{
+									$thisRecord->addData(@rowsearch[3]);
+								}
+								elsif((@rowsearch[1] eq 'd') && (@chars[0] eq '|'))
+								{
+									$thisRecord->addData(@rowsearch[3]);
 								}
 								else
 								{
 									if((@rowsearch[1] ne 'n') && (@rowsearch[1] ne 'p')&& (@rowsearch[1] ne 'r'))
 									{
-										$log->addLogLine("This was a related 082,090,086 item(".@row[0].") and bib($recordID)value but I don't know what it is: ".@rowsearch[1]." = ".@rowsearch[3]);
+										$log->addLogLine("This was a related 082,090,086,099,866,050,912 item(".@row[0].") and bib($recordID)value but I don't know what it is: ".@rowsearch[1]." = ".@rowsearch[3]);
 									}
 								}
 							}
@@ -578,7 +591,7 @@ sub stuff998alternate
 	CONCAT('|h',SKIP_NUM)
 	)
 	FROM SIERRA_VIEW.BIB_VIEW WHERE ID IN($selects)";
-	print "$query\n";
+	#print "$query\n";
 	my @results = @{$dbHandler->query($query)};
 	
 	foreach(@results)
@@ -604,7 +617,7 @@ sub stuff998alternate
 	
 	my $query2="SELECT BIB_RECORD_ID,COUNT(*) FROM SIERRA_VIEW.BIB_RECORD_LOCATION WHERE BIB_RECORD_ID IN ($selects) GROUP BY BIB_RECORD_ID";
 	
-	print "$query\n$query2\n";
+	#print "$query\n$query2\n";
 	@results = @{$dbHandler->query($query)};
 	my @results2 = @{$dbHandler->query($query2)};
 	
@@ -825,10 +838,12 @@ sub stuff998alternate
 	else
 	{
 		$results = $test;
-		#print "$test\n";
-		if(1)
+		
+		if(index((uc($results)),"SELECT")>-1)
 		{
+		
 			my @results;
+			local $@;
 			eval{@results = @{$dbHandler->query($test)}};
 			if (!$@) 			
 			{
@@ -843,6 +858,10 @@ sub stuff998alternate
 				if($#ids<0)
 				{
 					$results="-1";
+				}
+				elsif($#ids<1000)
+				{
+					$results = $mobUtil->makeCommaFromArray(\@ids);
 				}
 				else
 				{

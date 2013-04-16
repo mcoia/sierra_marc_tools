@@ -22,6 +22,7 @@ package Loghandler;
 
 use DateTime;
 use Mobiusutil;
+use utf8;
 
 sub new
 {
@@ -84,6 +85,7 @@ sub addLogLine
 	$datetime = $mobutil->makeEvenWidth($datetime,20);
 	undef $mobutil;
 	open(OUTPUT, '>> '.$file) or die $!;
+	binmode(OUTPUT, ":utf8");
 	print OUTPUT $datetime,": $line\n";
 	close(OUTPUT);
 }
@@ -105,6 +107,7 @@ sub truncFile
 	my $file = $fileName->{_file};
 	my $line = @_[1];
 	open(OUTPUT, '> '.$file) or die $!;
+	binmode(OUTPUT, ":utf8");
 	print OUTPUT "$line\n";
 	close(OUTPUT);
 }
