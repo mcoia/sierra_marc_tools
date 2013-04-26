@@ -40,6 +40,7 @@ package sierraScraper;
  use String::Multibyte;
  use utf8;
  use Encode;
+ use Time::HiRes;
  
  sub new   #DBhandler object,Loghandler object, Array of Bib Record ID's matching sierra_view.bib_record
  {
@@ -63,7 +64,9 @@ package sierraScraper;
 		'leader' => \%f,
 		'standard' => \%g,
 		'nine98' => \%h,
-		'selects' => ""
+		'selects' => "",
+		'querytime' => 0,
+		'query' => ""
 	};
 	bless $self, $class;
 	gatherDataFromDB($self);
@@ -73,13 +76,122 @@ package sierraScraper;
  sub gatherDataFromDB
  {
 	my $self = @_[0];
-	figureSelectStatement($self);
-	stuffStandardFields($self);
-	stuffSpecials($self);
-	stuff945($self);
-	stuff907($self);
-	stuff998alternate($self);
-	stuffLeader($self);
+	my $mobUtil = $self->{'mobiusutil'};
+	my $dbHandler = $self->{'dbhandler'};
+	my $offset = 0;
+	my $limit = 5;
+	my $previousRecordCount = 0;
+	my $currentRecordCount = 1;
+	my $oldRPS = 5;
+	figureSelectStatement($self);							
+	my $selects = $self->{'selects'};
+	my @cha = split("",$selects);
+	my $tselects = "";
+	my @best = (0,25);
+	my $noAdjustmentCount=0;
+	foreach(@cha)
+	{
+		$tselects.=$_;
+	}
+	#BREAK UP THE QUERY INTO MANAGABLE CHUNKS
+	if(index((uc($tselects)),"SELECT")>-1)
+	{
+		while($previousRecordCount!=$currentRecordCount)
+		{
+			my $previousTime=DateTime->now;
+			$self->{'querytime'} = 0;
+			my %standard = %{$self->{'standard'}};
+			#print $previousTime->hms."\n";
+			#print "Previous: $previousRecordCount Current: $currentRecordCount\n";
+			$previousRecordCount = scalar keys %standard;			
+			$selects = $tselects;
+			$selects .= " LIMIT $limit OFFSET $offset";
+			#print $selects."\n";
+			$self->{'selects'} = $selects;
+			stuffStandardFields($self);
+			stuffSpecials($self);
+			stuff945($self);
+			stuff907($self);
+			stuff998alternate($self);
+			stuffLeader($self);
+			$offset+=$limit;			
+			#print "Slowest query\n".$self->{'query'}."\n";
+			%standard = %{$self->{'standard'}};
+			my $duration = $self->{'querytime'};
+			my $rps = $limit / $duration;			
+			if(@best[0]<$rps)
+			{
+				@best = ($rps,$limit);
+			}
+			elsif((@best[1]==$limit))
+			{
+				@best[0]=($rps+$best[0])/2;
+			}
+			#print $currentTime->hms."\n";
+			#print "$limit in $duration seconds\n";
+			print "$rps records/s\n";
+			$currentRecordCount = scalar keys %standard;
+			#print "We have $currentRecordCount records\n";
+			
+			my $speedDiff = $oldRPS - $rps;
+	
+			#print "Speed Difference = $speedDiff\n";
+			
+			if(($speedDiff >3) && ($noAdjustmentCount<10))
+			{
+				#Throw this test out - it's way off and a fluke in speed
+				#not adjusting record limit and leaving the recorded speed the same
+				$rps=$oldRPS;
+				$noAdjustmentCount++;
+				print "Not making any adjustments\n";
+			}
+			else
+			{
+				$noAdjustmentCount=0;
+				if(@best[0]-$rps >3)#The best throughput is clearly better than where we are now so, back to that!
+				{
+					$limit = @best[1];
+					print "Adjusting to our best limit $limit which was @best[0]\n";
+				}
+				else
+				{
+					$limit = calcLimitChange($self, $speedDiff, $limit);
+				}
+			}
+				
+			if($duration>480)
+			{
+				if($limit==1)
+				{
+					print "I can't speed this up any faster, we are only getting 1 record and it's taking more than 8 minutes.\nThere must be something wrong with the server, hello?\n";
+				}
+				elsif($limit<11)
+				{
+					$limit-=1;
+				}
+				else
+				{
+					$limit=10;
+				}
+				print "Emergency reduction in record counts, we are going over 8 minutes!\nNow: $limit";
+			}
+			if($limit<1)
+			{
+				$limit=25;
+			}
+			$oldRPS = $rps;
+		}
+	}
+	else
+	{
+		stuffStandardFields($self);
+		stuffSpecials($self);
+		stuff945($self);
+		stuff907($self);
+		stuff998alternate($self);
+		stuffLeader($self);
+	}
+	$self->{'selects'} = $tselects;
  }
  
  sub getSingleStandardFields
@@ -103,13 +215,15 @@ package sierraScraper;
 	my $mobUtil = $self->{'mobiusutil'};
 	my %standard = %{$self->{'standard'}};
 	my $selects = $self->{'selects'};
-	
+	my $previousTime=DateTime->now;
 	my $query = "SELECT A.MARC_TAG,A.FIELD_CONTENT,
 	(SELECT MARC_IND1 FROM SIERRA_VIEW.SUBFIELD_VIEW WHERE VARFIELD_ID=A.ID LIMIT 1),
 	(SELECT MARC_IND2 FROM SIERRA_VIEW.SUBFIELD_VIEW WHERE VARFIELD_ID=A.ID LIMIT 1),
 	RECORD_ID FROM SIERRA_VIEW.VARFIELD_VIEW A WHERE A.RECORD_ID IN($selects) ORDER BY A.MARC_TAG, A.OCC_NUM";
 	#print $query."\n";
 	my @results = @{$dbHandler->query($query)};
+	updateQueryDuration($self,$previousTime,$query);
+	
 	my @records;
 	foreach(@results)
 	{
@@ -159,10 +273,11 @@ package sierraScraper;
 		$concatPhrase.="p$string,";
 	}
 	$concatPhrase=substr($concatPhrase,0,length($concatPhrase)-1).")";
-	my $query = "SELECT CONTROL_NUM,$concatPhrase,RECORD_ID FROM SIERRA_VIEW.CONTROL_FIELD WHERE RECORD_ID IN($selects)";
+	my $query = "SELECT CONTROL_NUM,$concatPhrase,RECORD_ID FROM SIERRA_VIEW.CONTROL_FIELD WHERE RECORD_ID IN($selects)";	
 	#print "$query\n";
+	my $previousTime=DateTime->now;		
 	my @results = @{$dbHandler->query($query)};
-	
+	updateQueryDuration($self,$previousTime,$query);
 	foreach(@results)
 	{
 		my $row = $_;
@@ -212,7 +327,9 @@ sub stuffLeader
 	MULTIPART_LEVEL_CODE
     FROM SIERRA_VIEW.LEADER_FIELD A WHERE A.RECORD_ID IN($selects)";
 	#print "$query\n";
+	my $previousTime=DateTime->now;	
 	my @results = @{$dbHandler->query($query)};
+	updateQueryDuration($self,$previousTime,$query);
 	foreach(@results)
 	{
 		my $row = $_;
@@ -279,7 +396,9 @@ sub stuff945
         (SELECT CONCAT('|z',TO_CHAR(CREATION_DATE_GMT, 'MM-DD-YY')) FROM SIERRA_VIEW.RECORD_METADATA WHERE ID=A.ID) AS \"z\"
         FROM SIERRA_VIEW.ITEM_RECORD A WHERE A.ID IN(SELECT ITEM_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_ITEM_RECORD_LINK WHERE BIB_RECORD_ID IN ($selects))";
 	#print "$query\n";
+	my $previousTime=DateTime->now;	
 	my @results = @{$dbHandler->query($query)};
+	updateQueryDuration($self,$previousTime,$query);
 	my %tracking; # links recordItems objects to item Numbers without having to search everytime
 	
 	foreach(@results)
@@ -339,7 +458,9 @@ sub stuff945
 	FROM SIERRA_VIEW.VARFIELD_VIEW A WHERE RECORD_ID IN(SELECT ITEM_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_ITEM_RECORD_LINK WHERE BIB_RECORD_ID IN($selects))
 	AND VARFIELD_TYPE_CODE !='a'";
 	#print "$query\n";
+	my $previousTime=DateTime->now;		
 	@results = @{$dbHandler->query($query)};
+	updateQueryDuration($self,$previousTime,$query);
 	foreach(@results)
 	{
 		my $row = $_;
@@ -351,49 +472,50 @@ sub stuff945
 			if(exists ${$tracking{@row[4]}}{@row[0]})
 			{
 				my $thisArrayPosition = ${$tracking{@row[4]}}{@row[0]};				
-				if(($trimmedID eq '082') || ($trimmedID eq '090') || ($trimmedID eq '086') || ($trimmedID eq '099') || ($trimmedID eq '866') || ($trimmedID eq '050') || ($trimmedID eq '912'))
+				if(($trimmedID eq '082') || ($trimmedID eq '090') || ($trimmedID eq '086') || ($trimmedID eq '099') || ($trimmedID eq '866') || ($trimmedID eq '050') || ($trimmedID eq '912') || ($trimmedID eq '900') || ($trimmedID eq '927') || ($trimmedID eq '926') || ($trimmedID eq '929') || ($trimmedID eq '928') || ($trimmedID eq '060'))
 				{
 				
 					my $thisRecord = @thisArray[$thisArrayPosition];
 					$thisRecord->addData(@row[3]);
 					my $checkDigit = calcCheckDigit($self,@row[5]);
-					$thisRecord->addData("|y.i".@row[5].$checkDigit);
+					my $barcodeNum = "i".@row[5].$checkDigit;
+					$thisRecord->addData("|y.$barcodeNum");
 					my $recordID = @row[4];
 					my $subItemID = @row[0];
-					foreach(@results) # Find Null marc_tag values related to 082,090,086,099,866,050,912
+					foreach(@results) # Find Null marc_tag values related to 082,090,086,099,866,050,912,900,927,926,929,928,060
 					{
 						my $rowsearch = $_;
 						my @rowsearch = @{$rowsearch};
-						if($mobiusUtil->trim(@rowsearch[3]) ne '')
+						if(@rowsearch[3] ne '')
 						{
 							if((@rowsearch[0] == @row[0]) && (@rowsearch[2] eq ''))
 							{
-								my @chars = split("",$rowsearch[3]);
-								if((@rowsearch[1] eq 'b') && (@chars[0] ne '|'))
+								my $firstChar = substr($rowsearch[3],0,1);
+								if((@rowsearch[1] eq 'b') && ($firstChar ne '|'))
 								{
 									$thisRecord->addData('|i'.@rowsearch[3]);
 								}
-								elsif((@rowsearch[1] eq 'v') && (@chars[0] ne '|'))
+								elsif((@rowsearch[1] eq 'v') && ($firstChar ne '|'))
 								{
 									$thisRecord->addData('|c'.@rowsearch[3]);
 								}
-								elsif((@rowsearch[1] eq 'x') && (@chars[0] ne '|'))
+								elsif((@rowsearch[1] eq 'x') && ($firstChar ne '|'))
 								{
 									$thisRecord->addData('|n'.@rowsearch[3]);
 								}
-								elsif((@rowsearch[1] eq 'm') && (@chars[0] ne '|'))
+								elsif((@rowsearch[1] eq 'm') && ($firstChar ne '|'))
 								{
 									$thisRecord->addData('|m'.@rowsearch[3]);
 								}
-								elsif((@rowsearch[1] eq 'c') && (@chars[0] eq '|'))
+								elsif((@rowsearch[1] eq 'c') && ($firstChar eq '|'))
 								{
 									$thisRecord->addData(@rowsearch[3]);
 								}
-								elsif((@rowsearch[1] eq 'v') && (@chars[0] eq '|'))
+								elsif((@rowsearch[1] eq 'v') && ($firstChar eq '|'))
 								{
 									$thisRecord->addData(@rowsearch[3]);
 								}
-								elsif((@rowsearch[1] eq 'd') && (@chars[0] eq '|'))
+								elsif((@rowsearch[1] eq 'd') && ($firstChar eq '|'))
 								{
 									$thisRecord->addData(@rowsearch[3]);
 								}
@@ -401,7 +523,7 @@ sub stuff945
 								{
 									if((@rowsearch[1] ne 'n') && (@rowsearch[1] ne 'p')&& (@rowsearch[1] ne 'r'))
 									{
-										$log->addLogLine("This was a related 082,090,086,099,866,050,912 item(".@row[0].") and bib($recordID)value but I don't know what it is: ".@rowsearch[1]." = ".@rowsearch[3]);
+										$log->addLogLine("Related 082,090,086,099,866,050,912,900,927,926,929,928,060 item(".@row[0].") bib($recordID) barcode($barcodeNum) value omitted: ".@rowsearch[1]." = ".@rowsearch[3]);
 									}
 								}
 							}
@@ -454,8 +576,9 @@ sub stuff907
 	)
 	FROM SIERRA_VIEW.RECORD_METADATA A WHERE A.ID IN($selects)";
 	#print "$query\n";
+	my $previousTime=DateTime->now;		
 	my @results = @{$dbHandler->query($query)};
-	
+	updateQueryDuration($self,$previousTime,$query);
 	foreach(@results)
 	{
 		my $row = $_;
@@ -494,8 +617,9 @@ sub stuff998
 	)
 	FROM SIERRA_VIEW.BIB_VIEW WHERE ID IN($selects)";
 	#print "$query\n";
+	my $previousTime=DateTime->now;		
 	my @results = @{$dbHandler->query($query)};
-	
+	updateQueryDuration($self,$previousTime,$query);
 	foreach(@results)
 	{
 		my $row = $_;
@@ -592,8 +716,9 @@ sub stuff998alternate
 	)
 	FROM SIERRA_VIEW.BIB_VIEW WHERE ID IN($selects)";
 	#print "$query\n";
+	my $previousTime=DateTime->now;	
 	my @results = @{$dbHandler->query($query)};
-	
+	updateQueryDuration($self,$previousTime,$query);
 	foreach(@results)
 	{
 		my $row = $_;
@@ -618,9 +743,12 @@ sub stuff998alternate
 	my $query2="SELECT BIB_RECORD_ID,COUNT(*) FROM SIERRA_VIEW.BIB_RECORD_LOCATION WHERE BIB_RECORD_ID IN ($selects) GROUP BY BIB_RECORD_ID";
 	
 	#print "$query\n$query2\n";
+	my $previousTime=DateTime->now;	
 	@results = @{$dbHandler->query($query)};
+	updateQueryDuration($self,$previousTime,$query);
+	my $previousTime = DateTime->now;
 	my @results2 = @{$dbHandler->query($query2)};
-	
+	updateQueryDuration($self,$previousTime,$query2);
 	my %counts;
 	my %total;
 	my %multicheck;
@@ -838,39 +966,43 @@ sub stuff998alternate
 	else
 	{
 		$results = $test;
-		
-		if(index((uc($results)),"SELECT")>-1)
+		if(0)
 		{
-		
-			my @results;
-			local $@;
-			eval{@results = @{$dbHandler->query($test)}};
-			if (!$@) 			
+#This was just a bad idea. It was supposed to created comma separated ID's from the initial query
+#Originally it was thought that this would make the later queries run faster but this breaks sometimes.
+			if(index((uc($results)),"SELECT")>-1)
 			{
-				my @ids;
-				foreach(@results)
+			
+				my @results;
+				local $@;
+				eval{@results = @{$dbHandler->query($test)}};
+				if (!$@) 			
 				{
-					my $row = $_;
-					my @row = @{$row};
-					push(@ids,@row[0]);
-				}
-				#print "ID count = $#ids\n";
-				if($#ids<0)
-				{
-					$results="-1";
-				}
-				elsif($#ids<1000)
-				{
-					$results = $mobUtil->makeCommaFromArray(\@ids);
+					my @ids;
+					foreach(@results)
+					{
+						my $row = $_;
+						my @row = @{$row};
+						push(@ids,@row[0]);
+					}
+					#print "ID count = $#ids\n";
+					if($#ids<0)
+					{
+						$results="-1";
+					}
+					elsif($#ids<1000)
+					{
+						$results = $mobUtil->makeCommaFromArray(\@ids);
+					}
+					else
+					{
+						$results = $test;
+					}
 				}
 				else
 				{
 					$results = $test;
 				}
-			}
-			else
-			{
-				$results = $test;
 			}
 		}
 	}
@@ -912,7 +1044,7 @@ sub stuff998alternate
 		(SELECT CONCAT(LAST_NAME,', ',FIRST_NAME) FROM SIERRA_VIEW.PATRON_RECORD_FULLNAME WHERE PATRON_RECORD_ID=A.PATRON_RECORD_ID),
 		(SELECT CONCAT(
 	ADDR1,'\$',
-	ADDR2,'\$',ADDR3,'\$',CITY,'\$',REGION,'\$',POSTAL_CODE) FROM SIERRA_VIEW.PATRON_RECORD_ADDRESS WHERE PATRON_RECORD_ID=A.PATRON_RECORD_ID AND PATRON_RECORD_ADDRESS_TYPE_ID=1),
+	ADDR2,'\$',ADDR3,'\$',CITY,'\$',REGION,'\$',POSTAL_CODE) FROM SIERRA_VIEW.PATRON_RECORD_ADDRESS WHERE PATRON_RECORD_ID=A.PATRON_RECORD_ID AND PATRON_RECORD_ADDRESS_TYPE_ID=1 LIMIT 1),
 		(SELECT 
 		CONCAT(
 		PCODE1,'|',
@@ -1080,6 +1212,58 @@ sub stuff998alternate
 	}
 	return 0;
 	
+ }
+ 
+ sub updateQueryDuration
+ {
+	my $self = @_[0];
+	my $previousTime=@_[1];
+	my $query = @_[2];
+	my $duration = calcTimeDiff($self,$previousTime);	
+	if($self->{'querytime'}<$duration)
+	{
+		$self->{'querytime'}=$duration;
+		$self->{'query'}=$query;
+		#print "New long running query: $duration\n";
+	}
+	return $duration;
+ }
+ 
+ sub calcTimeDiff
+ {
+	my $self = @_[0];
+	my $previousTime = @_[1];
+	my $currentTime=DateTime->now;
+	my $difference = $currentTime - $previousTime;#
+	my $format = DateTime::Format::Duration->new(pattern => '%M');
+	my $minutes = $format->format_duration($difference);
+	$format = DateTime::Format::Duration->new(pattern => '%S');
+	my $seconds = $format->format_duration($difference);
+	#my $duration = $format->format_duration($difference);
+	my $duration = ($minutes * 60) + $seconds;#$difference->nanoseconds();#$format->format_duration($difference);
+	#print "Duration: $duration\n";
+	if($duration==0)
+	{
+		$duration=1;
+	}
+	return $duration;
+ }
+ 
+ sub calcLimitChange
+ {
+	my $speedDiff = @_[1];
+	my $limit = @_[2];
+	if($speedDiff > .5) #This means that the previous query ran faster
+	{
+		$limit-=5;
+		print "Adjusting limit DOWN to $limit\n"
+	}
+	elsif($speedDiff < .5) #This means that current query ran faster - let's add more and see what happens next time!
+	{
+		$limit+=5;
+		print "Adjusting limit UP to $limit\n"
+	} 
+	return $limit;
  }
  
  

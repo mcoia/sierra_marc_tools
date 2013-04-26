@@ -75,7 +75,7 @@ sub addLogLine
 {
 	my ($fileName) = @_[0];
 	my $file = $fileName->{_file};	
-	my $dt   = DateTime->now;   # Stores current date and time as datetime object
+	my $dt   = DateTime->now(time_zone => "local");   # Stores current date and time as datetime object
 	my $date = $dt->ymd;   # Retrieves date as a string in 'yyyy-mm-dd' format
 	my $time = $dt->hms;   # Retrieves time as a string in 'hh:mm:ss' format
 

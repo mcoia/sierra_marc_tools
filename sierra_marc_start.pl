@@ -38,6 +38,7 @@
  use sierraScraper;
  use Data::Dumper;
  use email;
+ use Encode;
  
  #use warnings;
  #use diagnostics; 
@@ -59,88 +60,62 @@
 	{
 		my $log = new Loghandler($conf->{"logfile"});
 		$log->addLogLine(" ---------------- Script Starting ---------------- ");
-		my @reqs = ("dbhost","db","dbuser","dbpass","z3950server","marcoutdir","port");
-		my $valid = 1;
-		for my $i (0..$#reqs)
-		{
-			if(!$conf{@reqs[$i]})
-			{
-				$log->addLogLine("Required configuration missing from conf file");
-				$log->addLogLine(@reqs[$i]." required");
-				$valid = 0;
-			}
-		}
 		
-		if($valid)
+		if(1)
 		{
-			my $dbHandler;
 			
-			 eval{$dbHandler = new DBhandler($conf{"db"},$conf{"dbhost"},$conf{"dbuser"},$conf{"dbpass"},$conf{"port"});};
-			 if ($@) {
-				$log->addLogLine("Could not establish a connection to the database");
-				$valid = 0;
-			 }
-			 if($valid)
+			#my @errors = @{$mobUtil->compare2MARCFiles($marcOutFile,"/tmp/run/trcc-catalog-updates-2013-03-22.out", $log, 907, "a" )};
+							
+							#my $errors;
+							#foreach(@errors)
+							#{
+						#		$errors.= $_."\r\n";
+					#		}
+					
+			my @errors = @{$mobUtil->compare2MARCFiles("/tmp/run/mout/Summon_ADDS_UCM_04172013.out","/tmp/run/testucm.out", $log, 907, "a" )};
+			my $errors;
+			foreach(@errors)
+			{
+				$errors.= $_."\r\n";
+			}
+			print $errors;
+			my @tos = ('junk@monsterfro.com','scott@mobiusconsortium.org');										
+			my $email = new email('junk@monsterfro.com',\@tos,0,0,\%conf);
+			$email->send("Errors",encode("utf-8",$errors));
+			print "done emailing\n";
+			
+			 if(0)
 			 {
-				
-				my $marcOutFile = "/tmp/run/marcout";#$mobUtil->chooseNewFileName($conf->{"marcoutdir"},"marcout","mrc");
-				my $sierraScraper = new sierraScraper($dbHandler,$log,"SELECT ID FROM SIERRA_VIEW.BIB_VIEW WHERE RECORD_NUM >= 1998915 AND RECORD_NUM <= 1999115");#['420907796199','420907798387']);
-
-				my @marc = @{$sierraScraper->getAllMARC()};
+				 my $marcOutFile = $mobUtil->chooseNewFileName($conf->{"z3950server"},"marcout","mrc");
+				 my $marcOutFile = "/jail/marcout";
+				 my $marc;# = $mobUtil->makeMarcFromDBID($dbHandler,$log,420907798387);#420907796199);
 				 my $marcout = new Loghandler($marcOutFile);
-				$marcout->deleteFile();
-				my $output;
-				foreach(@marc)
-				{
-					my $marc = $_;
-					$output.=$marc->as_usmarc();
-				}
-				$marcout->addLine($output);
-				
-				my @errors = @{$mobUtil->compare2MARCFiles($marcOutFile,"/tmp/run/test.out", $log, 907, "a" )};
-				my $errors;
-				foreach(@errors)
-				{
-					$errors.= $_."\r\n";
-				}
-		
-		
-		my @tos = ('junk@monsterfro.com');
-				my $email = new email('junk@monsterfro.com',\@tos,0,0,\%conf);
-				$email->send("Errors",$errors);
-				
-				 if(0)
+				 $marcout->deleteFile();
+				 $marcout->addLine($marc->as_usmarc());
+				 #@recordIDs = $mobUtil->findSummonIDs($dbHandler,$log);
+				 
+			 }
+			 if(0)
+			 {
+				 #my $marcOutFile = $mobUtil->chooseNewFileName($conf->{"marcoutdir"},"marcout","mrc");
+				 
+				 my @marcs = @{$mobUtil->getMarcFromQuery($conf{"z3950server"},"\@attr 1=38 \"Writer's market\"",$log)};  #1889374
+				 my $outputstring;
+				 foreach(@marcs)
 				 {
-					 my $marcOutFile = $mobUtil->chooseNewFileName($conf->{"z3950server"},"marcout","mrc");
-					 my $marcOutFile = "/jail/marcout";
-					 my $marc = $mobUtil->makeMarcFromDBID($dbHandler,$log,420907798387);#420907796199);
-					 my $marcout = new Loghandler($marcOutFile);
-					 $marcout->deleteFile();
-					 $marcout->addLine($marc->as_usmarc());
-					 #@recordIDs = $mobUtil->findSummonIDs($dbHandler,$log);
-					 
+					 $outputstring = $outputstring . $_->as_usmarc();
+					 #print "1: \"".$_->field('001')->data()."\"";
+					 #print "5: \"".$_->field('005')->data()."\"";
+					 #print "8: \"".$_->field('008')->data()."\"";
+					 print $_->as_formatted();
 				 }
-				 if(0)
-				 {
-					 #my $marcOutFile = $mobUtil->chooseNewFileName($conf->{"marcoutdir"},"marcout","mrc");
-					 
-					 my @marcs = @{$mobUtil->getMarcFromQuery($conf{"z3950server"},"\@attr 1=38 \"Writer's market\"",$log)};  #1889374
-					 my $outputstring;
-					 foreach(@marcs)
-					 {
-						 $outputstring = $outputstring . $_->as_usmarc();
-						 #print "1: \"".$_->field('001')->data()."\"";
-						 #print "5: \"".$_->field('005')->data()."\"";
-						 #print "8: \"".$_->field('008')->data()."\"";
-						 print $_->as_formatted();
-					 }
-					 #$log->addLogLine("Outputting marc records into $marcOutFile");
-					 #my $marcout = new Loghandler($marcOutFile);
-					 #$marcout->deleteFile();
-					 #$marcout->addLine($outputstring);
-				 }
+				 #$log->addLogLine("Outputting marc records into $marcOutFile");
+				 #my $marcout = new Loghandler($marcOutFile);
+				 #$marcout->deleteFile();
+				 #$marcout->addLine($outputstring);
 			 }
 		 }
+		 
 		 $log->addLogLine(" ---------------- Script Ending ---------------- ");
 	}
 	else

@@ -105,6 +105,50 @@ sub readConfFile
 	return \%ret;
  }
  
+ sub readQueryFile
+ {
+	my %ret = ();
+	my $ret = \%ret;
+	my $file = @_[1];
+	#print "query file: $file\n";
+	my $confFile = new Loghandler($file);
+	if(!$confFile->fileExists())
+	{
+		print "Query file does not exist\n";
+		undef $confFile;
+		return false;
+	}
+
+	my @lines = @{ $confFile->readFile() };
+	undef $confFile;
+	
+	my $fullFile = "";
+	foreach my $line (@lines)
+	{
+		$line =~ s/\n//;  #remove newline characters
+		my $cur = trim('',$line);
+		my $len = length($cur);
+		if($len>0)
+		{
+			if(substr($cur,0,1)ne"#")
+			{
+				$line=~s/\t//g;
+				$fullFile.=" $line"; #collapse all lines into one string
+			}
+		}
+	}
+	
+	my @div = split(";", $fullFile); #split the string by semi colons
+	foreach(@div)
+	{
+		my $Name, $Value;
+		($Name, $Value) = split (/\~\~/, $_); #split each by the equals sign (left of equal is the name and right is the query
+		$$ret{trim('',$Name)} = trim('',$Value);
+	}	
+	
+	return \%ret;
+ }
+ 
 sub makeEvenWidth  #line, width
 {
 	my $ret;
@@ -281,199 +325,49 @@ sub padLeft  #line, width, fill char
 	return $string;
 }
 
-sub findSummonQuery		#self, DBhandler(object), cluster(string), addsorcancels(string)
+sub findQuery		#self, DBhandler(object), school(string), platform(string), addsorcancels(string), queries
 {
-	if($#_+1 !=4)
+	if($#_+1 !=6)
 	{
 		return 0;
 	}
 	my $dbHandler = @_[1];
-	my $cluster = @_[2];
-	my $addsOrCancels = @_[3];
+	my $school = @_[2];
+	my $platform = @_[3];
+	my $addsOrCancels = @_[4];
+	my %queries = %{$_[5]};
+	my $key = $platform."_".$school."_".$addsOrCancels;
+	#print "Key = $key\n";
 	my $dt = DateTime->now;   # Stores current date and time as datetime object
+	my $ndt = DateTime->now;
 	my $yesterday = $dt->subtract(days=>1);
 	$yesterday = $yesterday->set_hour(0);
 	$yesterday = $yesterday->set_minute(0);
 	$yesterday = $yesterday->set_second(0);
-	$dt = $yesterday->add(days=>1); #midnight to midnight
+	#$dt = $yesterday->add(days=>1); #midnight to midnight
 	
-	if($dt->day_of_week == 1)
-	{
-		$yesterday->subtract(days=>2);
-	}
-#
-# Correct for each clusters schedule!
-# KC Adds = Monday - Friday
-# KC Cancels = Monday and Thursday only
-# Galahad Adds = Friday
-# Galahad Cancels = Friday
-# Quest(UCM) Adds = Monday - Friday
-# Quest(UCM) Cancels = Monday and Thursday only
-#
-	if(($cluster eq 'kansascity')||($cluster eq 'ucm'))
-	{
-		if($addsOrCancels eq 'cancels')
-		{
-			if($dt->day_of_week == 1)
-			{
-				$yesterday->subtract(days=>2);
-			}
-			elsif($dt->day_of_week == 4)
-			{
-				$yesterday->subtract(days=>3);
-			}
-			else
-			{
-				return "-1";
-			}
-		}
-		else
-		{
-			#KC and UCM adds runs every week day (which is default for this code above)
-		}
-	}
-	elsif($cluster eq 'galahad')
-	{
-		if($dt->day_of_week == 5)
-		{
-			$yesterday->subtract(days=>7);
-		}
-		else
-		{
-			return "-1";
-		}
-	}	
-	else
-	{
-		return "-1";
-	}
+	
 #
 # Now create the time string for the SQL query
 #
 	my $fdate = $yesterday->ymd;   # Retrieves date as a string in 'yyyy-mm-dd' format
 	my $ftime = $yesterday->hms;   # Retrieves time as a string in 'hh:mm:ss' format
-	my $todate = $dt;
+	my $todate = $ndt;
 	my $tdate = $todate->ymd;
 	my $ttime = $yesterday->hms;
 	my $dbFromDate = "$fdate $ftime";  # "2013-02-16 05:00:00";
 	my $dbToDate = "$tdate $ttime";
 	my $query;
 	
-#
-#I think that these queries need to be re-worked. These are exactly copied from scheduler.
-#	
-	
-	if($cluster eq 'kansascity')
+	if(!$queries{$key})
 	{
-		if($addsOrCancels eq 'adds')
-		{
-			$query = 
-			"SELECT RECORD_ID FROM SIERRA_VIEW.BIB_RECORD WHERE 
-			(
-				RECORD_ID IN
-				(
-					SELECT BIB_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_LOCATION WHERE 
-					LOCATION_CODE !='wju'
-				)
-			)
-			AND
-			(BCODE3='z' OR BCODE3='-')
-			AND
-			(RECORD_ID IN (SELECT ID FROM SIERRA_VIEW.RECORD_METADATA WHERE 
-			(RECORD_LAST_UPDATED_GMT > TO_DATE('$dbFromDate','YYYY-MM-DD HH24:MI:MS')) AND 
-			(RECORD_LAST_UPDATED_GMT < TO_DATE('$dbToDate','YYYY-MM-DD HH24:MI:MS'))))";
-		}
-		else
-		{
-		$query = 
-			"SELECT RECORD_ID FROM SIERRA_VIEW.BIB_RECORD WHERE 
-			(
-				RECORD_ID IN
-				(
-					SELECT BIB_RECORD_ID FROM 
-					SIERRA_VIEW.BIB_RECORD_LOCATION WHERE 
-					LOCATION_CODE = 'wju'
-				)
-			)
-			AND
-			(RECORD_ID IN (SELECT ID FROM SIERRA_VIEW.RECORD_METADATA WHERE 
-			(RECORD_LAST_UPDATED_GMT > TO_DATE('$dbFromDate','YYYY-MM-DD HH24:MI:MS')) AND 
-			(RECORD_LAST_UPDATED_GMT < TO_DATE('$dbToDate','YYYY-MM-DD HH24:MI:MS'))))";
-		}
-		
+		return "-1";
 	}
-	elsif($cluster eq 'galahad')
+	else
 	{
-		if($addsOrCancels eq 'adds')
-		{
-			$query = 
-			"SELECT RECORD_ID FROM SIERRA_VIEW.BIB_RECORD WHERE 
-			(RECORD_ID IN(SELECT BIB_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_LOCATION WHERE LOCATION_CODE BETWEEN 'tr' AND 'trzzz'))
-			AND			
-			(BCODE3='z' OR BCODE3='-' OR BCODE3='|')
-			AND
-			(RECORD_ID IN (SELECT ID FROM SIERRA_VIEW.RECORD_METADATA WHERE 
-			(RECORD_LAST_UPDATED_GMT > TO_DATE('$dbFromDate','YYYY-MM-DD HH24:MI:MS')) AND 
-			(RECORD_LAST_UPDATED_GMT < TO_DATE('$dbToDate','YYYY-MM-DD HH24:MI:MS'))))";
-		}
-		else
-		{
-		$query = 
-			"SELECT RECORD_ID FROM SIERRA_VIEW.BIB_RECORD WHERE 
-			(
-				RECORD_ID IN
-				(
-					SELECT BIB_RECORD_ID FROM 
-					SIERRA_VIEW.BIB_RECORD_LOCATION WHERE 
-					LOCATION_CODE = 'tub' AND
-				)
-			)
-			AND
-			(RECORD_ID IN (SELECT ID FROM SIERRA_VIEW.RECORD_METADATA WHERE 
-			(RECORD_LAST_UPDATED_GMT > TO_DATE('$dbFromDate','YYYY-MM-DD HH24:MI:MS')) AND 
-			(RECORD_LAST_UPDATED_GMT < TO_DATE('$dbToDate','YYYY-MM-DD HH24:MI:MS'))))";
-		}
-	}
-	elsif($cluster eq 'ucm')
-	{
-		if($addsOrCancels eq 'adds')
-		{
-			$query = 
-			"SELECT RECORD_ID FROM SIERRA_VIEW.BIB_RECORD WHERE 				
-			(BCODE3!='c' AND BCODE3!='d' AND BCODE3!='l' AND BCODE3!='m' AND BCODE3!='n' AND BCODE3!='s' AND BCODE3!='t' )
-			AND
-			RECORD_ID IN
-				(
-					SELECT BIB_RECORD_ID FROM 
-					SIERRA_VIEW.BIB_RECORD_LOCATION WHERE 
-					LOCATION_CODE BETWEEN 'ckb' AND 'ckv'
-					OR					
-					LOCATION_CODE = 'cky'
-				)
-			AND
-			(RECORD_ID IN (SELECT ID FROM SIERRA_VIEW.RECORD_METADATA WHERE 
-			(RECORD_LAST_UPDATED_GMT > TO_DATE('$dbFromDate','YYYY-MM-DD HH24:MI:MS')) AND 
-			(RECORD_LAST_UPDATED_GMT < TO_DATE('$dbToDate','YYYY-MM-DD HH24:MI:MS'))))";
-		}
-		else
-		{
-		$query = 
-			"SELECT RECORD_ID FROM SIERRA_VIEW.BIB_RECORD WHERE 
-			(
-				RECORD_ID IN
-				(
-					SELECT BIB_RECORD_ID FROM 
-					SIERRA_VIEW.BIB_RECORD_LOCATION WHERE 
-					LOCATION_CODE = 'ckw' AND
-				)
-			)
-			AND			
-			(BCODE3!='-' AND BCODE3!='a' AND BCODE3!='z' )
-			AND
-			(RECORD_ID IN (SELECT ID FROM SIERRA_VIEW.RECORD_METADATA WHERE 
-			(RECORD_LAST_UPDATED_GMT > TO_DATE('$dbFromDate','YYYY-MM-DD HH24:MI:MS')) AND 
-			(RECORD_LAST_UPDATED_GMT < TO_DATE('$dbToDate','YYYY-MM-DD HH24:MI:MS'))))";
-		}
+		$query = $queries{$key};
+		$query =~s/\$dbFromDate/$dbFromDate/g;
+		$query =~s/\$dbToDate/$dbToDate/g;
 	}
 	
 	#print "$query\n";
@@ -1103,5 +997,37 @@ sub makeCommaFromArray
 	
  }
 
+ sub marcRecordSize()
+ {
+	my $count=0;
+	my $marc = @_[1];
+	my @fields = $marc->fields();
+	foreach(@fields)
+	{
+		
+		if($_->is_control_field())
+		{
+			my $subs = $_->data();
+			#print "adding control $subs\n";
+			$count+=length($subs);
+		}
+		else
+		{
+			my @subs = $_->subfields();
+			foreach(@subs)
+			{
+				my @t = @{$_};
+				for my $i(0..$#t)
+				{												
+					#print "adding ".@t[$i]."\n";
+					$count+=length(@t[$i]);
+				}
+			}
+		}
+	}
+	#print $count."\n";
+	return $count;
+	
+ }
 1;
 

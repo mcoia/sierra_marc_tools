@@ -148,7 +148,7 @@ package DBhandler;
 				}
 				
 				my $str = $conv;#Encode::encode_utf8($_);
-				if(1)
+				if(0)
 				{
 					# this code is borrowed from the evergreen git repository 
 					# (I added a few more unicode characters to the regex)
