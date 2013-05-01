@@ -2,6 +2,9 @@
 #I think that these queries need to be re-worked. These are exactly copied from scheduler.
 # ~~ is the equal sign! (because there are equal signs in the queries we can't delimit by that)
 #	
+# It's impairitive that the "FULL" queries do not contain an "ORDER BY" phrase because the software 
+# appends to these queries to keep the query from running longer than the threshold.
+# The software will append RECORD_ID > X AND RECORD_ID < Y - Repeat for the population for the DB
 summon_wjc_adds~~SELECT RECORD_ID FROM SIERRA_VIEW.BIB_RECORD WHERE 
 			(
 				RECORD_ID IN
@@ -17,7 +20,7 @@ summon_wjc_adds~~SELECT RECORD_ID FROM SIERRA_VIEW.BIB_RECORD WHERE
 			AND
 			(RECORD_ID IN (SELECT ID FROM SIERRA_VIEW.RECORD_METADATA WHERE 
 			(RECORD_LAST_UPDATED_GMT > TO_DATE('$dbFromDate','YYYY-MM-DD HH24:MI:MS')) AND 
-			(RECORD_LAST_UPDATED_GMT < TO_DATE('$dbToDate','YYYY-MM-DD HH24:MI:MS')))) ORDER BY RECORD_ID;
+			(RECORD_LAST_UPDATED_GMT < TO_DATE('$dbToDate','YYYY-MM-DD HH24:MI:MS'))));
 summon_wjc_cancels~~SELECT RECORD_ID FROM SIERRA_VIEW.BIB_RECORD WHERE 
 			(
 				RECORD_ID IN
@@ -30,7 +33,7 @@ summon_wjc_cancels~~SELECT RECORD_ID FROM SIERRA_VIEW.BIB_RECORD WHERE
 			AND
 			(RECORD_ID IN (SELECT ID FROM SIERRA_VIEW.RECORD_METADATA WHERE 
 			(RECORD_LAST_UPDATED_GMT > TO_DATE('$dbFromDate','YYYY-MM-DD HH24:MI:MS')) AND 
-			(RECORD_LAST_UPDATED_GMT < TO_DATE('$dbToDate','YYYY-MM-DD HH24:MI:MS')))) ORDER BY RECORD_ID;
+			(RECORD_LAST_UPDATED_GMT < TO_DATE('$dbToDate','YYYY-MM-DD HH24:MI:MS'))));
 summon_wjc_full~~SELECT RECORD_ID FROM SIERRA_VIEW.BIB_RECORD WHERE 
 			(
 				RECORD_ID IN
@@ -42,7 +45,7 @@ summon_wjc_full~~SELECT RECORD_ID FROM SIERRA_VIEW.BIB_RECORD WHERE
 				)
 			)
 			AND
-			(BCODE3='z' OR BCODE3='-') ORDER BY RECORD_ID;
+			(BCODE3='z' OR BCODE3='-');
 summon_trcc_adds~~SELECT RECORD_ID FROM SIERRA_VIEW.BIB_RECORD WHERE 
 			(RECORD_ID IN(SELECT BIB_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_LOCATION WHERE LOCATION_CODE BETWEEN 'tr' AND 'trzzz'))
 			AND			

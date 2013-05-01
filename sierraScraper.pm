@@ -66,8 +66,15 @@ package sierraScraper;
 		'nine98' => \%h,
 		'selects' => "",
 		'querytime' => 0,
-		'query' => ""
+		'query' => "",
+		'type' => ""
 	};
+	my $t = shift;
+	print "4: $t\n";
+	if($t)
+	{
+		$self->{'type'}=$t;
+	}
 	bless $self, $class;
 	gatherDataFromDB($self);
     return $self;
@@ -79,6 +86,7 @@ package sierraScraper;
 	my $mobUtil = $self->{'mobiusutil'};
 	my $dbHandler = $self->{'dbhandler'};
 	my $offset = 0;
+	my $increment = 5;
 	my $limit = 5;
 	my $previousRecordCount = 0;
 	my $currentRecordCount = 1;
@@ -89,15 +97,50 @@ package sierraScraper;
 	my $tselects = "";
 	my @best = (0,25);
 	my $noAdjustmentCount=0;
+	my $chunks=0;
+	my $i=0;
 	foreach(@cha)
 	{
 		$tselects.=$_;
 	}
-	#BREAK UP THE QUERY INTO MANAGABLE CHUNKS
-	if(index((uc($tselects)),"SELECT")>-1)
+	
+	if($self->{'type'} eq 'full')
+	{	#BREAK UP THE QUERY INTO MANAGABLE CHUNKS
+		if(index((uc($tselects)),"SELECT")>-1){$chunks=1;}
+	}
+	
+	if($chunks)
 	{
-		while($previousRecordCount!=$currentRecordCount)
+		my $query = "SELECT MIN(ID) FROM SIERRA_VIEW.BIB_RECORD";
+		my @results = @{$dbHandler->query($query)};		
+		my $min = 0;
+		my $max = 1;
+		foreach(@results)
 		{
+			my $row = $_;
+			my @row = @{$row};
+			$min = @row[0];
+		}
+		$min--;
+		$query = "SELECT MAX(ID) FROM SIERRA_VIEW.BIB_RECORD";
+		@results = @{$dbHandler->query($query)};		
+		foreach(@results)
+		{
+			my $row = $_;
+			my @row = @{$row};
+			$max = @row[0];
+		}
+		$offset=$min;
+		$increment=$min+$limit;
+		my @dumpedFiles = (0);
+		
+		while($limit <= $max+1 )#$previousRecordCount!=$currentRecordCount)
+		{
+			my $lastElement = scalar(@dumpedFiles);
+			$lastElement--;
+			my $recordsOnDisk=@dumpedFiles[$lastElement];
+			print "Records On disk: $recordsOnDisk\n";
+			print "Max: $max   From: $offset To: $increment\n";
 			my $previousTime=DateTime->now;
 			$self->{'querytime'} = 0;
 			my %standard = %{$self->{'standard'}};
@@ -105,7 +148,7 @@ package sierraScraper;
 			#print "Previous: $previousRecordCount Current: $currentRecordCount\n";
 			$previousRecordCount = scalar keys %standard;			
 			$selects = $tselects;
-			$selects .= " LIMIT $limit OFFSET $offset";
+			$selects .= " AND ID > $offset AND ID <= $increment";
 			#print $selects."\n";
 			$self->{'selects'} = $selects;
 			stuffStandardFields($self);
@@ -114,11 +157,14 @@ package sierraScraper;
 			stuff907($self);
 			stuff998alternate($self);
 			stuffLeader($self);
-			$offset+=$limit;			
+			$offset+=$limit;
 			#print "Slowest query\n".$self->{'query'}."\n";
 			%standard = %{$self->{'standard'}};
+			$currentRecordCount = scalar keys %standard;
+			#$currentRecordCount+=$recordsOnDisk;
+			my $addedRecords = $currentRecordCount - $previousRecordCount;
 			my $duration = $self->{'querytime'};
-			my $rps = $limit / $duration;			
+			my $rps = $addedRecords / $duration;			
 			if(@best[0]<$rps)
 			{
 				@best = ($rps,$limit);
@@ -130,8 +176,8 @@ package sierraScraper;
 			#print $currentTime->hms."\n";
 			#print "$limit in $duration seconds\n";
 			print "$rps records/s\n";
-			$currentRecordCount = scalar keys %standard;
-			#print "We have $currentRecordCount records\n";
+			
+			print "Increased $addedRecords and now we have $currentRecordCount records\n";
 			
 			my $speedDiff = $oldRPS - $rps;
 	
@@ -157,8 +203,11 @@ package sierraScraper;
 				{
 					$limit = calcLimitChange($self, $speedDiff, $limit);
 				}
+			}	
+			if($addedRecords==0)
+			{
+				$limit+=1000;
 			}
-				
 			if($duration>480)
 			{
 				if($limit==1)
@@ -175,11 +224,24 @@ package sierraScraper;
 				}
 				print "Emergency reduction in record counts, we are going over 8 minutes!\nNow: $limit";
 			}
+			if(($rps <1) && $limit>50 && $rps > 0)
+			{
+				#reset				
+				$limit=20;
+				print "It's getting waaay to slow, reseting to $limit\n";
+			}
 			if($limit<1)
 			{
-				$limit=25;
+				$limit=1;
 			}
+			
 			$oldRPS = $rps;
+			$increment+=$limit;
+			if($increment > $max)
+			{
+				$increment = $max+1;
+			}
+			@dumpedFiles = @{dumpRamToDisk($self, \@dumpedFiles)};
 		}
 	}
 	else
@@ -854,39 +916,42 @@ sub stuff998alternate
 		@marcFields = @{pushMARCArray($self,\@marcFields,$_,$recID)};
 	}
 	
-	#Sort by MARC Tag
-	my @tags;
-	my $changed = 1;
-	while($changed)
+	#turn off sorting because it's a cpu hog
+	if(0)
 	{
-		$changed=0;
-		for my $i (0..$#marcFields)
+		#Sort by MARC Tag
+
+		my $changed = 1;
+		while($changed)
 		{
-			if($i+1<$#marcFields)
+			$changed=0;
+			for my $i (0..$#marcFields)
 			{
-				my $thisone = @marcFields[$i]->tag();
-				my $nextone;
-				eval{$nextone = @marcFields[$i+1]->tag();};
-				if ($@) 
+				if($i+1<$#marcFields)
 				{
-					#print "Can't call method tag\ni= $i count = $#marcFields \nRecord ID = $recID";
-					#print Dumper(@marcFields);
-					$log->addLogLine("Can't call method \"tag\" on an undefined value");
-				}
-				else
-				{
-					if($nextone lt $thisone)
+					my $thisone = @marcFields[$i]->tag();
+					my $nextone;
+					eval{$nextone = @marcFields[$i+1]->tag();};
+					if ($@) 
 					{
-						$changed=1;
-						my $temp = @marcFields[$i];
-						@marcFields[$i] = @marcFields[$i+1];
-						@marcFields[$i+1] = $temp;
+						#print "Can't call method tag\ni= $i count = $#marcFields \nRecord ID = $recID";
+						#print Dumper(@marcFields);
+						$log->addLogLine("Can't call method \"tag\" on an undefined value");
+					}
+					else
+					{
+						if($nextone lt $thisone)
+						{
+							$changed=1;
+							my $temp = @marcFields[$i];
+							@marcFields[$i] = @marcFields[$i+1];
+							@marcFields[$i+1] = $temp;
+						}
 					}
 				}
 			}
 		}
 	}
-	
 	#create MARC:Record Object and stuff fields
 	my $ret = MARC::Record->new();
 	
@@ -1007,6 +1072,7 @@ sub stuff998alternate
 		}
 	}
 	$self->{'selects'}  = $results;
+	
  }
  
  sub calcCheckDigit
@@ -1239,9 +1305,7 @@ sub stuff998alternate
 	my $minutes = $format->format_duration($difference);
 	$format = DateTime::Format::Duration->new(pattern => '%S');
 	my $seconds = $format->format_duration($difference);
-	#my $duration = $format->format_duration($difference);
-	my $duration = ($minutes * 60) + $seconds;#$difference->nanoseconds();#$format->format_duration($difference);
-	#print "Duration: $duration\n";
+	my $duration = ($minutes * 60) + $seconds;
 	if($duration==0)
 	{
 		$duration=1;
@@ -1253,17 +1317,69 @@ sub stuff998alternate
  {
 	my $speedDiff = @_[1];
 	my $limit = @_[2];
-	if($speedDiff > .5) #This means that the previous query ran faster
+	if($speedDiff > 1) #This means that the previous query ran faster
 	{
-		$limit-=5;
+		$limit-=50;
 		print "Adjusting limit DOWN to $limit\n"
 	}
-	elsif($speedDiff < .5) #This means that current query ran faster - let's add more and see what happens next time!
+	elsif($speedDiff < 1) #This means that current query ran faster - let's add more and see what happens next time!
 	{
-		$limit+=5;
+		$limit+=100;
 		print "Adjusting limit UP to $limit\n"
 	} 
 	return $limit;
+ }
+ 
+ sub dumpRamToDisk
+ {
+	my $self = @_[0];
+	my %standard = %{$self->{'standard'}};
+	my @dumpedFiles = @{@_[1]};
+	my @newDump=@dumpedFiles;
+	if(scalar keys %standard >10000)
+	{	
+		@newDump=();
+		my $recordsInFiles=0;
+		if(scalar(@dumpedFiles)>0)
+		{
+			my $lastElement = scalar(@dumpedFiles);
+			$lastElement--;
+			for my $i(0..$#dumpedFiles-1)
+			{
+				push(@newDump,@dumpedFiles[$i]);
+			}
+			$recordsInFiles=@dumpedFiles[$lastElement];  #The last element contains the total count
+			undef @dumpedFiles;
+			#print Dumper(@newDump);
+		}
+		my $log = $self->{'log'};
+		my $mobiusUtil = $self->{'mobiusutil'};
+		my @try = ('nine45','nine07','nine98','specials','standard');
+		my $fileName = $mobiusUtil->chooseNewFileName("/tmp/temp","tempmarc","mrc");
+		my @marc = @{getAllMARC($self)};
+		my $marcout = new Loghandler($fileName);
+		my $output;
+		
+		foreach(@marc)
+		{
+			my $marc = $_;
+			$marc->encoding( 'UTF-8' );
+			$output.=$marc->as_usmarc();
+		}
+		$marcout->addLine($output);
+		push(@newDump, $fileName);
+		my $addedToDisk = scalar keys %standard;
+		$recordsInFiles+=$addedToDisk;
+		push(@newDump, $recordsInFiles);
+		foreach(@try)
+		{
+			my %n = ();
+			undef $self->{$_};
+			$self->{$_} = \%n;
+		}
+	}
+	#print Dumper(\@newDump);
+	return \@newDump;
  }
  
  

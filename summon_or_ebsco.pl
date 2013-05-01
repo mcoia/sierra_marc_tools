@@ -160,7 +160,7 @@
 						my $fdate = $dt->ymd;
 						
 						my $outputMarcFile = $mobUtil->chooseNewFileName($conf->{"marcoutdir"},$fileNamePrefix.$fdate,"mrc");
-						
+												
 						if($outputMarcFile ne "0")
 						{	
 						#Logging and emailing
@@ -181,9 +181,8 @@
 							$valid=1;
 							my $selectQuery = $mobUtil->findQuery($dbHandler,$school,$platform,$type,$queries);
 							
-							
 							local $@;
-							eval{$sierraScraper = new sierraScraper($dbHandler,$log,$selectQuery);};
+							eval{$sierraScraper = new sierraScraper($dbHandler,$log,$selectQuery,$type);};
 							if($@)
 							{
 								$valid=0;
@@ -248,7 +247,7 @@
 								{						
 									$marcout->addLine($output);
 									my @files = ($marcOutFile);
-									if(1)  #switch FTP on and off easily
+									if(0)  #switch FTP on and off easily
 									{
 										eval{$mobUtil->sendftp($conf{"ftphost"},$conf{"ftplogin"},$conf{"ftppass"},$remoteDirectory,\@files,$log);};
 										 if ($@) 
