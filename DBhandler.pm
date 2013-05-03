@@ -74,7 +74,7 @@ package DBhandler;
 	my $dbname = $self->{dbname};
 	my $host = $self->{host};
 	my $login = $self->{login};
-	my $pass = $self->{password};#1032
+	my $pass = $self->{password};
 	my $port = $self->{port};
 	$conn =  DBI->connect("DBI:Pg:dbname=$dbname;host=$host;port=$port", $login, $pass, {pg_utf8_strings => 1}); #'RaiseError' => 1,post_connect_sql => "SET CLIENT_ENCODING TO 'UTF8'"
 	
@@ -214,6 +214,18 @@ package DBhandler;
 	
  }
  
+ sub getConnectionInfo
+ {
+	my ($self) = @_[0];
+	my %info = (
+		dbname => $self->{dbname},
+		host =>  $self->{host},
+		login => $self->{login},
+		password => $self->{password},
+		port => $self->{port}
+	);
+	return \%info;
+ }
  sub DESTROY
  {
 	my ($self) = @_[0];

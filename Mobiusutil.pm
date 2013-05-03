@@ -1029,5 +1029,69 @@ sub makeCommaFromArray
 	return $count;
 	
  }
+ 
+ sub trucateMarcToFit()
+ {
+	my $count=0;
+	my $marc = @_[1];
+	my @fields = $marc->fields();
+	my %fieldsToChop=();
+	foreach(@fields)
+	{
+		my $marcField = $_;
+		if($_->is_control_field())
+		{
+			my $subs = $_->data();
+			#print "adding control $subs\n";
+			$count+=length($subs);
+		}
+		else
+		{
+			my @subs = $_->subfields();
+			my $thisTagSize=0;
+			foreach(@subs)
+			{
+				my @t = @{$_};
+				for my $i(0..$#t)
+				{												
+					#print "adding ".@t[$i]."\n";
+					$count+=length(@t[$i]);
+					$thisTagSize+=length(@t[$i]);
+				}
+			}
+			if(($marcField->tag() > 899) && ($marcField->tag() != 907) && ($marcField->tag() != 998))
+			{
+				$fieldsToChop{$thisTagSize} = $marcField;
+			}
+		}
+	}
+	my %deletedFields = ();
+	my $worked = 2;
+	while($count>75000)
+	{	
+		$worked = 1;
+		my $foundOne = 0;
+		while ((my $internal, my $value ) = each(%fieldsToChop))
+		{
+			if(!$foundOne)
+			{
+				if(!$deletedFields{$internal})
+				{
+					$deletedFields{$internal}=0;
+					$marc->delete_field($value);
+					$count-=$internal;
+					$foundOne=1;
+				}
+			}
+		}
+		if(!$foundOne)
+		{
+			$worked=0;
+		}
+	}
+	my @ret = ($marc,$worked);
+	return $marc;
+	
+ }
 1;
 

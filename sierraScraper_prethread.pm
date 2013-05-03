@@ -31,8 +31,6 @@
 
 package sierraScraper;
  use MARC::Record;
- use MARC::File;
- use MARC::File::USMARC;
  use Loghandler;
  use recordItem;
  use strict; 
@@ -43,6 +41,8 @@ package sierraScraper;
  use utf8;
  use Encode;
  use Time::HiRes;
+ use Config;
+$Config{useithreads} or die('Recompile Perl with threads to run this program.');
  
  sub new   #DBhandler object,Loghandler object, Array of Bib Record ID's matching sierra_view.bib_record
  {
@@ -69,22 +69,16 @@ package sierraScraper;
 		'selects' => "",
 		'querytime' => 0,
 		'query' => "",
-		'type' => "",
-		'diskdump' => "",
-		'toobig' => ""
+		'type' => ""
 	};
 	my $t = shift;
-	#print "4: $t\n";
+	print "4: $t\n";
 	if($t)
 	{
 		$self->{'type'}=$t;
 	}
 	bless $self, $class;
-	if(($t) && ($t ne 'thread'))
-	{
-		print "It's not a thread\n";
-		gatherDataFromDB($self);
-	}
+	gatherDataFromDB($self);
     return $self;
  }
  
@@ -130,9 +124,7 @@ package sierraScraper;
 			$min = @row[0];
 		}
 		$min--;
-		$query = $tselects;
-		$query =~ s/\$recordSearch/COUNT(\*)/gi;
-		print "$query\n";
+		$query = "SELECT MAX(ID) FROM SIERRA_VIEW.BIB_RECORD";
 		@results = @{$dbHandler->query($query)};		
 		foreach(@results)
 		{
@@ -140,29 +132,23 @@ package sierraScraper;
 			my @row = @{$row};
 			$max = @row[0];
 		}
-		print "Max: $max\n";
-		$tselects=~s/\$recordSearch/RECORD_ID/gi;
-		
 		$offset=$min;
 		$increment=$min+$limit;
 		my @dumpedFiles = (0);
-		my $totalExtractedRecords=0;
-		my $zeroAdded=0;
-		while($totalExtractedRecords < $max )
+		
+		while($limit <= $max+1 )#$previousRecordCount!=$currentRecordCount)
 		{
 			my $lastElement = scalar(@dumpedFiles);
 			$lastElement--;
 			my $recordsOnDisk=@dumpedFiles[$lastElement];
-			
+			print "Records On disk: $recordsOnDisk\n";
+			print "Max: $max   From: $offset To: $increment\n";
 			my $previousTime=DateTime->now;
 			$self->{'querytime'} = 0;
 			my %standard = %{$self->{'standard'}};
 			#print $previousTime->hms."\n";
 			#print "Previous: $previousRecordCount Current: $currentRecordCount\n";
-			$previousRecordCount = scalar keys %standard;
-			$totalExtractedRecords = $previousRecordCount+$recordsOnDisk;
-			print "Records On disk: $recordsOnDisk, In Memory: $previousRecordCount, Total: $totalExtractedRecords\n";
-			print "Need: $max  Searching: $offset To: $increment\n";
+			$previousRecordCount = scalar keys %standard;			
 			$selects = $tselects;
 			$selects .= " AND ID > $offset AND ID <= $increment";
 			#print $selects."\n";
@@ -179,19 +165,6 @@ package sierraScraper;
 			$currentRecordCount = scalar keys %standard;
 			#$currentRecordCount+=$recordsOnDisk;
 			my $addedRecords = $currentRecordCount - $previousRecordCount;
-			if($addedRecords==0)
-			{
-				$zeroAdded++;
-				if($zeroAdded==100)
-				{
-					#Break loop, we have failed 100 times to get any new data!
-					$totalExtractedRecords = $max;
-				}
-			}
-			else
-			{
-				$zeroAdded=0;
-			}
 			my $duration = $self->{'querytime'};
 			my $rps = $addedRecords / $duration;			
 			if(@best[0]<$rps)
@@ -266,12 +239,12 @@ package sierraScraper;
 			
 			$oldRPS = $rps;
 			$increment+=$limit;
-			
+			if($increment > $max)
+			{
+				$increment = $max+1;
+			}
 			@dumpedFiles = @{dumpRamToDisk($self, \@dumpedFiles)};
 		}
-		print "Saving disk info:\n";
-		print Dumper(@dumpedFiles);
-		$self->{'diskdump'}=\@dumpedFiles;
 	}
 	else
 	{
@@ -283,233 +256,6 @@ package sierraScraper;
 		stuffLeader($self);
 	}
 	$self->{'selects'} = $tselects;
- }
- 
- sub gatherDataFromDB_MultiThread
- {
-	my $self = @_[0];
-	my $mobUtil = $self->{'mobiusutil'};
-	my $dbHandler = $self->{'dbhandler'};
-	my $log = $self->{'log'};
-	figureSelectStatement($self);							
-	my $selects = $self->{'selects'};
-	my @cha = split("",$selects);
-	my $tselects = "";	
-	my $chunks=0;
-	my $i=0;
-	foreach(@cha)
-	{
-		$tselects.=$_;
-	}
-	
-	if($self->{'type'} eq 'full')
-	{	#BREAK UP THE QUERY INTO MANAGABLE CHUNKS
-		if(index((uc($tselects)),"SELECT")>-1){$chunks=1;}
-	}
-	
-	if($chunks)
-	{
-		use Config; 
-		$Config{useithreads} or die('Recompile Perl with threads to run this program.');
-		use threads;
-		
-		my $query = "SELECT MIN(ID) FROM SIERRA_VIEW.BIB_RECORD";
-		my @results = @{$dbHandler->query($query)};		
-		my $min = 0;
-		my $max = 1;
-		foreach(@results)
-		{
-			my $row = $_;
-			my @row = @{$row};
-			$min = @row[0];
-		}
-		$min--;
-		$query = $tselects;
-		$query =~ s/\$recordSearch/COUNT(\*)/gi;#"SELECT MAX(ID) FROM SIERRA_VIEW.BIB_RECORD";
-		print "$query\n";
-		@results = @{$dbHandler->query($query)};		
-		foreach(@results)
-		{
-			my $row = $_;
-			my @row = @{$row};
-			$max = @row[0];
-		}
-		print "Max: $max\n";
-		$tselects=~s/\$recordSearch/RECORD_ID/gi;
-		print "$tselects\n";
-		my @dumpedFiles = (0);
-		my $finishedRecordCount=0;
-		my @threadTracker = ();
-		my $threadsAllowed = 3;
-		my $threadsAlive=1;
-		my $offset = $min;
-		my $limit = 100;
-		my $increment = $min+$limit;
-		
-		while($threadsAlive)#$previousRecordCount!=$currentRecordCount)
-		{
-			my $workingThreads=0;
-			my @newThreads=();
-			print "Thread Tracker:\n";
-			my $threadJustFinished=0;
-			#print Dumper(\@threadTracker);
-			foreach(@threadTracker)
-			{			
-				my $done = threadDone($_);
-				if($done)
-				{
-					print "$_ Thread Finished.... Cleaning up\n";
-					$threadJustFinished=1;
-					my $pidReader = new Loghandler($_);
-					my @lines = @{ $pidReader->readFile() };
-					$pidReader->deleteFile();
-					undef $pidReader;
-					if(scalar @lines >1)
-					{
-						@lines[0] =~ s/\n//;  
-						@lines[1] =~ s/\n//;
-						push(@dumpedFiles,@lines[0]);
-						$finishedRecordCount+= @lines[1];
-					}
-					$workingThreads--;
-				}
-				else
-				{
-					$workingThreads++;
-					push(@newThreads,$_);
-				}
-			}
-			@threadTracker=@newThreads;
-			print "Working Threads: $workingThreads  Allowed Threads: $threadsAllowed\n";
-			if($workingThreads<$threadsAllowed)
-			{
-				if(!$threadJustFinished)
-				{
-					if($finishedRecordCount<$max)
-					{
-						print "Starting new thread\n";
-						print "Max: $max   From: $offset To: $increment\n";
-						my $thisPid = $mobUtil->chooseNewFileName("/tmp","0","sierrapid");
-						print "Pid: $thisPid\n";
-						$selects = $tselects;
-						$selects .= " AND ID > $offset AND ID <= $increment";
-						my $newS = new sierraScraper($dbHandler,$log,$selects,'thread');
-						#print "Started the thread... now pushing to array\n";
-						push(@threadTracker,$thisPid);
-						#print "Pushed.... creating...\n";
-						my $thr = threads->create(\&startThread, $newS, $thisPid);
-						#print "Created!\n";
-						$thr->detach();
-						print "Detached!\n";
-						#print Dumper($newS);
-						#print Dumper($self);
-						$offset+=$limit;
-						$increment+=$limit;
-						$workingThreads++;
-					}
-					else
-					{
-						print "We have reached our target record count... script is winding down\n";
-					}
-				}
-			}
-			
-			if($workingThreads==0)
-			{
-				$threadsAlive=0;
-			}
-			
-			
-			print "Records On disk: $finishedRecordCount\n";
-			sleep(15);
-		}
-	}
-	else
-	{
-		stuffStandardFields($self);
-		stuffSpecials($self);
-		stuff945($self);
-		stuff907($self);
-		stuff998alternate($self);
-		stuffLeader($self);
-	}
-	$self->{'selects'} = $tselects;
- }
- 
- sub startThread
- {
-	my $sierraScraperObject = @_[0];
-	my $pidFile = @_[1];
-	my $pidWriter = new Loghandler($pidFile);
-	$pidWriter->truncFile("0");
-	my @dumpedFiles = @{$sierraScraperObject->go()};
-	
-	if(scalar @dumpedFiles > 0)
-	{
-		my $Count = @dumpedFiles[1];
-		my $filename = @dumpedFiles[0];
-		$pidWriter->truncFile("$filename\n$Count");
-	}
-	else
-	{
-		$pidWriter->truncFile("1");
-	}
-	return 0;
- }
- 
- sub go
- {
-	my ($self) = @_[0];
-	
-	my $dbHandler = $self->{"dbhandler"};
-	my %conf = %{$dbHandler->getConnectionInfo()};
-	my $db = new DBhandler($conf{"dbname"},$conf{"host"},$conf{"login"},$conf{"password"},$conf{"port"});
-	$self->{"dbhandler"}=$db;
-	bless $self;
-	print "Ok - staring GO Method\n";
-	figureSelectStatement($self);
-	print "Ok - figureSelectStatement\n";
-	stuffStandardFields($self);
-	print "Ok - stuffStandardFields\n";
-	stuffSpecials($self);
-	print "Ok - stuffSpecials\n";
-	stuff945($self);
-	print "Ok - stuff945\n";
-	stuff907($self);
-	print "Ok - stuff907\n";
-	stuff998alternate($self);
-	print "Ok - stuff998alternate\n";
-	stuffLeader($self);
-	print "Ok - stuffLeader\n";
-	my @t = ();
-	my @dumpedFiles = @{dumpRamToDisk($self, \@t)};
-	return \@dumpedFiles;
- }
- 
- sub threadDone
- {
-	 my $pidFile = @_[0];
-	 my $pidReader = new Loghandler($pidFile);
-	my @lines = @{ $pidReader->readFile() };
-	undef $pidReader;
-	if(scalar @lines >1)
-	{
-		return 1;
-	}
-	elsif(scalar @lines ==1)
-	{
-		my $line =@lines[0];
-		$line =~ s/\n//;
-		if($line eq "0")
-		{
-			return 0;
-		}
-		else
-		{
-			return 1;
-		}
-	}
-	return 0;
  }
  
  sub getSingleStandardFields
@@ -1172,8 +918,8 @@ sub stuff998alternate
 		@marcFields = @{pushMARCArray($self,\@marcFields,$_,$recID)};
 	}
 	
-	#turn off sorting because it's a cpu hog when doing huge dumps
-	if($self->{'type'} ne 'full')
+	#turn off sorting because it's a cpu hog
+	if(0)
 	{
 		#Sort by MARC Tag
 
@@ -1263,36 +1009,11 @@ sub stuff998alternate
  {
 	my $self = @_[0];
 	my %standard = %{$self->{'standard'}};
-	my $dumpedFiles = $self->{'diskdump'};
 	my @marcout;
 	
-	#format memory into marc
 	while ((my $internal, my $value ) = each(%standard))
 	{
 		push(@marcout,getSingleMARC($self,$internal));
-	}
-	#look for any dumped files and read those into the array
-	if(ref $dumpedFiles eq 'ARRAY')
-	{
-		my @dumpedFiles = @{$dumpedFiles};
-		print Dumper(\@dumpedFiles);
-		foreach(@dumpedFiles)
-		{	
-			my $marcfile = $_;
-			my $check = new Loghandler($marcfile);
-			if($check->fileExists())
-			{
-				my $file = MARC::File::USMARC->in( $marcfile );
-				my $r =0;
-				while ( my $marc = $file->next() ) 
-				{						
-					$r++;
-					push(@marcout,$marc);
-				}
-				print "Read $r records from $_\n";
-				$check->deleteFile();
-			}
-		}
 	}
 	return \@marcout;
  }
@@ -1615,11 +1336,9 @@ sub stuff998alternate
  {
 	my $self = @_[0];
 	my %standard = %{$self->{'standard'}};
-	my $mobUtil = $self->{'mobiusutil'};
-	my $extraInformationOutput = $self->{'toobig'};
 	my @dumpedFiles = @{@_[1]};
 	my @newDump=@dumpedFiles;
-	if(scalar keys %standard >50000)
+	if(scalar keys %standard >10000)
 	{	
 		@newDump=();
 		my $recordsInFiles=0;
@@ -1636,26 +1355,19 @@ sub stuff998alternate
 			#print Dumper(@newDump);
 		}
 		my $log = $self->{'log'};
+		my $mobiusUtil = $self->{'mobiusutil'};
 		my @try = ('nine45','nine07','nine98','specials','standard');
+		my $fileName = $mobiusUtil->chooseNewFileName("/tmp/temp","tempmarc","mrc");
 		my @marc = @{getAllMARC($self)};
+		my $marcout = new Loghandler($fileName);
 		my $output;
 		
 		foreach(@marc)
 		{
 			my $marc = $_;
-			my $count = $mobUtil->marcRecordSize($marc);
-			if($count<75000) #ISO2709 MARC record is limited to 99,999 octets (this number is calculated differently than my size function so I compare to a lower number)
-			{
-				$marc->encoding( 'UTF-8' );
-				$output.=$marc->as_usmarc();
-			}
-			else
-			{
-				$extraInformationOutput.=$marc->subfield('907',"a");
-			}
+			$marc->encoding( 'UTF-8' );
+			$output.=$marc->as_usmarc();
 		}
-		my $fileName = $mobUtil->chooseNewFileName("/tmp/temp","tempmarc","mrc");
-		my $marcout = new Loghandler($fileName);
 		$marcout->addLine($output);
 		push(@newDump, $fileName);
 		my $addedToDisk = scalar keys %standard;
@@ -1669,14 +1381,7 @@ sub stuff998alternate
 		}
 	}
 	#print Dumper(\@newDump);
-	$self->{'toobig'} = $extraInformationOutput;
 	return \@newDump;
- }
- 
- sub getTooBigList
- {
-	my $self = @_[0];
-	return $self->{'toobig'};
  }
  
  

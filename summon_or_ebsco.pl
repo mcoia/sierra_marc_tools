@@ -203,6 +203,7 @@
 							if($valid)
 							{
 								my @marc = @{$sierraScraper->getAllMARC()};
+								$extraInformationOutput.=$sierraScraper->getTooBigList();
 								my $marcout = new Loghandler($marcOutFile);
 								$marcout->deleteFile();
 								my $output;

@@ -2,8 +2,8 @@
 #I think that these queries need to be re-worked. These are exactly copied from scheduler.
 # ~~ is the equal sign! (because there are equal signs in the queries we can't delimit by that)
 #	
-# It's impairitive that the "FULL" queries do not contain an "ORDER BY" phrase because the software 
-# appends to these queries to keep the query from running longer than the threshold.
+# FULL queries need to have an additional variable $recordSearch. This is so that the code can do
+# count(*) ahead of time so it knows when to stop searching.
 # The software will append RECORD_ID > X AND RECORD_ID < Y - Repeat for the population for the DB
 summon_wjc_adds~~SELECT RECORD_ID FROM SIERRA_VIEW.BIB_RECORD WHERE 
 			(
@@ -34,7 +34,7 @@ summon_wjc_cancels~~SELECT RECORD_ID FROM SIERRA_VIEW.BIB_RECORD WHERE
 			(RECORD_ID IN (SELECT ID FROM SIERRA_VIEW.RECORD_METADATA WHERE 
 			(RECORD_LAST_UPDATED_GMT > TO_DATE('$dbFromDate','YYYY-MM-DD HH24:MI:MS')) AND 
 			(RECORD_LAST_UPDATED_GMT < TO_DATE('$dbToDate','YYYY-MM-DD HH24:MI:MS'))));
-summon_wjc_full~~SELECT RECORD_ID FROM SIERRA_VIEW.BIB_RECORD WHERE 
+summon_wjc_full~~SELECT $recordSearch FROM SIERRA_VIEW.BIB_RECORD WHERE 
 			(
 				RECORD_ID IN
 				(
@@ -67,7 +67,7 @@ summon_trcc_cancels~~SELECT RECORD_ID FROM SIERRA_VIEW.BIB_RECORD WHERE
 			(RECORD_ID IN (SELECT ID FROM SIERRA_VIEW.RECORD_METADATA WHERE 
 			(RECORD_LAST_UPDATED_GMT > TO_DATE('$dbFromDate','YYYY-MM-DD HH24:MI:MS')) AND 
 			(RECORD_LAST_UPDATED_GMT < TO_DATE('$dbToDate','YYYY-MM-DD HH24:MI:MS'))));
-summon_trcc_full~~SELECT RECORD_ID FROM SIERRA_VIEW.BIB_RECORD WHERE 
+summon_trcc_full~~SELECT $recordSearch FROM SIERRA_VIEW.BIB_RECORD WHERE 
 			(RECORD_ID IN(SELECT BIB_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_LOCATION WHERE LOCATION_CODE BETWEEN 'tr' AND 'trzzz'))
 			AND			
 			(BCODE3='z' OR BCODE3='-' OR BCODE3='|');
@@ -101,7 +101,7 @@ summon_ucm_cancels~~SELECT RECORD_ID FROM SIERRA_VIEW.BIB_RECORD WHERE
 			(RECORD_ID IN (SELECT ID FROM SIERRA_VIEW.RECORD_METADATA WHERE 
 			(RECORD_LAST_UPDATED_GMT > TO_DATE('$dbFromDate','YYYY-MM-DD HH24:MI:MS')) AND 
 			(RECORD_LAST_UPDATED_GMT < TO_DATE('$dbToDate','YYYY-MM-DD HH24:MI:MS'))));
-summon_ucm_full~~SELECT RECORD_ID FROM SIERRA_VIEW.BIB_RECORD WHERE 				
+summon_ucm_full~~SELECT $recordSearch FROM SIERRA_VIEW.BIB_RECORD WHERE 				
 			(BCODE3!='c' AND BCODE3!='d' AND BCODE3!='l' AND BCODE3!='m' AND BCODE3!='n' AND BCODE3!='s' AND BCODE3!='t' )
 			AND
 			RECORD_ID IN
@@ -138,7 +138,7 @@ summon_mssu_cancels~~SELECT RECORD_ID FROM SIERRA_VIEW.BIB_RECORD WHERE
 			(RECORD_ID IN (SELECT ID FROM SIERRA_VIEW.RECORD_METADATA WHERE 
 			(RECORD_LAST_UPDATED_GMT > TO_DATE('$dbFromDate','YYYY-MM-DD HH24:MI:MS')) AND 
 			(RECORD_LAST_UPDATED_GMT < TO_DATE('$dbToDate','YYYY-MM-DD HH24:MI:MS'))));
-summon_mssu_full~~SELECT RECORD_ID FROM SIERRA_VIEW.BIB_RECORD WHERE
+summon_mssu_full~~SELECT $recordSearch FROM SIERRA_VIEW.BIB_RECORD WHERE
 			(BCODE3='-' OR BCODE3='z' OR BCODE3='l')
 			AND
 			RECORD_ID IN
@@ -173,7 +173,7 @@ ebsco_wwu_cancels~~SELECT RECORD_ID FROM SIERRA_VIEW.BIB_RECORD WHERE
 			(RECORD_ID IN (SELECT ID FROM SIERRA_VIEW.RECORD_METADATA WHERE 
 			(RECORD_LAST_UPDATED_GMT > TO_DATE('$dbFromDate','YYYY-MM-DD HH24:MI:MS')) AND 
 			(RECORD_LAST_UPDATED_GMT < TO_DATE('$dbToDate','YYYY-MM-DD HH24:MI:MS'))));
-ebsco_wwu_full~~SELECT RECORD_ID FROM SIERRA_VIEW.BIB_RECORD WHERE 				
+ebsco_wwu_full~~SELECT $recordSearch FROM SIERRA_VIEW.BIB_RECORD WHERE 				
 			(BCODE3='-')
 			AND
 			RECORD_ID IN
@@ -206,7 +206,7 @@ ebsco_midwestern_babtist_cancels~~SELECT RECORD_ID FROM SIERRA_VIEW.BIB_RECORD W
 			(RECORD_ID IN (SELECT ID FROM SIERRA_VIEW.RECORD_METADATA WHERE 
 			(RECORD_LAST_UPDATED_GMT > TO_DATE('$dbFromDate','YYYY-MM-DD HH24:MI:MS')) AND 
 			(RECORD_LAST_UPDATED_GMT < TO_DATE('$dbToDate','YYYY-MM-DD HH24:MI:MS'))));
-ebsco_midwestern_babtist_full~~SELECT RECORD_ID FROM SIERRA_VIEW.BIB_RECORD WHERE 				
+ebsco_midwestern_babtist_full~~SELECT $recordSearch FROM SIERRA_VIEW.BIB_RECORD WHERE 				
 			(BCODE3='-' AND BCODE2!='a' AND BCODE2!='z' AND BCODE2!='l')
 			AND
 			RECORD_ID IN
@@ -240,7 +240,7 @@ ebsco_maryville_cancels~~SELECT RECORD_ID FROM SIERRA_VIEW.BIB_RECORD WHERE
 			(RECORD_ID IN (SELECT ID FROM SIERRA_VIEW.RECORD_METADATA WHERE 
 			(RECORD_LAST_UPDATED_GMT > TO_DATE('$dbFromDate','YYYY-MM-DD HH24:MI:MS')) AND 
 			(RECORD_LAST_UPDATED_GMT < TO_DATE('$dbToDate','YYYY-MM-DD HH24:MI:MS'))));
-ebsco_maryville_full~~SELECT RECORD_ID FROM SIERRA_VIEW.BIB_RECORD WHERE
+ebsco_maryville_full~~SELECT $recordSearch FROM SIERRA_VIEW.BIB_RECORD WHERE
 			(BCODE3!='n' AND BCODE3!='s')
 			AND
 			RECORD_ID IN
