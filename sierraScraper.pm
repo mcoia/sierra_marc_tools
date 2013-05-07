@@ -82,7 +82,11 @@ package sierraScraper;
 	bless $self, $class;
 	if(($t) && ($t ne 'thread'))
 	{
-		print "It's not a thread\n";
+		#print "It's not a thread\n";
+		gatherDataFromDB($self);
+	}
+	elsif(!$t)
+	{
 		gatherDataFromDB($self);
 	}
     return $self;

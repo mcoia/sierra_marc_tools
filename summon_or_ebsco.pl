@@ -121,7 +121,7 @@
 					else
 					{
 						$valid = 0;
-						print "You need to specify the type 'adds' or 'cancels'\n";
+						print "You need to specify the type 'adds' or 'cancels' or 'full'\n";
 					}
 				}
 				else
@@ -248,7 +248,7 @@
 								{						
 									$marcout->addLine($output);
 									my @files = ($marcOutFile);
-									if(0)  #switch FTP on and off easily
+									if(1)  #switch FTP on and off easily
 									{
 										eval{$mobUtil->sendftp($conf{"ftphost"},$conf{"ftplogin"},$conf{"ftppass"},$remoteDirectory,\@files,$log);};
 										 if ($@) 
@@ -264,22 +264,6 @@
 								else
 								{
 									$marcOutFile = "(none)";
-								}
-								
-								if(0)
-								{
-									my @errors = @{$mobUtil->compare2MARCFiles($marcOutFile,"/tmp/run/bb.mrc", $log, 907, "a" )};
-									
-									my $errors;
-									foreach(@errors)
-									{
-										$errors.= $_."\r\n";
-									}
-									print $errors;
-															
-									$email = new email($conf{"fromemail"},\@tolist,0,0,\%conf);
-									$email->send("Errors",encode("utf-8",$errors));
-									#print "done emailing\n";
 								}
 								if($valid)
 								{
