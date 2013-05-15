@@ -39,6 +39,7 @@ package sierraScraper;
  use Data::Dumper;
  use Mobiusutil;
  use Date::Manip;
+ use DateTime::Format::Duration;
  use String::Multibyte;
  use utf8;
  use Encode;
@@ -71,7 +72,8 @@ package sierraScraper;
 		'query' => "",
 		'type' => "",
 		'diskdump' => "",
-		'toobig' => ""
+		'toobig' => "",
+		'toobigtocut' => ""
 	};
 	my $t = shift;
 	#print "4: $t\n";
@@ -1177,7 +1179,7 @@ sub stuff998alternate
 	}
 	
 	#turn off sorting because it's a cpu hog when doing huge dumps
-	if($self->{'type'} ne 'full')
+	if(1)#$self->{'type'} ne 'full')
 	{
 		#Sort by MARC Tag
 
@@ -1215,7 +1217,8 @@ sub stuff998alternate
 	#create MARC:Record Object and stuff fields
 	my $ret = MARC::Record->new();
 	
-	$ret->append_fields( @marcFields );
+	#$ret->append_fields( @marcFields );
+	$ret->insert_fields_ordered( @marcFields );
 	#Alter the Leader to match Sierra
 	my $leaderString = $ret->leader();
 	#print "Leader was $leaderString\n";
@@ -1621,6 +1624,7 @@ sub stuff998alternate
 	my %standard = %{$self->{'standard'}};
 	my $mobUtil = $self->{'mobiusutil'};
 	my $extraInformationOutput = $self->{'toobig'};
+	my $couldNotBeCut = $self->{'toobigtocut'};
 	my @dumpedFiles = @{@_[1]};
 	my @newDump=@dumpedFiles;
 	if(scalar keys %standard >50000)
@@ -1648,16 +1652,28 @@ sub stuff998alternate
 		{
 			my $marc = $_;
 			my $count = $mobUtil->marcRecordSize($marc);
-			if($count<75000) #ISO2709 MARC record is limited to 99,999 octets (this number is calculated differently than my size function so I compare to a lower number)
+			my $addThisone=1;
+			if($count>99999) #ISO2709 MARC record is limited to 99,999 octets 
+			{
+				my @re = @{$mobUtil->trucateMarcToFit($marc)};
+				$marc = @re[0];
+				$addThisone=@re[1];
+				if($addThisone)
+				{
+					$extraInformationOutput.=$marc->subfield('907',"a");
+				}
+			}
+			if($addThisone) #ISO2709 MARC record is limited to 99,999 octets 
 			{
 				$marc->encoding( 'UTF-8' );
 				$output.=$marc->as_usmarc();
 			}
 			else
-			{
-				$extraInformationOutput.=$marc->subfield('907',"a");
+			{	
+				$couldNotBeCut.=$marc->subfield('907',"a");
 			}
 		}
+		
 		my $fileName = $mobUtil->chooseNewFileName("/tmp/temp","tempmarc","mrc");
 		my $marcout = new Loghandler($fileName);
 		$marcout->addLine($output);
@@ -1674,13 +1690,15 @@ sub stuff998alternate
 	}
 	#print Dumper(\@newDump);
 	$self->{'toobig'} = $extraInformationOutput;
+	$self->{'toobigtocut'} = $couldNotBeCut;
 	return \@newDump;
  }
  
  sub getTooBigList
  {
 	my $self = @_[0];
-	return $self->{'toobig'};
+	my @ret = ($self->{'toobig'},$self->{'toobigtocut'});
+	return \@ret;
  }
  
  

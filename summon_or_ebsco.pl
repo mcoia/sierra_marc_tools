@@ -192,18 +192,20 @@
 								$failString = "Scrape Fail";
 							}
 							my $recCount=0;
-							my $extraInformationOutput = "";
 							my $format = DateTime::Format::Duration->new(
 								pattern => '%M:%S' #%e days, %H hours,
 							);
 							my $afterProcess = DateTime->now(time_zone => "local");
 							my $difference = $afterProcess - $dt;
 							my $duration =  $format->format_duration($difference);
-							
+							my $extraInformationOutput = "";
+							my $couldNotBeCut = "";
 							if($valid)
 							{
 								my @marc = @{$sierraScraper->getAllMARC()};
-								$extraInformationOutput.=$sierraScraper->getTooBigList();
+								my @tobig = @{$sierraScraper->getTooBigList()};
+								$extraInformationOutput = @tobig[0];
+								$couldNotBeCut = @tobig[1];
 								my $marcout = new Loghandler($marcOutFile);
 								$marcout->deleteFile();
 								my $output;
@@ -212,8 +214,20 @@
 								{
 									my $marc = $_;
 									$marc->encoding( 'UTF-8' );
-									my $count = $mobUtil->marcRecordSize($marc);
-									if($count<75000) #ISO2709 MARC record is limited to 99,999 octets (this number is calculated differently than my size function so I compare to a lower number)
+									my @count = @{$mobUtil->trucateMarcToFit($marc)};
+									#print @count[1]."\n";
+									my $addThisone=1;
+									if(@count[1]==1)
+									{
+										$marc = @count[0];
+										$extraInformationOutput.=$marc->subfield('907',"a");
+									}
+									elsif(@count[1]==0)
+									{
+										$addThisone=0;
+									}
+									
+									if($addThisone) #ISO2709 MARC record is limited to 99,999 octets 
 									{
 										#ebsco cancels needs the leader altered
 										if(($platform eq 'ebsco' ) && ($type eq 'cancels'))
@@ -228,6 +242,7 @@
 											}
 											$marc->leader($finalLeader);
 										}
+										print $marc->as_formatted();
 										$barcodes.=$marc->subfield('907',"a");
 										$barcodes.="\r\n";
 										$output.=$marc->as_usmarc();
@@ -235,20 +250,24 @@
 									}
 									else
 									{
-										$extraInformationOutput.=$marc->subfield('907',"a");
+										$couldNotBeCut.=$marc->subfield('907',"a");
 									}
 								}
 								
 								if(length($extraInformationOutput)>0)
 								{
-									$extraInformationOutput="These records were omitted due to the 100000 size limits: $extraInformationOutput";
+									$extraInformationOutput="These records were TRUNCATED due to the 100000 size limits: $extraInformationOutput \r\n\r\n";
+								}
+								if(length($couldNotBeCut)>0)
+								{
+									$couldNotBeCut="These records were OMITTED due to the 100000 size limits: $couldNotBeCut \r\n\r\n";
 								}
 								
 								if($recCount>0)
 								{						
 									$marcout->addLine($output);
 									my @files = ($marcOutFile);
-									if(1)  #switch FTP on and off easily
+									if(0)  #switch FTP on and off easily
 									{
 										eval{$mobUtil->sendftp($conf{"ftphost"},$conf{"ftplogin"},$conf{"ftppass"},$remoteDirectory,\@files,$log);};
 										 if ($@) 
@@ -273,14 +292,16 @@
 									$log->addLogLine("$school $platform $type: $marcOutFile");
 									$log->addLogLine("$school $platform $type: $recCount Record(s)");
 									$email = new email($conf{"fromemail"},\@tolist,0,1,\%conf);
-									$email->send("RMO $school - $platform $type Success - Job # $dateString","Duration: $duration\r\n\r\nThis process finished without any errors!\r\n\r\nHere is some information:\r\n\r\nOutput File: \t\t$marcOutFile\r\n$recCount Record(s)\r\nFTP location: ".$conf{"ftphost"}."\r\nUserID: ".$conf{"ftplogin"}."\r\nFolder: $remoteDirectory\r\n\r\n$extraInformationOutput\r\n\r\n-MOBIUS Perl Squad-\r\n\r\n$selectQuery\r\n\r\nThese are the included records:\r\n$barcodes");
+									$email->send("RMO $school - $platform $type Success - Job # $dateString","Duration: $duration\r\n\r\nThis process finished without any errors!\r\n\r\nHere is some information:\r\n\r\nOutput File: \t\t$marcOutFile\r\n$recCount Record(s)\r\nFTP location: ".$conf{"ftphost"}."\r\nUserID: ".$conf{"ftplogin"}."\r\nFolder: $remoteDirectory\r\n\r\n$extraInformationOutput $couldNotBeCut -MOBIUS Perl Squad-\r\n\r\n$selectQuery\r\n\r\nThese are the included records:\r\n$barcodes");
 								}
 							}
 				#OUTPUT TO THE CSV
 							if($conf{"csvoutput"})
 							{
 								 my $csv = new Loghandler($conf{"csvoutput"});
-								 my $csvline = "\"$dateString\",\"$school\",\"$platform\",\"$type\",\"$failString\",\"$marcOutFile\",\"$duration\",\"$recCount Record(s)\",\"".$conf{"ftphost"}."\",\"".$conf{"ftplogin"}."\",\"$remoteDirectory\",\"$extraInformationOutput\"";
+								 my $csvline = "\"$dateString\",\"$school\",\"$platform\",\"$type\",\"$failString\",\"$marcOutFile\",\"$duration\",\"$recCount Record(s)\",\"".$conf{"ftphost"}."\",\"".$conf{"ftplogin"}."\",\"$remoteDirectory\",\"$extraInformationOutput\",\"$couldNotBeCut\"";
+								 $csvline=~s/\\n//g;
+								 $csvline=~s/\\r//g;
 								 $csv->addLine($csvline);
 								 undef $csv;
 							 

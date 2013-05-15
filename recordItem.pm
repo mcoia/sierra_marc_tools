@@ -43,9 +43,10 @@ package recordItem;
  my $marcRecord = MARC::Record->new();
 	my $class = shift;
 	my @t = ();
+	my $mobiusUtil = new Mobiusutil();
     my $self = 
 	{
-		id => shift,		
+		id => $mobiusUtil->trim(shift),
 		indicator1 => shift,
 		indicator2 => shift,
 		data => shift,
@@ -142,26 +143,30 @@ package recordItem;
 		my $changed = 1;
 		if($id ne '505')
 		{
-			while($changed)
+			my $i=0;
+			while($i<$#brokenFields)
 			{
-				$changed=0;			
-				for my $i(0..$#brokenFields)
+				
+				my $thisRec = @brokenFields[$i]->getID();
+				if($i+1 <= $#brokenFields)
 				{
-					my $thisRec = @brokenFields[$i]->getID();
-					if($i+1 <= $#brokenFields)
+					my $thisRecordItem = @brokenFields[$i+1];
+					my $nextRec = $thisRecordItem->getID();
+					if($nextRec lt $thisRec)
 					{
-						my $thisRecordItem = @brokenFields[$i+1];
-						my $nextRec = $thisRecordItem->getID();
-						if($nextRec lt $thisRec)
-						{
-							#print "$nextRec was lower in the alphabet than $thisRec\n";
-							$thisRec = @brokenFields[$i];
-							@brokenFields[$i]=@brokenFields[$i+1];
-							@brokenFields[$i+1] = $thisRec;
-							$changed=1;
-						}
+						#print "$nextRec was lower in the alphabet than $thisRec\n";
+						$thisRec = @brokenFields[$i];
+						@brokenFields[$i]=@brokenFields[$i+1];
+						@brokenFields[$i+1] = $thisRec;
+						$i-=2;
 					}
 				}
+				$i++;
+				if($i<0)
+				{
+					$i=0;
+				}
+				
 			}
 		}
 		#print "\n\n\n\n After sort:\n";

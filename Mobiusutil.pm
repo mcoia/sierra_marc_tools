@@ -997,10 +997,20 @@ sub makeCommaFromArray
 	
  }
 
- sub marcRecordSize()
+ sub marcRecordSize
  {
 	my $count=0;
 	my $marc = @_[1];
+	my $out="";
+	eval{$out = $marc->as_usmarc();};
+	if($@)
+	{
+		return 0;
+	}
+	#print "size: ".length($out)."\n";
+	return length($out);
+	
+## This code below should not execute
 	my @fields = $marc->fields();
 	foreach(@fields)
 	{
@@ -1030,67 +1040,68 @@ sub makeCommaFromArray
 	
  }
  
- sub trucateMarcToFit()
+ sub trucateMarcToFit
  {
-	my $count=0;
 	my $marc = @_[1];
-	my @fields = $marc->fields();
-	my %fieldsToChop=();
-	foreach(@fields)
+	local $@;
+	my $bcode = $marc->subfield('907',"a");
+	my $count = marcRecordSize('',$marc);
+	#print "Recieved $count\n";
+	if($count)
 	{
-		my $marcField = $_;
-		if($_->is_control_field())
+		my @fields = $marc->fields();
+		my %fieldsToChop=();
+		foreach(@fields)
 		{
-			my $subs = $_->data();
-			#print "adding control $subs\n";
-			$count+=length($subs);
-		}
-		else
-		{
-			my @subs = $_->subfields();
-			my $thisTagSize=0;
-			foreach(@subs)
-			{
-				my @t = @{$_};
-				for my $i(0..$#t)
-				{												
-					#print "adding ".@t[$i]."\n";
-					$count+=length(@t[$i]);
-					$thisTagSize+=length(@t[$i]);
-				}
-			}
+			my $marcField = $_;
+			#print $marcField->tag()."\n";
+			
 			if(($marcField->tag() > 899) && ($marcField->tag() != 907) && ($marcField->tag() != 998))
 			{
-				$fieldsToChop{$thisTagSize} = $marcField;
+				my $id = (scalar keys %fieldsToChop)+1;
+				#print "adding to chop list: $id\n";
+				$fieldsToChop{$id} = $marcField;
 			}
 		}
-	}
-	my %deletedFields = ();
-	my $worked = 2;
-	while($count>75000)
-	{	
-		$worked = 1;
-		my $foundOne = 0;
-		while ((my $internal, my $value ) = each(%fieldsToChop))
-		{
-			if(!$foundOne)
+		my %deletedFields = ();
+		
+		my $worked = 2;
+		
+		while($count>99999 && ((scalar keys %deletedFields)<(scalar keys %fieldsToChop)))
+		{	
+			$worked = 1;
+			my $foundOne = 0;
+			while ((my $internal, my $value ) = each(%fieldsToChop))
 			{
-				if(!$deletedFields{$internal})
+				if(!$foundOne)
 				{
-					$deletedFields{$internal}=0;
-					$marc->delete_field($value);
-					$count-=$internal;
-					$foundOne=1;
+					if(!exists($deletedFields{$internal}))
+					{
+					#print "$internal going onto deleted\n";
+						$deletedFields{$internal}=1;
+						$marc->delete_field($value);
+						#print "Chopping: ".$value->tag()."\n";#." contents: ".$value->as_formatted()."\n";
+						#$count-=$internal;
+						$count = marcRecordSize('',$marc);
+						#print "Now it's $count\n";
+						$foundOne=1;
+					}
 				}
-			}
+			}			
+			print "deletedFields: ".(scalar keys %deletedFields)."\nto chop: ".(scalar keys %fieldsToChop)."\n";
 		}
-		if(!$foundOne)
+		if($count>99999)
 		{
 			$worked=0;
 		}
+		#print $marc->as_formatted();
+		my @ret = ($marc,$worked);
+		return \@ret;
 	}
-	my @ret = ($marc,$worked);
-	return $marc;
+	else
+	{
+		return ($marc,0);
+	}
 	
  }
 1;

@@ -38,7 +38,15 @@
  use sierraScraper;
  use Data::Dumper;
  use email;
+ use MARC::Record;
+ use MARC::File;
+ use MARC::File::USMARC;
+ use MARC::Charset 'marc8_to_utf8';
+ use DateTime;
+ use Expect;
+ use Net::SSH::Expect;
  use Encode;
+ use utf8;
  
  #use warnings;
  #use diagnostics; 
@@ -71,18 +79,134 @@
 							#{
 						#		$errors.= $_."\r\n";
 					#		}
-					
-			my @errors = @{$mobUtil->compare2MARCFiles("/tmp/run/mout/Summon_ADDS_UCM_04172013.out","/tmp/run/testucm.out", $log, 907, "a" )};
-			my $errors;
-			foreach(@errors)
+			
+
+			my $firstFile = "/tmp/run/mout/tempmarc0.mrc";
+			my $loge = new Loghandler($firstFile);
+			my $outputMarcFile = $mobUtil->chooseNewFileName("/tmp/run","dump","mrc");
+			my @append = ("/tmp/run/mout/tempmarc0.mrc","/tmp/run/mout/tempmarc1.mrc","/tmp/run/mout/tempmarc4.mrc","/tmp/run/mout/tempmarc7.mrc");
+			my $logo = new Loghandler($outputMarcFile);
+			my $out="";
+			#my @lines = @{$loge->readFile()};
+			my $t = "";
+			#my $t = @lines[0];
+			my $pointer = 0;
+			my $fileout=0;
+			foreach(@append)
 			{
-				$errors.= $_."\r\n";
+				$loge = new Loghandler($_);
+				my @lines = @{$loge->readFile()};
+				$out.=@lines[0];
 			}
-			print $errors;
-			my @tos = ('junk@monsterfro.com','scott@mobiusconsortium.org');										
-			my $email = new email('junk@monsterfro.com',\@tos,0,0,\%conf);
-			$email->send("Errors",encode("utf-8",$errors));
-			print "done emailing\n";
+			$loge=new Loghandler("/tmp/run/all.mrc");
+			$loge->addLine($out);
+			if(0)
+			{
+			while($pointer<length($t))
+			{
+				$fileout++;
+				if( $fileout%10000000 == 0 )
+				{
+					$logo->addLine($out);
+					$outputMarcFile = $mobUtil->chooseNewFileName("/tmp/run","dump","mrc");
+					$logo = new Loghandler($outputMarcFile);
+					$out="";
+					$fileout=0;
+				}
+				$out.=substr($t,$pointer,1);
+				$pointer++;
+			}
+			$logo->addLine($out);
+			}
+			if(0)
+			{
+			my $writing=1;
+			while($pointer<length($t))
+			{
+				if(!$writing)
+				{
+				
+				my $mod = $pointer % 10;
+				if($mod==0)
+				{
+					my $temp = substr($t,$pointer,50);
+					print "$temp\n";
+				}
+					if(substr($t,$pointer,5) eq 'OCoLC')
+					{
+						$writing=1;
+						$logo->addLine($out);
+						$out="";
+						$logo = new Loghandler("/tmp/run/after.mrc");
+						$pointer-=5;
+					}
+				}
+				else
+				{
+					if(substr($t,$pointer,10) eq ".b1229987x")
+					{
+						print "found badness on $pointer\n";
+						$writing=0;
+					}
+					else
+					{
+						$out.=substr($t,$pointer,1);
+					}
+				}
+				$pointer++;
+			}
+			}
+			$logo->addLine($out);
+			if(0)
+			{
+			my $file = MARC::File::USMARC->in($firstFile);
+			my @final = ();
+			while ( my $marc = $file->next() )
+			{
+				my $bcode = $marc->subfield('907',"a");
+				if($bcode ne ".b12921968" && $bcode ne ".b12685537")
+				{
+					#print "$bcode\n";
+					my @re = @{$mobUtil->trucateMarcToFit($marc)};
+					if($@)
+					{
+						print "error $bcode\n";
+					}
+					else
+					{
+						$marc = @re[0];				
+						my $worked = @re[1];
+						if($worked==0)
+						{
+							print "Didn't work: $bcode\n";
+						}
+						push(@final,$marc);
+					}
+				}
+			}
+			print "Now going to outputs";
+			my $output;
+			foreach(@final)
+			{
+				my $marc = $_;
+				$marc->encoding( 'UTF-8' );
+				$output.=$marc->as_usmarc();
+			}
+my $marcout = new Loghandler("/tmp/run/bigswitch.mrc");
+$marcout->deleteFile();
+$marcout->addLine($output);
+		}
+			#my @errors = @{$mobUtil->compare2MARCFiles("/tmp/run/mout/Summon_ADDS_UCM_04172013.out","/tmp/run/testucm.out", $log, 907, "a" )};
+			#my $errors;
+			#foreach(@errors)
+			#{
+			#	$errors.= $_."\r\n";
+			#}
+			#print $errors;
+			#my @tos = ('junk@monsterfro.com','scott@mobiusconsortium.org');										
+			#my $email = new email('junk@monsterfro.com',\@tos,0,0,\%conf);
+			#$email->send("Errors",encode("utf-8",$errors));
+			#print "done emailing\n";
 			
 			 if(0)
 			 {
