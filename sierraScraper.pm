@@ -55,6 +55,8 @@ package sierraScraper;
 	my %g=();
 	my %h=();
 	my $mobutil = new Mobiusutil();
+	my $pidfile = new Loghandler($mobutil->chooseNewFileName('/tmp','scraper_pid','pid'));
+	
     my $self = 
 	{
 		'dbhandler' => shift,
@@ -73,9 +75,20 @@ package sierraScraper;
 		'type' => "",
 		'diskdump' => "",
 		'toobig' => "",
-		'toobigtocut' => ""
+		'toobigtocut' => "",
+		'pidfile' => $pidfile,
+		'title' => ""
 	};
+	
 	my $t = shift;
+	my $title = shift;
+	if($title)
+	{
+		$pidfile = new Loghandler($mobutil->chooseNewFileName('/tmp',"scraper_pid_$title",'pid'));
+		$self->{'pidfile'} = $pidfile;
+		$self->{'title'} = $title;
+	}
+	$pidfile->addLine("starting up....");
 	#print "4: $t\n";
 	if($t)
 	{
@@ -99,13 +112,15 @@ package sierraScraper;
 	my $self = @_[0];
 	my $mobUtil = $self->{'mobiusutil'};
 	my $dbHandler = $self->{'dbhandler'};
+	my $pidfile = $self->{'pidfile'};
 	my $offset = 0;
 	my $increment = 5;
 	my $limit = 5;
 	my $previousRecordCount = 0;
 	my $currentRecordCount = 1;
 	my $oldRPS = 5;
-	figureSelectStatement($self);							
+	my $title=$self->{'title'};
+	figureSelectStatement($self);
 	my $selects = $self->{'selects'};
 	my @cha = split("",$selects);
 	my $tselects = "";
@@ -125,6 +140,7 @@ package sierraScraper;
 	
 	if($chunks)
 	{
+		my $masterfile = new Loghandler($mobUtil->chooseNewFileName('/tmp',"master_$title",'pid'));
 		my $query = "SELECT MIN(ID) FROM SIERRA_VIEW.BIB_RECORD";
 		my @results = @{$dbHandler->query($query)};		
 		my $min = 0;
@@ -138,7 +154,7 @@ package sierraScraper;
 		$min--;
 		$query = $tselects;
 		$query =~ s/\$recordSearch/COUNT(\*)/gi;
-		print "$query\n";
+		#print "$query\n";
 		@results = @{$dbHandler->query($query)};		
 		foreach(@results)
 		{
@@ -146,7 +162,7 @@ package sierraScraper;
 			my @row = @{$row};
 			$max = @row[0];
 		}
-		print "Max: $max\n";
+		#print "Max: $max\n";
 		$tselects=~s/\$recordSearch/RECORD_ID/gi;
 		
 		$offset=$min;
@@ -154,8 +170,13 @@ package sierraScraper;
 		my @dumpedFiles = (0);
 		my $totalExtractedRecords=0;
 		my $zeroAdded=0;
+		my $rps=0;
+		my $addedRecords=0;
 		while($totalExtractedRecords < $max )
 		{
+			$masterfile->truncFile($pidfile->getFileName);
+			$masterfile->addLine("$rps records/s\nIncreased $addedRecords Chunking: $limit");
+			$masterfile->addLine(Dumper(\@dumpedFiles));
 			my $lastElement = scalar(@dumpedFiles);
 			$lastElement--;
 			my $recordsOnDisk=@dumpedFiles[$lastElement];
@@ -167,24 +188,25 @@ package sierraScraper;
 			#print "Previous: $previousRecordCount Current: $currentRecordCount\n";
 			$previousRecordCount = scalar keys %standard;
 			$totalExtractedRecords = $previousRecordCount+$recordsOnDisk;
-			print "Records On disk: $recordsOnDisk, In Memory: $previousRecordCount, Total: $totalExtractedRecords\n";
-			print "Need: $max  Searching: $offset To: $increment\n";
+			#print "Records On disk: $recordsOnDisk, In Memory: $previousRecordCount, Total: $totalExtractedRecords\n";			
+			#print "Need: $max  Searching: $offset To: $increment\n";
+			$masterfile->addLine("Records On disk: $recordsOnDisk, In Memory: $previousRecordCount, Total: $totalExtractedRecords\nNeed: $max  Searching: $offset To: $increment");
 			$selects = $tselects;
 			$selects .= " AND ID > $offset AND ID <= $increment";
 			#print $selects."\n";
 			$self->{'selects'} = $selects;
-			stuffStandardFields($self);
-			stuffSpecials($self);
-			stuff945($self);
-			stuff907($self);
-			stuff998alternate($self);
+			stuffStandardFields($self);			
+			stuffSpecials($self);			
+			stuff945($self);			
+			stuff907($self);			
+			stuff998alternate($self);			
 			stuffLeader($self);
 			$offset+=$limit;
 			#print "Slowest query\n".$self->{'query'}."\n";
 			%standard = %{$self->{'standard'}};
 			$currentRecordCount = scalar keys %standard;
 			#$currentRecordCount+=$recordsOnDisk;
-			my $addedRecords = $currentRecordCount - $previousRecordCount;
+			$addedRecords = $currentRecordCount - $previousRecordCount;
 			if($addedRecords==0)
 			{
 				$zeroAdded++;
@@ -199,7 +221,7 @@ package sierraScraper;
 				$zeroAdded=0;
 			}
 			my $duration = $self->{'querytime'};
-			my $rps = $addedRecords / $duration;			
+			$rps = $addedRecords / $duration;			
 			if(@best[0]<$rps)
 			{
 				@best = ($rps,$limit);
@@ -210,9 +232,9 @@ package sierraScraper;
 			}
 			#print $currentTime->hms."\n";
 			#print "$limit in $duration seconds\n";
-			print "$rps records/s\n";
+			#print "$rps records/s\n";
 			
-			print "Increased $addedRecords and now we have $currentRecordCount records\n";
+			#print "Increased $addedRecords and now we have $currentRecordCount records\n";
 			
 			my $speedDiff = $oldRPS - $rps;
 	
@@ -224,7 +246,8 @@ package sierraScraper;
 				#not adjusting record limit and leaving the recorded speed the same
 				$rps=$oldRPS;
 				$noAdjustmentCount++;
-				print "Not making any adjustments\n";
+				#print "Not making any adjustments\n";
+				
 			}
 			else
 			{
@@ -232,11 +255,12 @@ package sierraScraper;
 				if(@best[0]-$rps >3)#The best throughput is clearly better than where we are now so, back to that!
 				{
 					$limit = @best[1];
-					print "Adjusting to our best limit $limit which was @best[0]\n";
+					#print "Adjusting to our best limit $limit which was @best[0]\n";
+					
 				}
 				else
 				{
-					$limit = calcLimitChange($self, $speedDiff, $limit);
+					$limit = calcLimitChange($self, $speedDiff, $limit, $masterfile);
 				}
 			}	
 			if($addedRecords==0)
@@ -247,7 +271,8 @@ package sierraScraper;
 			{
 				if($limit==1)
 				{
-					print "I can't speed this up any faster, we are only getting 1 record and it's taking more than 8 minutes.\nThere must be something wrong with the server, hello?\n";
+					#print "I can't speed this up any faster, we are only getting 1 record and it's taking more than 8 minutes.\nThere must be something wrong with the server, hello?\n";
+					$masterfile->addLine("I can't speed this up any faster, we are only getting 1 record and it's taking more than 8 minutes.\nThere must be something wrong with the server, hello?");
 				}
 				elsif($limit<11)
 				{
@@ -257,19 +282,20 @@ package sierraScraper;
 				{
 					$limit=10;
 				}
-				print "Emergency reduction in record counts, we are going over 8 minutes!\nNow: $limit";
+				#print "Emergency reduction in record counts, we are going over 8 minutes!\nNow: $limit";
+				$masterfile->addLine("Emergency reduction in record counts, we are going over 8 minutes! $limit");
 			}
 			if(($rps <1) && $limit>50 && $rps > 0)
 			{
 				#reset				
 				$limit=20;
-				print "It's getting waaay to slow, reseting to $limit\n";
+				#print "It's getting waaay to slow, reseting to $limit\n";
+				$masterfile->addLine("It's getting waaay to slow, reseting to $limit");
 			}
 			if($limit<1)
 			{
 				$limit=1;
 			}
-			
 			$oldRPS = $rps;
 			$increment+=$limit;
 			
@@ -278,6 +304,7 @@ package sierraScraper;
 		print "Saving disk info:\n";
 		print Dumper(@dumpedFiles);
 		$self->{'diskdump'}=\@dumpedFiles;
+		$masterfile->deleteFile();
 	}
 	else
 	{
@@ -289,6 +316,8 @@ package sierraScraper;
 		stuffLeader($self);
 	}
 	$self->{'selects'} = $tselects;
+	$pidfile->deleteFile();
+	
  }
  
  sub gatherDataFromDB_MultiThread
@@ -540,14 +569,15 @@ package sierraScraper;
 	my %standard = %{$self->{'standard'}};
 	my $selects = $self->{'selects'};
 	my $previousTime=DateTime->now;
+	my $pidfile = $self->{'pidfile'};
 	my $query = "SELECT A.MARC_TAG,A.FIELD_CONTENT,
 	(SELECT MARC_IND1 FROM SIERRA_VIEW.SUBFIELD_VIEW WHERE VARFIELD_ID=A.ID LIMIT 1),
 	(SELECT MARC_IND2 FROM SIERRA_VIEW.SUBFIELD_VIEW WHERE VARFIELD_ID=A.ID LIMIT 1),
 	RECORD_ID FROM SIERRA_VIEW.VARFIELD_VIEW A WHERE A.RECORD_ID IN($selects) ORDER BY A.MARC_TAG, A.OCC_NUM";
-	#print $query."\n";
+	#print "$query\n";	
+	$pidfile->truncFile($query);
 	my @results = @{$dbHandler->query($query)};
 	updateQueryDuration($self,$previousTime,$query);
-	
 	my @records;
 	foreach(@results)
 	{
@@ -589,7 +619,7 @@ package sierraScraper;
 	my %specials = %{$self->{'specials'}};
 	my $mobiusUtil = $self->{'mobiusutil'};	
 	my $selects = $self->{'selects'};
-	
+	my $pidfile = $self->{'pidfile'};
 	my $concatPhrase = "CONCAT(";
 	for my $i(0..39)
 	{
@@ -599,6 +629,7 @@ package sierraScraper;
 	$concatPhrase=substr($concatPhrase,0,length($concatPhrase)-1).")";
 	my $query = "SELECT CONTROL_NUM,$concatPhrase,RECORD_ID FROM SIERRA_VIEW.CONTROL_FIELD WHERE RECORD_ID IN($selects)";	
 	#print "$query\n";
+	$pidfile->truncFile($query);
 	my $previousTime=DateTime->now;		
 	my @results = @{$dbHandler->query($query)};
 	updateQueryDuration($self,$previousTime,$query);
@@ -650,6 +681,8 @@ sub stuffLeader
 	DESCRIPTIVE_CAT_FORM_CODE,
 	MULTIPART_LEVEL_CODE
     FROM SIERRA_VIEW.LEADER_FIELD A WHERE A.RECORD_ID IN($selects)";
+	my $pidfile = $self->{'pidfile'};
+	$pidfile->truncFile($query);
 	#print "$query\n";
 	my $previousTime=DateTime->now;	
 	my @results = @{$dbHandler->query($query)};
@@ -697,28 +730,59 @@ sub stuff945
 	my $mobiusUtil = $self->{'mobiusutil'};
 	my $selects = $self->{'selects'};
 	
-	
 	my $query = "SELECT
-        (SELECT BIB_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_ITEM_RECORD_LINK WHERE ITEM_RECORD_ID = A.ID AND BIB_RECORD_ID IN($selects)),
-        A.ID,
-        (SELECT MARC_IND1 FROM SIERRA_VIEW.SUBFIELD_VIEW WHERE VARFIELD_ID=A.ID LIMIT 1),
-        (SELECT MARC_IND2 FROM SIERRA_VIEW.SUBFIELD_VIEW WHERE VARFIELD_ID=A.ID LIMIT 1),
-        CONCAT('|g',A.COPY_NUM) AS \"g\",
-        (SELECT CONCAT('|i',BARCODE) FROM SIERRA_VIEW.ITEM_VIEW WHERE ID=A.ID) AS \"i\",
-        CONCAT('|j',A.AGENCY_CODE_NUM) AS \"j\",
-        CONCAT('|l',A.LOCATION_CODE) AS \"l\",
-        CONCAT('|o',A.ICODE2) AS \"o\",
-        CONCAT('|p\$',TRIM(TO_CHAR(A.PRICE,'9999999999990.00'))) AS \"p\",
-        CONCAT('|q',A.ITEM_MESSAGE_CODE) AS \"q\",
-        CONCAT('|r',A.OPAC_MESSAGE_CODE) AS \"r\",
-        CONCAT('|s',A.ITEM_STATUS_CODE) AS \"s\",
-        CONCAT('|t',A.ITYPE_CODE_NUM) AS \"t\",
-        CONCAT('|u',A.CHECKOUT_TOTAL) AS \"u\",
-        CONCAT('|v',A.RENEWAL_TOTAL) AS \"v\",
-        CONCAT('|w',A.YEAR_TO_DATE_CHECKOUT_TOTAL) AS \"w\",
-        CONCAT('|x',A.LAST_YEAR_TO_DATE_CHECKOUT_TOTAL) AS \"x\",
-        (SELECT CONCAT('|z',TO_CHAR(CREATION_DATE_GMT, 'MM-DD-YY')) FROM SIERRA_VIEW.RECORD_METADATA WHERE ID=A.ID) AS \"z\"
-        FROM SIERRA_VIEW.ITEM_RECORD A WHERE A.ID IN(SELECT ITEM_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_ITEM_RECORD_LINK WHERE BIB_RECORD_ID IN ($selects))";
+		(SELECT BIB_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_ITEM_RECORD_LINK WHERE ITEM_RECORD_ID = A.ID AND BIB_RECORD_ID IN($selects) LIMIT 1),
+		A.ID,
+		(SELECT MARC_IND1 FROM SIERRA_VIEW.SUBFIELD_VIEW WHERE VARFIELD_ID=A.ID LIMIT 1),
+		(SELECT MARC_IND2 FROM SIERRA_VIEW.SUBFIELD_VIEW WHERE VARFIELD_ID=A.ID LIMIT 1),
+		CONCAT('|g',A.COPY_NUM) AS \"g\",
+		(SELECT CONCAT('|i',BARCODE) FROM SIERRA_VIEW.ITEM_VIEW WHERE ID=A.ID) AS \"i\",
+		CONCAT('|j',A.AGENCY_CODE_NUM) AS \"j\",
+		CONCAT('|l',A.LOCATION_CODE) AS \"l\",
+		CONCAT('|o',A.ICODE2) AS \"o\",
+		CONCAT('|p\$',TRIM(TO_CHAR(A.PRICE,'9999999999990.00'))) AS \"p\",
+		CONCAT('|q',A.ITEM_MESSAGE_CODE) AS \"q\",
+		CONCAT('|r',A.OPAC_MESSAGE_CODE) AS \"r\",
+		CONCAT('|s',A.ITEM_STATUS_CODE) AS \"s\",
+		CONCAT('|t',A.ITYPE_CODE_NUM) AS \"t\",
+		CONCAT('|u',A.CHECKOUT_TOTAL) AS \"u\",
+		CONCAT('|v',A.RENEWAL_TOTAL) AS \"v\",
+		CONCAT('|w',A.YEAR_TO_DATE_CHECKOUT_TOTAL) AS \"w\",
+		CONCAT('|x',A.LAST_YEAR_TO_DATE_CHECKOUT_TOTAL) AS \"x\",
+		(SELECT CONCAT('|z',TO_CHAR(CREATION_DATE_GMT, 'MM-DD-YY')) FROM SIERRA_VIEW.RECORD_METADATA WHERE ID=A.ID) AS \"z\"
+		FROM SIERRA_VIEW.ITEM_RECORD A WHERE A.ID IN(SELECT ITEM_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_ITEM_RECORD_LINK WHERE BIB_RECORD_ID IN ($selects))";
+
+																if(0)
+																{
+																my $query = "SELECT
+																	B.BIB_RECORD_ID,
+																	A.ID,
+																	(SELECT MARC_IND1 FROM SIERRA_VIEW.SUBFIELD_VIEW WHERE VARFIELD_ID=A.ID LIMIT 1),
+																	(SELECT MARC_IND2 FROM SIERRA_VIEW.SUBFIELD_VIEW WHERE VARFIELD_ID=A.ID LIMIT 1),
+																	CONCAT('|g',A.COPY_NUM) AS \"g\",
+																	(SELECT CONCAT('|i',BARCODE) FROM SIERRA_VIEW.ITEM_VIEW WHERE ID=A.ID) AS \"i\",
+																	CONCAT('|j',A.AGENCY_CODE_NUM) AS \"j\",
+																	CONCAT('|l',A.LOCATION_CODE) AS \"l\",
+																	CONCAT('|o',A.ICODE2) AS \"o\",
+																	CONCAT('|p\$',TRIM(TO_CHAR(A.PRICE,'9999999999990.00'))) AS \"p\",
+																	CONCAT('|q',A.ITEM_MESSAGE_CODE) AS \"q\",
+																	CONCAT('|r',A.OPAC_MESSAGE_CODE) AS \"r\",
+																	CONCAT('|s',A.ITEM_STATUS_CODE) AS \"s\",
+																	CONCAT('|t',A.ITYPE_CODE_NUM) AS \"t\",
+																	CONCAT('|u',A.CHECKOUT_TOTAL) AS \"u\",
+																	CONCAT('|v',A.RENEWAL_TOTAL) AS \"v\",
+																	CONCAT('|w',A.YEAR_TO_DATE_CHECKOUT_TOTAL) AS \"w\",
+																	CONCAT('|x',A.LAST_YEAR_TO_DATE_CHECKOUT_TOTAL) AS \"x\",
+																	(SELECT CONCAT('|z',TO_CHAR(CREATION_DATE_GMT, 'MM-DD-YY')) FROM SIERRA_VIEW.RECORD_METADATA WHERE ID=A.ID) AS \"z\"
+																	FROM SIERRA_VIEW.ITEM_RECORD A,
+																	SIERRA_VIEW.BIB_RECORD_ITEM_RECORD_LINK B
+																	WHERE
+																	A.ID=B.ITEM_RECORD_ID
+																	AND
+																	A.ID IN(SELECT ITEM_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_ITEM_RECORD_LINK WHERE BIB_RECORD_ID IN ($selects))";
+																	}
+		my $pidfile = $self->{'pidfile'};
+	$pidfile->truncFile($query);
 	#print "$query\n";
 	my $previousTime=DateTime->now;	
 	my @results = @{$dbHandler->query($query)};
@@ -780,14 +844,17 @@ sub stuff945
 	(SELECT BIB_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_ITEM_RECORD_LINK WHERE ITEM_RECORD_ID=A.RECORD_ID AND BIB_RECORD_ID IN ($selects)) AS \"BIB_ID\",
 	RECORD_NUM
 	FROM SIERRA_VIEW.VARFIELD_VIEW A WHERE RECORD_ID IN(SELECT ITEM_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_ITEM_RECORD_LINK WHERE BIB_RECORD_ID IN($selects))
-	AND VARFIELD_TYPE_CODE !='a'";
+	AND VARFIELD_TYPE_CODE !='a' ORDER BY RECORD_ID";
+	$pidfile->truncFile($query);
 	#print "$query\n";
 	my $previousTime=DateTime->now;		
 	@results = @{$dbHandler->query($query)};
 	updateQueryDuration($self,$previousTime,$query);
-	foreach(@results)
+	my $outterp = 0;
+	my $startSection=0;
+	while($outterp<=$#results)
 	{
-		my $row = $_;
+		my $row = @results[$outterp];
 		my @row = @{$row};
 		my $trimmedID = $mobiusUtil->trim(@row[2]);
 		if(exists $nineHundreds{@row[4]})
@@ -806,52 +873,68 @@ sub stuff945
 					$thisRecord->addData("|y.$barcodeNum");
 					my $recordID = @row[4];
 					my $subItemID = @row[0];
-					foreach(@results) # Find Null marc_tag values related to 082,090,086,099,866,050,912,900,927,926,929,928,060
+					my $foundMatch=0;
+					my $pointer=$startSection;
+					while($pointer<=$#results)# Find Null marc_tag values related to 082,090,086,099,866,050,912,900,927,926,929,928,060
 					{
-						my $rowsearch = $_;
+						my $rowsearch = @results[$pointer];
 						my @rowsearch = @{$rowsearch};
 						if(@rowsearch[3] ne '')
 						{
-							if((@rowsearch[0] == @row[0]) && (@rowsearch[2] eq ''))
+							#print "@rowsearch[0] == @row[0]\n";
+							if(@rowsearch[0] == @row[0]) 
 							{
-								my $firstChar = substr($rowsearch[3],0,1);
-								if((@rowsearch[1] eq 'b') && ($firstChar ne '|'))
-								{
-									$thisRecord->addData('|i'.@rowsearch[3]);
-								}
-								elsif((@rowsearch[1] eq 'v') && ($firstChar ne '|'))
-								{
-									$thisRecord->addData('|c'.@rowsearch[3]);
-								}
-								elsif((@rowsearch[1] eq 'x') && ($firstChar ne '|'))
-								{
-									$thisRecord->addData('|n'.@rowsearch[3]);
-								}
-								elsif((@rowsearch[1] eq 'm') && ($firstChar ne '|'))
-								{
-									$thisRecord->addData('|m'.@rowsearch[3]);
-								}
-								elsif((@rowsearch[1] eq 'c') && ($firstChar eq '|'))
-								{
-									$thisRecord->addData(@rowsearch[3]);
-								}
-								elsif((@rowsearch[1] eq 'v') && ($firstChar eq '|'))
-								{
-									$thisRecord->addData(@rowsearch[3]);
-								}
-								elsif((@rowsearch[1] eq 'd') && ($firstChar eq '|'))
-								{
-									$thisRecord->addData(@rowsearch[3]);
-								}
-								else
-								{
-									if((@rowsearch[1] ne 'n') && (@rowsearch[1] ne 'p')&& (@rowsearch[1] ne 'r'))
+								#print "$pointer / $#results\n";
+								$foundMatch=1;
+								if(@rowsearch[2] eq '')
+								{	
+									my $firstChar = substr($rowsearch[3],0,1);
+									if((@rowsearch[1] eq 'b') && ($firstChar ne '|'))
 									{
-										$log->addLogLine("Related 082,090,086,099,866,050,912,900,927,926,929,928,060 item(".@row[0].") bib($recordID) barcode($barcodeNum) value omitted: ".@rowsearch[1]." = ".@rowsearch[3]);
+										$thisRecord->addData('|i'.@rowsearch[3]);
+									}
+									elsif((@rowsearch[1] eq 'v') && ($firstChar ne '|'))
+									{
+										$thisRecord->addData('|c'.@rowsearch[3]);
+									}
+									elsif((@rowsearch[1] eq 'x') && ($firstChar ne '|'))
+									{
+										$thisRecord->addData('|n'.@rowsearch[3]);
+									}
+									elsif((@rowsearch[1] eq 'm') && ($firstChar ne '|'))
+									{
+										$thisRecord->addData('|m'.@rowsearch[3]);
+									}
+									elsif((@rowsearch[1] eq 'c') && ($firstChar eq '|'))
+									{
+										$thisRecord->addData(@rowsearch[3]);
+									}
+									elsif((@rowsearch[1] eq 'v') && ($firstChar eq '|'))
+									{
+										$thisRecord->addData(@rowsearch[3]);
+									}
+									elsif((@rowsearch[1] eq 'd') && ($firstChar eq '|'))
+									{
+										$thisRecord->addData(@rowsearch[3]);
+									}
+									else
+									{
+										if((@rowsearch[1] ne 'n') && (@rowsearch[1] ne 'p')&& (@rowsearch[1] ne 'r'))
+										{
+											$log->addLogLine("Related 082,090,086,099,866,050,912,900,927,926,929,928,060 item(".@row[0].") bib($recordID) barcode($barcodeNum) value omitted: ".@rowsearch[1]." = ".@rowsearch[3]);
+										}
 									}
 								}
 							}
+							elsif($foundMatch)#stop looping because it has found all related rows (they are sorted as per the order clause in the query)
+							{
+								$outterp=$pointer-2;
+								$startSection=$pointer;
+								$pointer=$#results+1;
+								
+							}
 						}
+						$pointer++;
 					}
 					@{$nineHundreds{@row[4]}}[$thisArrayPosition] = $thisRecord;
 				}
@@ -882,6 +965,7 @@ sub stuff945
 			$log->addLogLine("Bib id  = ".@row[4]." Item id = ".@row[0].",$trimmedID = ".@row[3]);
 			$log->addLogLine("This was not added to the marc array");
 		}
+		$outterp++;
 	}
 	$self->{'nine45'} = \%nineHundreds;
 }
@@ -899,6 +983,8 @@ sub stuff907
 	CONCAT('|c',TO_CHAR(A.CREATION_DATE_GMT, 'MM-DD-YY'))
 	)
 	FROM SIERRA_VIEW.RECORD_METADATA A WHERE A.ID IN($selects)";
+	my $pidfile = $self->{'pidfile'};
+	$pidfile->truncFile($query);
 	#print "$query\n";
 	my $previousTime=DateTime->now;		
 	my @results = @{$dbHandler->query($query)};
@@ -940,7 +1026,7 @@ sub stuff998
 	CONCAT('|h',SKIP_NUM)
 	)
 	FROM SIERRA_VIEW.BIB_VIEW WHERE ID IN($selects)";
-	#print "$query\n";
+	print "$query\n";
 	my $previousTime=DateTime->now;		
 	my @results = @{$dbHandler->query($query)};
 	updateQueryDuration($self,$previousTime,$query);
@@ -964,7 +1050,7 @@ sub stuff998
 	(SELECT BIB_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_ITEM_RECORD_LINK WHERE ITEM_RECORD_ID = A.ID),
 	SUBSTR(LOCATION_CODE,1,LENGTH(LOCATION_CODE)-2) FROM SIERRA_VIEW.ITEM_RECORD A WHERE A.ID IN(SELECT ITEM_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_ITEM_RECORD_LINK WHERE BIB_RECORD_ID IN($selects))";
 
-	#print "$query\n";
+	print "$query\n";
 	@results = @{$dbHandler->query($query)};
 	my %counts;
 	my %total;
@@ -1039,6 +1125,8 @@ sub stuff998alternate
 	CONCAT('|h',SKIP_NUM)
 	)
 	FROM SIERRA_VIEW.BIB_VIEW WHERE ID IN($selects)";
+	my $pidfile = $self->{'pidfile'};
+	$pidfile->truncFile($query);
 	#print "$query\n";
 	my $previousTime=DateTime->now;	
 	my @results = @{$dbHandler->query($query)};
@@ -1065,7 +1153,7 @@ sub stuff998alternate
 	#AND LOCATION_CODE!='multi'";
 	
 	my $query2="SELECT BIB_RECORD_ID,COUNT(*) FROM SIERRA_VIEW.BIB_RECORD_LOCATION WHERE BIB_RECORD_ID IN ($selects) GROUP BY BIB_RECORD_ID";
-	
+	$pidfile->truncFile($query2);
 	#print "$query\n$query2\n";
 	my $previousTime=DateTime->now;	
 	@results = @{$dbHandler->query($query)};
@@ -1394,7 +1482,7 @@ sub stuff998alternate
 		TO_CHAR(ASSESSED_GMT, 'YYMMDD'),
 		CHARGE_LOCATION_CODE,
 		(SELECT RECORD_NUM FROM SIERRA_VIEW.PATRON_VIEW WHERE ID=A.PATRON_RECORD_ID),
-		CONCAT('b',(SELECT TRIM(CONTENT) FROM SIERRA_VIEW.SUBFIELD WHERE RECORD_ID=A.PATRON_RECORD_ID AND FIELD_TYPE_CODE='b')),
+		CONCAT('b',(SELECT TRIM(CONTENT) FROM SIERRA_VIEW.SUBFIELD WHERE RECORD_ID=A.PATRON_RECORD_ID AND FIELD_TYPE_CODE='b' LIMIT 1)),
 		(SELECT CONCAT(LAST_NAME,', ',FIRST_NAME) FROM SIERRA_VIEW.PATRON_RECORD_FULLNAME WHERE PATRON_RECORD_ID=A.PATRON_RECORD_ID),
 		(SELECT CONCAT(
 	ADDR1,'\$',
@@ -1449,7 +1537,7 @@ sub stuff998alternate
 		TRIM(TO_CHAR(PROCESSING_FEE_AMT,'9999999999990.00')),
 		TRIM(TO_CHAR(BILLING_FEE_AMT,'9999999999990.00'))		
 		FROM SIERRA_VIEW.FINE A WHERE INVOICE_NUM IN ($selects)";
-		#print "$query\n";
+		print "$query\n";
 		my @results = @{$dbHandler->query($query)};		
 		my @output;
 		my $lowestInvoiceNum=0;
@@ -1605,15 +1693,18 @@ sub stuff998alternate
  {
 	my $speedDiff = @_[1];
 	my $limit = @_[2];
+	my $masterpid = @_[3];
 	if($speedDiff > 1) #This means that the previous query ran faster
 	{
 		$limit-=50;
-		print "Adjusting limit DOWN to $limit\n"
+		#print "Adjusting limit DOWN to $limit\n";
+		$masterpid->addLine("Adjusting limit DOWN to $limit");
 	}
 	elsif($speedDiff < 1) #This means that current query ran faster - let's add more and see what happens next time!
 	{
 		$limit+=100;
-		print "Adjusting limit UP to $limit\n"
+		#print "Adjusting limit UP to $limit\n";
+		$masterpid->addLine("Adjusting limit UP to $limit");
 	} 
 	return $limit;
  }
@@ -1627,7 +1718,7 @@ sub stuff998alternate
 	my $couldNotBeCut = $self->{'toobigtocut'};
 	my @dumpedFiles = @{@_[1]};
 	my @newDump=@dumpedFiles;
-	if(scalar keys %standard >50000)
+	if(scalar keys %standard >10000)
 	{	
 		@newDump=();
 		my $recordsInFiles=0;

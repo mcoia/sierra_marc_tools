@@ -182,7 +182,7 @@
 							my $selectQuery = $mobUtil->findQuery($dbHandler,$school,$platform,$type,$queries);
 							
 							local $@;
-							eval{$sierraScraper = new sierraScraper($dbHandler,$log,$selectQuery,$type);};
+							eval{$sierraScraper = new sierraScraper($dbHandler,$log,$selectQuery,$type,$conf{"school"});};
 							if($@)
 							{
 								$valid=0;
@@ -241,8 +241,7 @@
 												$finalLeader.=$_;
 											}
 											$marc->leader($finalLeader);
-										}
-										print $marc->as_formatted();
+										}										
 										$barcodes.=$marc->subfield('907',"a");
 										$barcodes.="\r\n";
 										$output.=$marc->as_usmarc();
@@ -267,7 +266,7 @@
 								{						
 									$marcout->addLine($output);
 									my @files = ($marcOutFile);
-									if(0)  #switch FTP on and off easily
+									if(1)  #switch FTP on and off easily
 									{
 										eval{$mobUtil->sendftp($conf{"ftphost"},$conf{"ftplogin"},$conf{"ftppass"},$remoteDirectory,\@files,$log);};
 										 if ($@) 
@@ -300,8 +299,10 @@
 							{
 								 my $csv = new Loghandler($conf{"csvoutput"});
 								 my $csvline = "\"$dateString\",\"$school\",\"$platform\",\"$type\",\"$failString\",\"$marcOutFile\",\"$duration\",\"$recCount Record(s)\",\"".$conf{"ftphost"}."\",\"".$conf{"ftplogin"}."\",\"$remoteDirectory\",\"$extraInformationOutput\",\"$couldNotBeCut\"";
-								 $csvline=~s/\\n//g;
-								 $csvline=~s/\\r//g;
+								 $csvline=~s/\n//g;
+								 $csvline=~s/\r//g;
+								 $csvline=~s/\r\n//g;
+								 $csvline=chomp($csvline);
 								 $csv->addLine($csvline);
 								 undef $csv;
 							 

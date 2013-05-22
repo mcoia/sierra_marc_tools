@@ -49,7 +49,7 @@ package Mobiusutil;
  use MARC::File;
  use MARC::File::USMARC;
  use MARC::Charset 'marc8_to_utf8';
- use ZOOM; 
+ #use ZOOM; 
  use Net::FTP;
  use Loghandler;
  use Data::Dumper;
@@ -1088,7 +1088,7 @@ sub makeCommaFromArray
 					}
 				}
 			}			
-			print "deletedFields: ".(scalar keys %deletedFields)."\nto chop: ".(scalar keys %fieldsToChop)."\n";
+			#print "deletedFields: ".(scalar keys %deletedFields)."\nto chop: ".(scalar keys %fieldsToChop)."\n";
 		}
 		if($count>99999)
 		{
