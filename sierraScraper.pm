@@ -115,7 +115,7 @@ package sierraScraper;
 	my $pidfile = $self->{'pidfile'};
 	my $offset = 0;
 	my $increment = 5;
-	my $limit = 5;
+	my $limit = 1000;
 	my $previousRecordCount = 0;
 	my $currentRecordCount = 1;
 	my $oldRPS = 5;
@@ -128,7 +128,7 @@ package sierraScraper;
 	my $noAdjustmentCount=0;
 	my $chunks=0;
 	my $i=0;
-	foreach(@cha)
+	foreach(@cha)  #Doing this to create a new memory variable instead of an internal pointer to the same memory value
 	{
 		$tselects.=$_;
 	}
@@ -154,7 +154,7 @@ package sierraScraper;
 		$min--;
 		$query = $tselects;
 		$query =~ s/\$recordSearch/COUNT(\*)/gi;
-		#print "$query\n";
+		
 		@results = @{$dbHandler->query($query)};		
 		foreach(@results)
 		{
@@ -162,25 +162,57 @@ package sierraScraper;
 			my @row = @{$row};
 			$max = @row[0];
 		}
-		#print "Max: $max\n";
+		
 		$tselects=~s/\$recordSearch/RECORD_ID/gi;
 		
 		$offset=$min;
-		$increment=$min+$limit;
+		$increment=$min;
 		my @dumpedFiles = (0);
 		my $totalExtractedRecords=0;
 		my $zeroAdded=0;
 		my $rps=0;
+		my $overallRPS=0;
+		my $lastOverallRPS=0;
 		my $addedRecords=0;
+		my $chunkGoal=100;
 		while($totalExtractedRecords < $max )
-		{
-			$masterfile->truncFile($pidfile->getFileName);
-			$masterfile->addLine("$rps records/s\nIncreased $addedRecords Chunking: $limit");
-			$masterfile->addLine(Dumper(\@dumpedFiles));
+		{			
 			my $lastElement = scalar(@dumpedFiles);
 			$lastElement--;
 			my $recordsOnDisk=@dumpedFiles[$lastElement];
-			
+			my $countQ = $query;
+			my $yeild=0;
+			my $trys=0;
+			$limit = $chunkGoal;
+			$increment+=$limit;
+			if($chunkGoal<0)
+			{
+				$chunkGoal=1;
+			}
+			while($yeild<$chunkGoal)  ## Figure out how many rows to read into the database to get the goal number of records
+			{	
+				$selects = $countQ." AND ID > $offset AND ID <= $increment";
+				
+				@results = @{$dbHandler->query($selects)};
+				foreach(@results)
+				{
+					my $row = $_;
+					my @row = @{$row};
+					$yeild = @row[0];
+				}
+				#print "Yeild: $yeild\n";
+				if($yeild<$chunkGoal)
+				{
+					$trys++;
+					if($trys>100)	#well, 100 * 10 and we didn't get 1000 rows returned, so we are stopping here.
+					{
+						$yeild=$chunkGoal;
+					}
+					$limit+=$chunkGoal;
+					$increment+=$chunkGoal;
+				}
+				#print "$limit $offset to $increment\n";
+			}
 			my $previousTime=DateTime->now;
 			$self->{'querytime'} = 0;
 			my %standard = %{$self->{'standard'}};
@@ -190,6 +222,9 @@ package sierraScraper;
 			$totalExtractedRecords = $previousRecordCount+$recordsOnDisk;
 			#print "Records On disk: $recordsOnDisk, In Memory: $previousRecordCount, Total: $totalExtractedRecords\n";			
 			#print "Need: $max  Searching: $offset To: $increment\n";
+			$masterfile->truncFile($pidfile->getFileName);
+			$masterfile->addLine("$rps records/s\n$overallRPS records/s Overall\nIncreased $addedRecords\nChunking: $chunkGoal\nRange: $limit");
+			$masterfile->addLine(Dumper(\@dumpedFiles));
 			$masterfile->addLine("Records On disk: $recordsOnDisk, In Memory: $previousRecordCount, Total: $totalExtractedRecords\nNeed: $max  Searching: $offset To: $increment");
 			$selects = $tselects;
 			$selects .= " AND ID > $offset AND ID <= $increment";
@@ -201,6 +236,7 @@ package sierraScraper;
 			stuff907($self);			
 			stuff998alternate($self);			
 			stuffLeader($self);
+			my $secondsElapsed = calcTimeDiff($self,$previousTime);
 			$offset+=$limit;
 			#print "Slowest query\n".$self->{'query'}."\n";
 			%standard = %{$self->{'standard'}};
@@ -210,9 +246,8 @@ package sierraScraper;
 			if($addedRecords==0)
 			{
 				$zeroAdded++;
-				if($zeroAdded==100)
+				if($zeroAdded>100) #we have looped 100 times with not a single record added to the collection. Time to quit.
 				{
-					#Break loop, we have failed 100 times to get any new data!
 					$totalExtractedRecords = $max;
 				}
 			}
@@ -221,88 +256,25 @@ package sierraScraper;
 				$zeroAdded=0;
 			}
 			my $duration = $self->{'querytime'};
-			$rps = $addedRecords / $duration;			
-			if(@best[0]<$rps)
+			$rps = $addedRecords / $duration;
+			$overallRPS = $addedRecords / $secondsElapsed;
+			if($lastOverallRPS>$overallRPS)
 			{
-				@best = ($rps,$limit);
+				if($chunkGoal>100){	$chunkGoal-=100;}
 			}
-			elsif((@best[1]==$limit))
+			elsif($lastOverallRPS<$overallRPS)
 			{
-				@best[0]=($rps+$best[0])/2;
+				$chunkGoal+=100;
 			}
-			#print $currentTime->hms."\n";
-			#print "$limit in $duration seconds\n";
-			#print "$rps records/s\n";
-			
-			#print "Increased $addedRecords and now we have $currentRecordCount records\n";
-			
-			my $speedDiff = $oldRPS - $rps;
-	
-			#print "Speed Difference = $speedDiff\n";
-			
-			if(($speedDiff >3) && ($noAdjustmentCount<10))
+			if($duration>480)  #should only occur when the slowest running query gets above 8 minutes. This is to reset the count to protect against the 10 minute limit
 			{
-				#Throw this test out - it's way off and a fluke in speed
-				#not adjusting record limit and leaving the recorded speed the same
-				$rps=$oldRPS;
-				$noAdjustmentCount++;
-				#print "Not making any adjustments\n";
-				
+				$chunkGoal=10;
 			}
-			else
-			{
-				$noAdjustmentCount=0;
-				if(@best[0]-$rps >3)#The best throughput is clearly better than where we are now so, back to that!
-				{
-					$limit = @best[1];
-					#print "Adjusting to our best limit $limit which was @best[0]\n";
-					
-				}
-				else
-				{
-					$limit = calcLimitChange($self, $speedDiff, $limit, $masterfile);
-				}
-			}	
-			if($addedRecords==0)
-			{
-				$limit+=1000;
-			}
-			if($duration>480)
-			{
-				if($limit==1)
-				{
-					#print "I can't speed this up any faster, we are only getting 1 record and it's taking more than 8 minutes.\nThere must be something wrong with the server, hello?\n";
-					$masterfile->addLine("I can't speed this up any faster, we are only getting 1 record and it's taking more than 8 minutes.\nThere must be something wrong with the server, hello?");
-				}
-				elsif($limit<11)
-				{
-					$limit-=1;
-				}
-				else
-				{
-					$limit=10;
-				}
-				#print "Emergency reduction in record counts, we are going over 8 minutes!\nNow: $limit";
-				$masterfile->addLine("Emergency reduction in record counts, we are going over 8 minutes! $limit");
-			}
-			if(($rps <1) && $limit>50 && $rps > 0)
-			{
-				#reset				
-				$limit=20;
-				#print "It's getting waaay to slow, reseting to $limit\n";
-				$masterfile->addLine("It's getting waaay to slow, reseting to $limit");
-			}
-			if($limit<1)
-			{
-				$limit=1;
-			}
-			$oldRPS = $rps;
-			$increment+=$limit;
-			
+			$lastOverallRPS = $overallRPS;
 			@dumpedFiles = @{dumpRamToDisk($self, \@dumpedFiles)};
 		}
-		print "Saving disk info:\n";
-		print Dumper(@dumpedFiles);
+		#print "Saving disk info:\n";
+		#print Dumper(@dumpedFiles);
 		$self->{'diskdump'}=\@dumpedFiles;
 		$masterfile->deleteFile();
 	}
@@ -317,7 +289,6 @@ package sierraScraper;
 	}
 	$self->{'selects'} = $tselects;
 	$pidfile->deleteFile();
-	
  }
  
  sub gatherDataFromDB_MultiThread
@@ -1716,6 +1687,7 @@ sub stuff998alternate
 	my $mobUtil = $self->{'mobiusutil'};
 	my $extraInformationOutput = $self->{'toobig'};
 	my $couldNotBeCut = $self->{'toobigtocut'};
+	my $title=$self->{'title'};
 	my @dumpedFiles = @{@_[1]};
 	my @newDump=@dumpedFiles;
 	if(scalar keys %standard >10000)
@@ -1764,8 +1736,11 @@ sub stuff998alternate
 				$couldNotBeCut.=$marc->subfield('907',"a");
 			}
 		}
-		
-		my $fileName = $mobUtil->chooseNewFileName("/tmp/temp","tempmarc","mrc");
+		if(length($title)>0)
+		{
+			$title=$title."_";
+		}
+		my $fileName = $mobUtil->chooseNewFileName("/tmp/temp",$title."tempmarc","mrc");
 		my $marcout = new Loghandler($fileName);
 		$marcout->addLine($output);
 		push(@newDump, $fileName);

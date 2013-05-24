@@ -241,7 +241,7 @@
 												$finalLeader.=$_;
 											}
 											$marc->leader($finalLeader);
-										}										
+										}
 										$barcodes.=$marc->subfield('907',"a");
 										$barcodes.="\r\n";
 										$output.=$marc->as_usmarc();
@@ -302,7 +302,7 @@
 								 $csvline=~s/\n//g;
 								 $csvline=~s/\r//g;
 								 $csvline=~s/\r\n//g;
-								 $csvline=chomp($csvline);
+								 
 								 $csv->addLine($csvline);
 								 undef $csv;
 							 
