@@ -242,6 +242,13 @@
 											}
 											$marc->leader($finalLeader);
 										}
+										
+										#Dirty fix for tweaking the 856 stuff for MBTS
+										if($school eq 'midwestern_babtist')
+										{
+											$marc = mbts856fix($marc);
+										}
+										
 										$barcodes.=$marc->subfield('907',"a");
 										$barcodes.="\r\n";
 										$output.=$marc->as_usmarc();
@@ -266,7 +273,7 @@
 								{						
 									$marcout->addLine($output);
 									my @files = ($marcOutFile);
-									if(1)  #switch FTP on and off easily
+									if(0)  #switch FTP on and off easily
 									{
 										eval{$mobUtil->sendftp($conf{"ftphost"},$conf{"ftplogin"},$conf{"ftppass"},$remoteDirectory,\@files,$log);};
 										 if ($@) 
@@ -327,4 +334,39 @@
 	}
  }
  
+ 
+ sub mbts856fix
+ {
+	my $marc = @_[0];
+	my @t856 = $marc->field("856");
+	
+	foreach(@t856)
+	{
+		my $this856 = $_;
+		my $z = $this856->subfield("z");
+		if($z)
+		{
+			my $output = $this856->as_formatted();
+			#print "Reading $output\n";
+			$z = lc $z;			
+			my $found = 0;
+			if(index($z, "mbts electronic book") != -1)
+			{
+				$found = 1;
+			}
+			if(index($z, "freely available") != -1)
+			{
+				$found = 1;
+			}
+			if(!$found)
+			{
+				$marc->delete_field($this856);
+				my $output = $this856->as_formatted();
+				print "Removing $output\n";
+			}
+		}
+	}
+	
+	return $marc;
+ }
  exit;

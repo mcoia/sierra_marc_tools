@@ -1767,7 +1767,6 @@ sub stuff998alternate
 	return \@ret;
  }
  
- 
  1;
  
  
