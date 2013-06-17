@@ -816,7 +816,7 @@ sub stuff945
 	RECORD_NUM
 	FROM SIERRA_VIEW.VARFIELD_VIEW A WHERE RECORD_ID IN(SELECT ITEM_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_ITEM_RECORD_LINK WHERE BIB_RECORD_ID IN($selects))
 	AND VARFIELD_TYPE_CODE !='a' ORDER BY RECORD_ID";
-	$pidfile->truncFile($query);
+	$pidfile->truncFile($query); 
 	#print "$query\n";
 	my $previousTime=DateTime->now;		
 	@results = @{$dbHandler->query($query)};
@@ -895,7 +895,7 @@ sub stuff945
 											$log->addLogLine("Related 082,090,086,099,866,050,912,900,927,926,929,928,060 item(".@row[0].") bib($recordID) barcode($barcodeNum) value omitted: ".@rowsearch[1]." = ".@rowsearch[3]);
 										}
 									}
-								}
+								}								
 							}
 							elsif($foundMatch)#stop looping because it has found all related rows (they are sorted as per the order clause in the query)
 							{

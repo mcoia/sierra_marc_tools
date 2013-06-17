@@ -38,15 +38,10 @@
  use sierraScraper;
  use Data::Dumper;
  use email;
- use MARC::Record;
- use MARC::File;
- use MARC::File::USMARC;
- use MARC::Charset 'marc8_to_utf8';
  use DateTime;
- use Expect;
- use Net::SSH::Expect;
- use Encode;
  use utf8;
+ use Encode;
+ use DateTime::Format::Duration;
  
  #use warnings;
  #use diagnostics; 
@@ -69,7 +64,71 @@
 		my $log = new Loghandler($conf->{"logfile"});
 		$log->addLogLine(" ---------------- Script Starting ---------------- ");
 		
+		
+		if(0)
+		{
+		my @errors = @{$mobUtil->compare2MARCFiles("/tmp/run/marcout.mrc","/tmp/run/NoBarcodeFix.mrc", $log, 907, "a" )};
+			my $errors;
+			foreach(@errors)
+			{
+				$errors.= $_."\r\n";
+			}
+			#print $errors;
+			my @tos = ('junk@monsterfro.com','scott@mobiusconsortium.org');										
+			my $email = new email('junk@monsterfro.com',\@tos,0,0,\%conf);
+			$email->send("Errors",encode("utf-8",$errors));
+			print "done emailing\n";
+			}
+		
 		if(1)
+		{
+				my $dbHandler = new DBhandler($conf{"db"},$conf{"dbhost"},$conf{"dbuser"},$conf{"dbpass"},$conf{"port"});
+				my $bcodes = "";
+				my $count = 0;
+				my $file = MARC::File::USMARC->in('/tmp/run/NoBarcodeFix.mrc');
+					my @final = ();
+					while ( my $marc = $file->next())
+					{
+						my $bcode = $marc->subfield('907',"a");
+						$bcodes.=",".substr($bcode,2,7);
+						$count++;
+					}
+				$bcodes = substr($bcodes,1,length($bcodes));
+				my $selectQuery = "
+				SELECT ID FROM SIERRA_VIEW.BIB_VIEW WHERE RECORD_NUM IN($bcodes)";
+						print $selectQuery."\n\n$count";
+				my $sierraScraper = new sierraScraper($dbHandler,$log,$selectQuery);
+				my @marc = @{$sierraScraper->getAllMARC()};
+				
+				my $marcout = new Loghandler('/tmp/run/marcout.mrc');
+				$marcout->deleteFile();
+				my $output;
+				
+				foreach(@marc)
+				{
+					my $marc = $_;
+					$marc->encoding( 'UTF-8' );
+					my @count = @{$mobUtil->trucateMarcToFit($marc)};
+					#print @count[1]."\n";
+					my $addThisone=1;
+					if(@count[1]==1)
+					{
+						$marc = @count[0];
+					}
+					elsif(@count[1]==0)
+					{
+						$addThisone=0;
+					}
+					
+					if($addThisone) #ISO2709 MARC record is limited to 99,999 octets 
+					{	
+						$output.=$marc->as_usmarc();
+					}
+					
+				}
+				$marcout->addLine($output);
+		}
+		if(0)
 		{
 			
 			#my @errors = @{$mobUtil->compare2MARCFiles($marcOutFile,"/tmp/run/trcc-catalog-updates-2013-03-22.out", $log, 907, "a" )};
