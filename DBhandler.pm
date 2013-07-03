@@ -76,9 +76,19 @@ package DBhandler;
 	my $login = $self->{login};
 	my $pass = $self->{password};
 	my $port = $self->{port};
-	$conn =  DBI->connect("DBI:Pg:dbname=$dbname;host=$host;port=$port", $login, $pass, {pg_utf8_strings => 1}); #'RaiseError' => 1,post_connect_sql => "SET CLIENT_ENCODING TO 'UTF8'"
+	$conn =  DBI->connect("DBI:Pg:dbname=$dbname;host=$host;port=$port", $login, $pass, {pg_utf8_strings => 1,AutoCommit => 1}); #'RaiseError' => 1,post_connect_sql => "SET CLIENT_ENCODING TO 'UTF8'"
 	
 	$self->{conn} = $conn;
+ }
+ 
+ sub update
+ {
+	my ($self) = @_[0];
+	my $conn = $self->{conn};
+	my $querystring =  @_[1];	
+
+	my $ret = $conn->do($querystring);
+	return $ret;
  }
  
  sub query
