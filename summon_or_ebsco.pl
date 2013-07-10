@@ -273,7 +273,7 @@
 								{						
 									$marcout->addLine($output);
 									my @files = ($marcOutFile);
-									if(0)  #switch FTP on and off easily
+									if(1)  #switch FTP on and off easily
 									{
 										eval{$mobUtil->sendftp($conf{"ftphost"},$conf{"ftplogin"},$conf{"ftppass"},$remoteDirectory,\@files,$log);};
 										 if ($@) 

@@ -131,7 +131,8 @@
 					my @third = (				
 					10,"Would you like to view records","y",0,
 					10,"P,Q)","p",1,
-					10,"Enter full email address:",$conf{"globallinkreportemail"},1,
+					10,"Enter full email address:",$conf{"globallinkreportemail"}."\r",1,
+					10,"ote","\r",0,
 					10,"Choose one (P,Q)","q",1
 					);
 					

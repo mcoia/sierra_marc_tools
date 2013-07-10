@@ -266,7 +266,7 @@ package sierraScraper;
 			{
 				$chunkGoal+=100;
 			}
-			if($duration>480)  #should only occur when the slowest running query gets above 8 minutes. This is to reset the count to protect against the 10 minute limit
+			if($duration>280)  #should only occur when the slowest running query gets above 8 minutes. This is to reset the count to protect against the 10 minute limit
 			{
 				$chunkGoal=10;
 			}
