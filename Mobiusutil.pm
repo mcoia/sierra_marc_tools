@@ -388,6 +388,17 @@ sub makeCommaFromArray
 	return $ret;
  }
  
+ sub makeArrayFromComma
+ {
+	my $string = @_[1];
+	my @array = split(/,/,$string);
+	for my $y(0.. $#array)
+	{
+		@array[$y]=trim('',@array[$y]);
+	}
+	return \@array;
+ }
+ 
  sub insertDataIntoColumn  #1 based column position
  {
 	my $ret = @_[1];

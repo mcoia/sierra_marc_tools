@@ -54,7 +54,7 @@
 	print "Please specify a config file\n";
 	exit;
  }
-
+ 
  my $mobUtil = new Mobiusutil(); 
  my $conf = $mobUtil->readConfFile($configFile);
  
@@ -65,7 +65,7 @@
 	{
 		my $log = new Loghandler($conf->{"logfile"});
 		$log->addLogLine(" ---------------- Script Starting ---------------- ");
-		my @reqs = ("dbhost","db","dbuser","dbpass","port","fileprefix","marcoutdir","school","alwaysemail","fromemail","ftplogin","ftppass","ftphost","queryfile","platform");
+		my @reqs = ("dbhost","db","dbuser","dbpass","port","fileprefix","marcoutdir","school","alwaysemail","fromemail","ftplogin","ftppass","ftphost","queryfile","platform","pathtothis","maxdbconnections");
 		my $valid = 1;
 		for my $i (0..$#reqs)
 		{
@@ -78,6 +78,8 @@
 		}
 		if($valid)
 		{		
+			my $pathtothis = $conf{"pathtothis"};
+			my $maxdbconnections = $conf{"maxdbconnections"};
 			my $queries = $mobUtil->readQueryFile($conf{"queryfile"});
 			if($queries)
 			{
@@ -85,6 +87,10 @@
 				
 				my $school = $conf{"school"};
 				my $type = @ARGV[1];
+				if($type eq "thread")
+				{
+					thread(\%conf);
+				}
 				my $platform = $conf{"platform"};#ebsco or summon
 				my $fileNamePrefix = $conf{"fileprefix"}."_cancels_";
 				my $remoteDirectory = "/updates";
@@ -137,13 +143,22 @@
 				{
 					$fileNamePrefix=$platform."_".$fileNamePrefix;
 				}
-			
+				my @dbUsers = @{$mobUtil->makeArrayFromComma($conf{"dbuser"})};
+				my @dbPasses = @{$mobUtil->makeArrayFromComma($conf{"dbpass"})};
+				if(scalar @dbUsers != scalar @dbPasses)
+				{
+					print "Sorry, you need to provide DB usernames equal to the number of DB passwords\n";
+					exit;
+				}
+				my $dbuser = @dbUsers[0];
+				my $dbpass = @dbPasses[0];
 			#All inputs are there and we can proceed
 				if($valid)
 				{
 					my $dbHandler;
 					my $failString = "Success";
-					 eval{$dbHandler = new DBhandler($conf{"db"},$conf{"dbhost"},$conf{"dbuser"},$conf{"dbpass"},$conf{"port"});};
+					
+					 eval{$dbHandler = new DBhandler($conf{"db"},$conf{"dbhost"},$dbuser,$dbpass,$conf{"port"});};
 					 if ($@) {
 						$log->addLogLine("Could not establish a connection to the database");
 						$failString = "Could not establish a connection to the database";
@@ -181,8 +196,9 @@
 							$valid=1;
 							my $selectQuery = $mobUtil->findQuery($dbHandler,$school,$platform,$type,$queries);
 							
+							print "Path: $pathtothis\n";
 							local $@;
-							eval{$sierraScraper = new sierraScraper($dbHandler,$log,$selectQuery,$type,$conf{"school"});};
+							eval{$sierraScraper = new sierraScraper($dbHandler,$log,$selectQuery,$type,$conf{"school"},$pathtothis,$configFile,$maxdbconnections);};
 							if($@)
 							{
 								$valid=0;
@@ -368,5 +384,59 @@
 	}
 	
 	return $marc;
+ }
+ 
+ sub thread
+ {
+	my %conf = %{@_[0]};
+	my $previousTime=DateTime->now;
+	my $mobUtil = new Mobiusutil();
+	my $offset = @ARGV[2];
+	my $increment = @ARGV[3];
+	my $limit = $increment-$offset;
+	my $pid = @ARGV[4];
+	my $dbuser = @ARGV[5];
+	print "Using dbuser: $dbuser\n";
+	my $dbpass = "";
+	my @dbUsers = @{$mobUtil->makeArrayFromComma($conf{"dbuser"})};
+	my @dbPasses = @{$mobUtil->makeArrayFromComma($conf{"dbpass"})};	
+	my $i=0;
+	foreach(@dbUsers)
+	{
+		if($dbuser eq $_)
+		{
+			$dbpass=@dbPasses[$i];
+		}
+		$i++;
+	}
+	my $pidWriter = new Loghandler($pid);
+	my $log = new Loghandler($conf->{"logfile"});
+	my $pathtothis = $conf{"pathtothis"};
+	my $queries = $mobUtil->readQueryFile($conf{"queryfile"});
+	my $school = $conf{"school"};
+	my $type = @ARGV[1];
+	my $platform = $conf{"platform"};
+	my $dbHandler = new DBhandler($conf{"db"},$conf{"dbhost"},$dbuser,$dbpass,$conf{"port"});
+	#print "Sending off to get thread query: $school, $platform, $type";
+	my $selectQuery = $mobUtil->findQuery($dbHandler,$school,$platform,"full",$queries);
+	$selectQuery=~s/\$recordSearch/RECORD_ID/gi;
+	$selectQuery.= " AND ID > $offset AND ID <= $increment";
+	#print "Thread got this query\n\n$selectQuery\n\n";
+	$pidWriter->truncFile("0");	
+	#print "Thread started\n offset: $offset\n increment: $increment\n pidfile: $pid\n limit: $limit";
+	my $sierraScraper = new sierraScraper($dbHandler,$log,$selectQuery,$type,$conf{"school"},$pathtothis,$configFile);
+	my $recordCount = $sierraScraper->getRecordCount();
+	my @tobig = @{$sierraScraper->getTooBigList()};
+	my $extraInformationOutput = @tobig[0];
+	my $couldNotBeCut = @tobig[1];
+	my @diskDump = @{$sierraScraper->getDiskDump()};
+	my $disk =@diskDump[0];
+	my $queryTime = $sierraScraper->getSpeed();
+	my $secondsElapsed = $sierraScraper->calcTimeDiff($previousTime);
+	#print "Writing to thread File:\n$disk\n$recordCount\n$extraInformationOutput\n$couldNotBeCut\n$queryTime\n$limit\n$dbuser\n$secondsElapsed\n";
+	$pidWriter->truncFile("$disk\n$recordCount\n$extraInformationOutput\n$couldNotBeCut\n$queryTime\n$limit\n$dbuser\n$secondsElapsed");
+	
+	
+	exit;
  }
  exit;
