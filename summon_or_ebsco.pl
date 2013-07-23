@@ -197,6 +197,7 @@
 							my $selectQuery = $mobUtil->findQuery($dbHandler,$school,$platform,$type,$queries);
 							
 							#print "Path: $pathtothis\n";
+							my $gatherTime = DateTime->now();
 							local $@;
 							eval{$sierraScraper = new sierraScraper($dbHandler,$log,$selectQuery,$type,$conf{"school"},$pathtothis,$configFile,$maxdbconnections);};
 							if($@)
@@ -207,15 +208,19 @@
 								$log->addLogLine("Sierra scraping Failed. The cron standard output will have more clues.\r\n$selectQuery");
 								$failString = "Scrape Fail";
 							}
+							
 							my $recCount=0;
 							my $format = DateTime::Format::Duration->new(
 								pattern => '%M:%S' #%e days, %H hours,
 							);
+							my $gatherTime = $sierraScraper->calcTimeDiff($gatherTime);
+							#$gatherTime = $format->format_duration($gatherTime);
 							my $afterProcess = DateTime->now(time_zone => "local");
 							my $difference = $afterProcess - $dt;
 							my $duration =  $format->format_duration($difference);
 							my $extraInformationOutput = "";
 							my $couldNotBeCut = "";
+							my $rps;
 							if($valid)
 							{
 								my @marc = @{$sierraScraper->getAllMARC()};
@@ -308,20 +313,25 @@
 								}
 								if($valid)
 								{
+									$rps = $sierraScraper->getRPS();
 									$afterProcess = DateTime->now(time_zone => "local");
 									$difference = $afterProcess - $dt;
 									$duration =  $format->format_duration($difference);
 									$log->addLogLine("$school $platform $type: $marcOutFile");
 									$log->addLogLine("$school $platform $type: $recCount Record(s)");
 									$email = new email($conf{"fromemail"},\@tolist,0,1,\%conf);
-									$email->send("RMO $school - $platform $type Success - Job # $dateString","Duration: $duration\r\n\r\nThis process finished without any errors!\r\n\r\nHere is some information:\r\n\r\nOutput File: \t\t$marcOutFile\r\n$recCount Record(s)\r\nFTP location: ".$conf{"ftphost"}."\r\nUserID: ".$conf{"ftplogin"}."\r\nFolder: $remoteDirectory\r\n\r\n$extraInformationOutput $couldNotBeCut -MOBIUS Perl Squad-\r\n\r\n$selectQuery\r\n\r\nThese are the included records:\r\n$barcodes");
+									if(length($barcodes)>100000)
+									{
+										$barcodes = substr($barcodes,0,100000);
+									}
+									$email->send("RMO $school - $platform $type Success - Job # $dateString","Record gather duration: $gatherTime\r\nRecords per second: $rps\r\nTotal duration: $duration\r\n\r\nThis process finished without any errors!\r\n\r\nHere is some information:\r\n\r\nOutput File: \t\t$marcOutFile\r\n$recCount Record(s)\r\nFTP location: ".$conf{"ftphost"}."\r\nUserID: ".$conf{"ftplogin"}."\r\nFolder: $remoteDirectory\r\n\r\n$extraInformationOutput $couldNotBeCut -MOBIUS Perl Squad-\r\n\r\n$selectQuery\r\n\r\nThese are the included records:\r\n$barcodes");
 								}
 							}
 				#OUTPUT TO THE CSV
 							if($conf{"csvoutput"})
 							{
 								 my $csv = new Loghandler($conf{"csvoutput"});
-								 my $csvline = "\"$dateString\",\"$school\",\"$platform\",\"$type\",\"$failString\",\"$marcOutFile\",\"$duration\",\"$recCount Record(s)\",\"".$conf{"ftphost"}."\",\"".$conf{"ftplogin"}."\",\"$remoteDirectory\",\"$extraInformationOutput\",\"$couldNotBeCut\"";
+								 my $csvline = "\"$dateString\",\"$school\",\"$platform\",\"$type\",\"$failString\",\"$marcOutFile\",\"$gatherTime\",\"$rps\",\"$duration\",\"$recCount Record(s)\",\"".$conf{"ftphost"}."\",\"".$conf{"ftplogin"}."\",\"$remoteDirectory\",\"$extraInformationOutput\",\"$couldNotBeCut\"";
 								 $csvline=~s/\n//g;
 								 $csvline=~s/\r//g;
 								 $csvline=~s/\r\n//g;

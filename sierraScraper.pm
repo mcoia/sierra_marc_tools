@@ -56,7 +56,6 @@ package sierraScraper;
 	my %h=();
 	my $mobutil = new Mobiusutil();
 	my $pidfile = new Loghandler($mobutil->chooseNewFileName('/tmp','scraper_pid','pid'));
-	
     my $self = 
 	{
 		'dbhandler' => shift,
@@ -78,7 +77,7 @@ package sierraScraper;
 		'toobigtocut' => "",
 		'pidfile' => $pidfile,
 		'title' => "",
-		'fullload' => 0,
+		'rps' => 0,
 		'pathtothis' =>"",
 		'conffile' =>"",
 		'recordcount' => 0,
@@ -127,186 +126,50 @@ package sierraScraper;
  sub gatherDataFromDB
  {
 	my $self = @_[0];
-	my $mobUtil = $self->{'mobiusutil'};
-	my $dbHandler = $self->{'dbhandler'};
-	my $pidfile = $self->{'pidfile'};
-	my $offset = 0;
-	my $increment = 5;
-	my $limit = 1000;
-	my $previousRecordCount = 0;
-	my $currentRecordCount = 1;
-	my $oldRPS = 5;
-	my $title=$self->{'title'};
+	my $previousTime = DateTime->now();
 	figureSelectStatement($self);
-	my $selects = $self->{'selects'};
-	my @cha = split("",$selects);
-	my $tselects = "";
-	my @best = (0,25);
-	my $noAdjustmentCount=0;
-	my $chunks=0;
-	my $i=0;
-	foreach(@cha)  #Doing this to create a new memory variable instead of an internal pointer to the same memory value
+	stuffStandardFields($self);
+	stuffSpecials($self);
+	stuff945($self);
+	stuff907($self);
+	stuff998alternate($self);
+	stuffLeader($self);
+	my $secondsElapsed = calcTimeDiff($self,$previousTime);
+	if($secondsElapsed < 1)
 	{
-		$tselects.=$_;
+		$secondsElapsed = 1;
 	}
-	
-	if($self->{'type'} eq 'full')
-	{	#BREAK UP THE QUERY INTO MANAGABLE CHUNKS
-		if(index((uc($tselects)),"SELECT")>-1){$chunks=1;}
-	}
-#  This code should not execute
-#  Because it has been replaced by the Multi thread subroutine below	gatherDataFromDB_spinThread_Controller
-	if($chunks)
+	my %standard = %{$self->{'standard'}};
+	my $recordCount = scalar keys %standard;
+	$self->{'rps'} = $recordCount / $secondsElapsed;
+ }
+ 
+ sub threadDone
+ {
+	my $pidFile = @_[0];
+	#print "Starting to read pid file\n";
+	my $pidReader = new Loghandler($pidFile);
+	my @lines = @{ $pidReader->readFile() };
+	#print "Done reading Pid\n";
+	undef $pidReader;
+	if(scalar @lines >1)
 	{
-		my $masterfile = new Loghandler($mobUtil->chooseNewFileName('/tmp',"master_$title",'pid'));
-		my $query = "SELECT MIN(ID) FROM SIERRA_VIEW.BIB_RECORD";
-		my @results = @{$dbHandler->query($query)};		
-		my $min = 0;
-		my $max = 1;
-		foreach(@results)
+		return 1;
+	}
+	elsif(scalar @lines ==1)
+	{
+		my $line =@lines[0];
+		$line =~ s/\n//;
+		if($line eq "0")
 		{
-			my $row = $_;
-			my @row = @{$row};
-			$min = @row[0];
+			return 0;
 		}
-		$min--;
-		$query = $tselects;
-		$query =~ s/\$recordSearch/COUNT(\*)/gi;
-		
-		@results = @{$dbHandler->query($query)};		
-		foreach(@results)
+		else
 		{
-			my $row = $_;
-			my @row = @{$row};
-			$max = @row[0];
-			$self->{'fullload'} = $max;
+			return 1;
 		}
-		
-		$tselects=~s/\$recordSearch/RECORD_ID/gi;
-		
-		$offset=$min;
-		$increment=$min;
-		my @dumpedFiles = (0);
-		my $totalExtractedRecords=0;
-		my $zeroAdded=0;
-		my $rps=0;
-		my $overallRPS=0;
-		my $lastOverallRPS=0;
-		my $addedRecords=0;
-		my $chunkGoal=100;
-		while($totalExtractedRecords < $max )
-		{			
-			my $lastElement = scalar(@dumpedFiles);
-			$lastElement--;
-			my $recordsOnDisk=@dumpedFiles[$lastElement];
-			my $countQ = $query;
-			my $yeild=0;
-			my $trys=0;
-			$limit = $chunkGoal;
-			$increment+=$limit;
-			if($chunkGoal<0)
-			{
-				$chunkGoal=1;
-			}
-			while($yeild<$chunkGoal)  ## Figure out how many rows to read into the database to get the goal number of records
-			{	
-				$selects = $countQ." AND ID > $offset AND ID <= $increment";
-				
-				@results = @{$dbHandler->query($selects)};
-				foreach(@results)
-				{
-					my $row = $_;
-					my @row = @{$row};
-					$yeild = @row[0];
-				}
-				#print "Yeild: $yeild\n";
-				if($yeild<$chunkGoal)
-				{
-					$trys++;
-					if($trys>100)	#well, 100 * 10 and we didn't get 1000 rows returned, so we are stopping here.
-					{
-						$yeild=$chunkGoal;
-					}
-					$limit+=$chunkGoal;
-					$increment+=$chunkGoal;
-				}
-				#print "$limit $offset to $increment\n";
-			}
-			my $previousTime=DateTime->now;
-			$self->{'querytime'} = 0;
-			my %standard = %{$self->{'standard'}};
-			#print $previousTime->hms."\n";
-			#print "Previous: $previousRecordCount Current: $currentRecordCount\n";
-			$previousRecordCount = scalar keys %standard;
-			$totalExtractedRecords = $previousRecordCount+$recordsOnDisk;
-			#print "Records On disk: $recordsOnDisk, In Memory: $previousRecordCount, Total: $totalExtractedRecords\n";			
-			#print "Need: $max  Searching: $offset To: $increment\n";
-			$masterfile->truncFile($pidfile->getFileName);
-			$masterfile->addLine("$rps records/s\n$overallRPS records/s Overall\nIncreased $addedRecords\nChunking: $chunkGoal\nRange: $limit");
-			$masterfile->addLine(Dumper(\@dumpedFiles));
-			$masterfile->addLine("Records On disk: $recordsOnDisk, In Memory: $previousRecordCount, Total: $totalExtractedRecords\nNeed: $max  Searching: $offset To: $increment");
-			$selects = $tselects;
-			$selects .= " AND ID > $offset AND ID <= $increment";
-			#print $selects."\n";
-			$self->{'selects'} = $selects;
-			stuffStandardFields($self);			
-			stuffSpecials($self);			
-			stuff945($self);			
-			stuff907($self);			
-			stuff998alternate($self);			
-			stuffLeader($self);
-			my $secondsElapsed = calcTimeDiff($self,$previousTime);
-			$offset+=$limit;
-			#print "Slowest query\n".$self->{'query'}."\n";
-			%standard = %{$self->{'standard'}};
-			$currentRecordCount = scalar keys %standard;
-			#$currentRecordCount+=$recordsOnDisk;
-			$addedRecords = $currentRecordCount - $previousRecordCount;
-			if($addedRecords==0)
-			{
-				$zeroAdded++;
-				if($zeroAdded>100) #we have looped 100 times with not a single record added to the collection. Time to quit.
-				{
-					$totalExtractedRecords = $max;
-				}
-			}
-			else
-			{
-				$zeroAdded=0;
-			}
-			my $duration = $self->{'querytime'};
-			$rps = $addedRecords / $duration;
-			$overallRPS = $addedRecords / $secondsElapsed;
-			if($lastOverallRPS>$overallRPS)
-			{
-				if($chunkGoal>100){	$chunkGoal-=100;}
-			}
-			elsif($lastOverallRPS<$overallRPS)
-			{
-				$chunkGoal+=100;
-			}
-			if($duration>280)  #should only occur when the slowest running query gets above 8 minutes. This is to reset the count to protect against the 10 minute limit
-			{
-				$chunkGoal=10;
-			}
-			$lastOverallRPS = $overallRPS;
-			@dumpedFiles = @{dumpRamToDisk($self, \@dumpedFiles,10000)};
-		}
-		#print "Saving disk info:\n";
-		#print Dumper(@dumpedFiles);
-		$self->{'diskdump'}=\@dumpedFiles;
-		$masterfile->deleteFile();
 	}
-	else
-	{
-		stuffStandardFields($self);
-		stuffSpecials($self);
-		stuff945($self);
-		stuff907($self);
-		stuff998alternate($self);
-		stuffLeader($self);
-	}
-	$self->{'selects'} = $tselects;
+	return 0;
  }
  
  sub spinThread
@@ -333,38 +196,13 @@ package sierraScraper;
 	$self->{'diskdump'}=\@dumpedFiles;
 	return $currentRecordCount;
  }
- 
- sub getRecordCount
- {
-	my $self = @_[0];
-	return $self->{'recordcount'};
- }
- 
- sub getDiskDump
- {
-	my $self = @_[0];
-	return $self->{'diskdump'};
- }
- 
- sub findMaxRecordCount
- {
-	my $self = @_[0];
-	my $maxQuery = @_[1];
-	my $dbHandler = $self->{'dbhandler'};
-	my $max = 0;
-	my @results = @{$dbHandler->query($maxQuery)};
-	foreach(@results)
-	{
-		my $row = $_;
-		my @row = @{$row};
-		$max = @row[0];
-	}
-	return $max;
- }
- 
+  
  sub gatherDataFromDB_spinThread_Controller
  {
 	my $self = @_[0];
+	#This file is written to by each of the threads to debug the database ID's selected for each thread
+	my $rangeWriter = new Loghandler("/tmp/rangepid.pid");
+	$rangeWriter->deleteFile();
 	my $dbUserMaxConnection=$self->{'maxdbconnection'};
 	my $mobUtil = $self->{'mobiusutil'};
 	my $dbHandler = $self->{'dbhandler'};
@@ -402,7 +240,7 @@ package sierraScraper;
 	}
 	
 	my $query = "SELECT MIN(ID) FROM SIERRA_VIEW.BIB_RECORD";
-	my @results = @{$dbHandler->query($query)};		
+	my @results = @{$dbHandler->query($query)};
 	my $min = 0;
 	my $max = 1;
 	foreach(@results)
@@ -654,6 +492,7 @@ package sierraScraper;
 		}
 		
 		my $remaining = ($max - $finishedRecordCount) / $devideTemp / 60;
+		$self->{'rps'}=$overAllRPS;
 		$masterfile->truncFile($pidfile->getFileName);
 		$masterfile->addLine("$rps records/s Per Thread\n$overAllRPS records/s Average\nChunking: $chunkGoal\nRange: $range\n$remaining minutes remaining\n$minutesElapsed minute(s) elapsed\n");
 		$masterfile->addLine("Records On disk: $finishedRecordCount,\nNeed: $max  \n");
@@ -670,6 +509,22 @@ package sierraScraper;
 	}
 	$self->{'diskdump'}=\@dumpedFiles;
 	$masterfile->deleteFile();
+ }
+ 
+ sub findMaxRecordCount
+ {
+	my $self = @_[0];
+	my $maxQuery = @_[1];
+	my $dbHandler = $self->{'dbhandler'};
+	my $max = 0;
+	my @results = @{$dbHandler->query($maxQuery)};
+	foreach(@results)
+	{
+		my $row = $_;
+		my @row = @{$row};
+		$max = @row[0];
+	}
+	return $max;
  }
  
  sub calcDBRange
@@ -720,39 +575,28 @@ package sierraScraper;
 	return $thisIncrement;
  }
  
+ sub getRecordCount
+ {
+	my $self = @_[0];
+	return $self->{'recordcount'};
+ }
+ 
+ sub getDiskDump
+ {
+	my $self = @_[0];
+	return $self->{'diskdump'};
+ }
+ 
  sub getSpeed
  {
 	my $self = @_[0];
-	my $queryTime = $self->{'querytime'};
-	return $queryTime;
+	return $self->{'querytime'};
  }
  
- sub threadDone
+ sub getRPS
  {
-	my $pidFile = @_[0];
-	#print "Starting to read pid file\n";
-	my $pidReader = new Loghandler($pidFile);
-	my @lines = @{ $pidReader->readFile() };
-	#print "Done reading Pid\n";
-	undef $pidReader;
-	if(scalar @lines >1)
-	{
-		return 1;
-	}
-	elsif(scalar @lines ==1)
-	{
-		my $line =@lines[0];
-		$line =~ s/\n//;
-		if($line eq "0")
-		{
-			return 0;
-		}
-		else
-		{
-			return 1;
-		}
-	}
-	return 0;
+	my $self = @_[0];
+	return $self->{'rps'};
  }
  
  sub getSingleStandardFields
