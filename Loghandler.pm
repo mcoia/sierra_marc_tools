@@ -84,10 +84,12 @@ sub addLogLine
 	my $mobutil = new Mobiusutil();
 	$datetime = $mobutil->makeEvenWidth($datetime,20);
 	undef $mobutil;
-	open(OUTPUT, '>> '.$file) or die $!;
+	my $ret = 1;
+	open(OUTPUT, '>> '.$file) or $ret=0;
 	binmode(OUTPUT, ":utf8");
 	print OUTPUT $datetime,": $line\n";
 	close(OUTPUT);
+	return $ret;
 }
 
 sub addLine
@@ -95,10 +97,12 @@ sub addLine
 	my ($fileName) = @_[0];
 	my $file = $fileName->{_file};
 	my $line = @_[1];
-	open(OUTPUT, '>> '.$file) or die $!;
+	my $ret=1;
+	open(OUTPUT, '>> '.$file) or $ret=0;
 	binmode(OUTPUT, ":utf8");
 	print OUTPUT "$line\n";
 	close(OUTPUT);
+	return $ret;
 }
 
 sub truncFile
@@ -106,19 +110,47 @@ sub truncFile
 	my ($fileName) = @_[0];
 	my $file = $fileName->{_file};
 	my $line = @_[1];
-	open(OUTPUT, '> '.$file) or die $!;
+	my $ret=1;
+	open(OUTPUT, '> '.$file) or $ret=0;
 	binmode(OUTPUT, ":utf8");
 	print OUTPUT "$line\n";
 	close(OUTPUT);
+	return $ret;
 }
 
 sub readFile
 {
 	my ($fileName) = @_[0];
 	my $file = $fileName->{_file};
-	open (inputfile, '< '. $file) or die return {};
-	my @lines = <inputfile>;
-	close(inputfile);
+	my $trys=0;
+	my $failed=0;
+	my @lines;
+	#print "Attempting open\n";
+	if(fileExists($fileName))
+	{
+		my $worked = open (inputfile, '< '. $file);
+		if(!$worked)
+		{
+			print "******************Failed to read file*************\n";
+		}
+		while (!(open (inputfile, '< '. $file)) && $trys<100)
+		{
+			print "Trying again attempt $trys\n";
+			$trys++;
+			sleep(1);
+		}
+		if($trys<100)	
+		{
+			#print "Finally worked... now reading\n";
+			@lines = <inputfile>;
+			close(inputfile);
+		}
+		else
+		{
+			print "Attempted $trys times. COULD NOT READ FILE: $file\n";
+		}
+		close(inputfile);
+	}
 	return \@lines;
 }
 

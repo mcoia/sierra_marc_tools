@@ -196,7 +196,7 @@
 							$valid=1;
 							my $selectQuery = $mobUtil->findQuery($dbHandler,$school,$platform,$type,$queries);
 							
-							print "Path: $pathtothis\n";
+							#print "Path: $pathtothis\n";
 							local $@;
 							eval{$sierraScraper = new sierraScraper($dbHandler,$log,$selectQuery,$type,$conf{"school"},$pathtothis,$configFile,$maxdbconnections);};
 							if($@)
@@ -390,13 +390,15 @@
  {
 	my %conf = %{@_[0]};
 	my $previousTime=DateTime->now;
+	my $rangeWriter = new Loghandler("/tmp/rangepid.pid");
 	my $mobUtil = new Mobiusutil();
 	my $offset = @ARGV[2];
 	my $increment = @ARGV[3];
 	my $limit = $increment-$offset;
 	my $pid = @ARGV[4];
 	my $dbuser = @ARGV[5];
-	print "Using dbuser: $dbuser\n";
+	$rangeWriter->addLine("$offset $increment");
+	#print "$pid: $offset - $increment $dbuser\n";
 	my $dbpass = "";
 	my @dbUsers = @{$mobUtil->makeArrayFromComma($conf{"dbuser"})};
 	my @dbPasses = @{$mobUtil->makeArrayFromComma($conf{"dbpass"})};	
@@ -416,26 +418,57 @@
 	my $school = $conf{"school"};
 	my $type = @ARGV[1];
 	my $platform = $conf{"platform"};
-	my $dbHandler = new DBhandler($conf{"db"},$conf{"dbhost"},$dbuser,$dbpass,$conf{"port"});
-	#print "Sending off to get thread query: $school, $platform, $type";
-	my $selectQuery = $mobUtil->findQuery($dbHandler,$school,$platform,"full",$queries);
-	$selectQuery=~s/\$recordSearch/RECORD_ID/gi;
-	$selectQuery.= " AND ID > $offset AND ID <= $increment";
-	#print "Thread got this query\n\n$selectQuery\n\n";
-	$pidWriter->truncFile("0");	
-	#print "Thread started\n offset: $offset\n increment: $increment\n pidfile: $pid\n limit: $limit";
-	my $sierraScraper = new sierraScraper($dbHandler,$log,$selectQuery,$type,$conf{"school"},$pathtothis,$configFile);
-	my $recordCount = $sierraScraper->getRecordCount();
-	my @tobig = @{$sierraScraper->getTooBigList()};
-	my $extraInformationOutput = @tobig[0];
-	my $couldNotBeCut = @tobig[1];
-	my @diskDump = @{$sierraScraper->getDiskDump()};
-	my $disk =@diskDump[0];
-	my $queryTime = $sierraScraper->getSpeed();
-	my $secondsElapsed = $sierraScraper->calcTimeDiff($previousTime);
-	#print "Writing to thread File:\n$disk\n$recordCount\n$extraInformationOutput\n$couldNotBeCut\n$queryTime\n$limit\n$dbuser\n$secondsElapsed\n";
-	$pidWriter->truncFile("$disk\n$recordCount\n$extraInformationOutput\n$couldNotBeCut\n$queryTime\n$limit\n$dbuser\n$secondsElapsed");
+	my $dbHandler;
+	eval{$dbHandler = new DBhandler($conf{"db"},$conf{"dbhost"},$dbuser,$dbpass,$conf{"port"});};
 	
+	if ($@) {
+		$pidWriter->truncFile("none\nnone\nnone\nnone\nnone\nnone\n$dbuser\nnone\n1\n$offset\n$increment");
+		$rangeWriter->addLine("$offset $increment DEFUNCT");
+		#print "******************* I DIED DBHANDLER ********************** $pid\n";
+	}
+	else
+	{
+		my $dbHandler = new DBhandler($conf{"db"},$conf{"dbhost"},$dbuser,$dbpass,$conf{"port"});
+		#print "Sending off to get thread query: $school, $platform, $type";
+		my $selectQuery = $mobUtil->findQuery($dbHandler,$school,$platform,"full",$queries);
+		$selectQuery=~s/\$recordSearch/RECORD_ID/gi;
+		$selectQuery.= " AND ID > $offset AND ID <= $increment";
+		#print "Thread got this query\n\n$selectQuery\n\n";
+		$pidWriter->truncFile("0");	
+		#print "Thread started\n offset: $offset\n increment: $increment\n pidfile: $pid\n limit: $limit";
+		my $sierraScraper;
+		local $@;
+		eval{$sierraScraper = new sierraScraper($dbHandler,$log,$selectQuery,$type,$conf{"school"},$pathtothis,$configFile);};
+		if($@)
+		{
+			#print "******************* I DIED SCRAPER ********************** $pid\n";
+			$pidWriter->truncFile("none\nnone\nnone\nnone\nnone\nnone\n$dbuser\nnone\n1\n$offset\n$increment");
+			$rangeWriter->addLine("$offset $increment DEFUNCT");
+			exit;
+		}
+		
+		my $recordCount = $sierraScraper->getRecordCount();
+		my @tobig = @{$sierraScraper->getTooBigList()};
+		my $extraInformationOutput = @tobig[0];
+		my $couldNotBeCut = @tobig[1];
+		my @diskDump = @{$sierraScraper->getDiskDump()};
+		my $disk =@diskDump[0];
+		my $queryTime = $sierraScraper->getSpeed();
+		my $secondsElapsed = $sierraScraper->calcTimeDiff($previousTime);
+		#print "Writing to thread File:\n$disk\n$recordCount\n$extraInformationOutput\n$couldNotBeCut\n$queryTime\n$limit\n$dbuser\n$secondsElapsed\n";
+		my $writeSuccess=0;
+		my $trys=0;
+		while(!$writeSuccess && $trys<100)
+		{
+			$writeSuccess = $pidWriter->truncFile("$disk\n$recordCount\n$extraInformationOutput\n$couldNotBeCut\n$queryTime\n$limit\n$dbuser\n$secondsElapsed");
+			if(!$writeSuccess)
+			{
+				print "$pid -  Could not write final thread output, trying again: $trys\n";
+			}
+			$trys++;
+		}
+		
+	}
 	
 	exit;
  }
