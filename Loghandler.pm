@@ -139,7 +139,7 @@ sub readFile
 			$trys++;
 			sleep(1);
 		}
-		if($trys<100)	
+		if($trys<100)
 		{
 			#print "Finally worked... now reading\n";
 			@lines = <inputfile>;
@@ -150,6 +150,10 @@ sub readFile
 			print "Attempted $trys times. COULD NOT READ FILE: $file\n";
 		}
 		close(inputfile);
+	}
+	else
+	{
+		print "File does not exist: $file\n";
 	}
 	return \@lines;
 }

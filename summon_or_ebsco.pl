@@ -214,6 +214,7 @@
 								pattern => '%M:%S' #%e days, %H hours,
 							);
 							my $gatherTime = $sierraScraper->calcTimeDiff($gatherTime);
+							$gatherTime = $gatherTime / 60;
 							#$gatherTime = $format->format_duration($gatherTime);
 							my $afterProcess = DateTime->now(time_zone => "local");
 							my $difference = $afterProcess - $dt;
@@ -293,6 +294,8 @@
 								if($recCount>0)
 								{						
 									$marcout->addLine($output);
+									undef $output;
+									undef @marc;
 									my @files = ($marcOutFile);
 									if(1)  #switch FTP on and off easily
 									{
@@ -313,6 +316,11 @@
 								}
 								if($valid)
 								{
+									my $extraBlurb="";
+									if(($type eq "full") && ($platform eq "summon"))
+									{
+										$extraBlurb = "This is a new full catalog load for one of the following members of the MOBIUS consortium, Three Rivers Community College (ML6), William Jewel (MOI)l, University of Central Missouri (MCW), Missouri Southern State University (MOZ), Truman State University (TSU). Please refer to the Summon short name in the output file listed below and submit the request accordingly.\r\n\r\n";
+									}
 									$rps = $sierraScraper->getRPS();
 									$afterProcess = DateTime->now(time_zone => "local");
 									$difference = $afterProcess - $dt;
@@ -320,11 +328,12 @@
 									$log->addLogLine("$school $platform $type: $marcOutFile");
 									$log->addLogLine("$school $platform $type: $recCount Record(s)");
 									$email = new email($conf{"fromemail"},\@tolist,0,1,\%conf);
+									$marcOutFile = substr($marcOutFile,rindex($marcOutFile, '/'));
 									if(length($barcodes)>100000)
 									{
 										$barcodes = substr($barcodes,0,100000);
 									}
-									$email->send("RMO $school - $platform $type Success - Job # $dateString","Record gather duration: $gatherTime\r\nRecords per second: $rps\r\nTotal duration: $duration\r\n\r\nThis process finished without any errors!\r\n\r\nHere is some information:\r\n\r\nOutput File: \t\t$marcOutFile\r\n$recCount Record(s)\r\nFTP location: ".$conf{"ftphost"}."\r\nUserID: ".$conf{"ftplogin"}."\r\nFolder: $remoteDirectory\r\n\r\n$extraInformationOutput $couldNotBeCut -MOBIUS Perl Squad-\r\n\r\n$selectQuery\r\n\r\nThese are the included records:\r\n$barcodes");
+									$email->send("RMO $school - $platform $type Success - Job # $dateString","$extraBlurb \r\nRecord gather duration: $gatherTime\r\nRecords per second: $rps\r\nTotal duration: $duration\r\n\r\nThis process finished without any errors!\r\n\r\nHere is some information:\r\n\r\nOutput File: \t\t$marcOutFile\r\n$recCount Record(s)\r\nFTP location: ".$conf{"ftphost"}."\r\nUserID: ".$conf{"ftplogin"}."\r\nFolder: $remoteDirectory\r\n\r\n$extraInformationOutput $couldNotBeCut -MOBIUS Perl Squad-\r\n\r\n$selectQuery\r\n\r\nThese are the included records:\r\n$barcodes");
 								}
 							}
 				#OUTPUT TO THE CSV
