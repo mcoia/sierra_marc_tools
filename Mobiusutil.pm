@@ -49,7 +49,7 @@ package Mobiusutil;
  use MARC::File;
  use MARC::File::USMARC;
  use MARC::Charset 'marc8_to_utf8';
- #use ZOOM; 
+ use ZOOM; 
  use Net::FTP;
  use Loghandler;
  use Data::Dumper;
@@ -355,10 +355,10 @@ sub findQuery		#self, DBhandler(object), school(string), platform(string), addso
 	my $todate = $ndt;
 	my $tdate = $todate->ymd;
 	my $ttime = $yesterday->hms;
-	my $dbFromDate = "$fdate $ftime";  # "2013-02-16 05:00:00";
-	my $dbToDate = "$tdate $ttime";
+	my $dbFromDate =  "2013-09-27 00:00:00"; #$fdate $ftime";  # "2013-02-16 05:00:00";
+	my $dbToDate =  "$tdate $ttime";
 	my $query;
-	
+	#print "Key = $key\n";
 	if(!$queries{$key})
 	{
 		return "-1";
@@ -923,7 +923,7 @@ sub makeCommaFromArray
 	my @allPrompts = @{@_[4]};
 	my $errorMessage = "";
 	my @promptsResponded;
-	my $timeout  = 10;
+	my $timeout  = 30;
 	
 	my $h = Expect->spawn("ssh $login\@$host");
 	#turn off command output to the screen

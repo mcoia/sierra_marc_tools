@@ -18,6 +18,7 @@ package email;
 
  use Email::MIME;
  use Data::Dumper;
+ use Mobiusutil;
  
 sub new {
     my $class = @_[0];

@@ -63,8 +63,21 @@
 	{
 		my $log = new Loghandler($conf->{"logfile"});
 		$log->addLogLine(" ---------------- Script Starting ---------------- ");
-		
-		
+		 my @marcs = @{$mobUtil->getMarcFromZ3950("205.173.98.103/INNOPAC:A.T. STILL","\@attr 1=38 \"Writer's market\"",$log)};  #1889374
+		 my $outputstring;
+		 foreach(@marcs)
+		 {
+			 $outputstring = $outputstring . $_->as_usmarc();
+			 #print "1: \"".$_->field('001')->data()."\"";
+			 #print "5: \"".$_->field('005')->data()."\"";
+			 #print "8: \"".$_->field('008')->data()."\"";
+			 print $_->as_formatted();
+		 }
+		 #$log->addLogLine("Outputting marc records into $marcOutFile");
+		 #my $marcout = new Loghandler($marcOutFile);
+		 #$marcout->deleteFile();
+		 #$marcout->addLine($outputstring);
+			
 		if(0)
 		{
 		my @errors = @{$mobUtil->compare2MARCFiles("/tmp/run/marcout.mrc","/tmp/run/NoBarcodeFix.mrc", $log, 907, "a" )};
@@ -78,9 +91,9 @@
 			my $email = new email('junk@monsterfro.com',\@tos,0,0,\%conf);
 			$email->send("Errors",encode("utf-8",$errors));
 			print "done emailing\n";
-			}
+		}
 		
-		if(1)
+		if(0)
 		{
 				my $dbHandler = new DBhandler($conf{"db"},$conf{"dbhost"},$conf{"dbuser"},$conf{"dbpass"},$conf{"port"});
 				my $bcodes = "";

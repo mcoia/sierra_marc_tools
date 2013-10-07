@@ -328,10 +328,13 @@
 									$log->addLogLine("$school $platform $type: $marcOutFile");
 									$log->addLogLine("$school $platform $type: $recCount Record(s)");
 									$email = new email($conf{"fromemail"},\@tolist,0,1,\%conf);
-									$marcOutFile = substr($marcOutFile,rindex($marcOutFile, '/'));
-									if(length($barcodes)>100000)
+									if($recCount>0)
+									{	
+										$marcOutFile = substr($marcOutFile,rindex($marcOutFile, '/')+1);
+									}
+									if(length($barcodes)>10000)
 									{
-										$barcodes = substr($barcodes,0,100000);
+										$barcodes = substr($barcodes,0,10000);
 									}
 									$email->send("RMO $school - $platform $type Success - Job # $dateString","$extraBlurb \r\nRecord gather duration: $gatherTime\r\nRecords per second: $rps\r\nTotal duration: $duration\r\n\r\nThis process finished without any errors!\r\n\r\nHere is some information:\r\n\r\nOutput File: \t\t$marcOutFile\r\n$recCount Record(s)\r\nFTP location: ".$conf{"ftphost"}."\r\nUserID: ".$conf{"ftplogin"}."\r\nFolder: $remoteDirectory\r\n\r\n$extraInformationOutput $couldNotBeCut -MOBIUS Perl Squad-\r\n\r\n$selectQuery\r\n\r\nThese are the included records:\r\n$barcodes");
 								}
@@ -416,6 +419,8 @@
 	my $limit = $increment-$offset;
 	my $pid = @ARGV[4];
 	my $dbuser = @ARGV[5];
+	my $typ = @ARGV[6];
+	#print "Type = $typ\n";
 	$rangeWriter->addLine("$offset $increment");
 	#print "$pid: $offset - $increment $dbuser\n";
 	my $dbpass = "";
@@ -449,7 +454,7 @@
 	{
 		my $dbHandler = new DBhandler($conf{"db"},$conf{"dbhost"},$dbuser,$dbpass,$conf{"port"});
 		#print "Sending off to get thread query: $school, $platform, $type";
-		my $selectQuery = $mobUtil->findQuery($dbHandler,$school,$platform,"full",$queries);
+		my $selectQuery = $mobUtil->findQuery($dbHandler,$school,$platform,$typ,$queries);		
 		$selectQuery=~s/\$recordSearch/RECORD_ID/gi;
 		$selectQuery.= " AND ID > $offset AND ID <= $increment";
 		#print "Thread got this query\n\n$selectQuery\n\n";

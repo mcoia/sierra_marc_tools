@@ -106,7 +106,14 @@ package sierraScraper;
 		$self->{'type'}=$t;
 	}
 	bless $self, $class;
-	if(($t) && ($t eq 'full'))
+	figureSelectStatement($self);
+	my $max = findMaxRecordCount($self,$self->{'selects'});
+	#print "Max calc: $max\n";
+	if(($t) && ($t ne 'thread') && ($max > 2000))
+	{
+		gatherDataFromDB_spinThread_Controller($self);
+	}
+	elsif(($t) && ($t eq 'full'))
 	{		
 		gatherDataFromDB_spinThread_Controller($self);
 	}
@@ -127,7 +134,7 @@ package sierraScraper;
  {
 	my $self = @_[0];
 	my $previousTime = DateTime->now();
-	figureSelectStatement($self);
+	$self->{'selects'} =~ s/\$recordSearch/RECORD_ID/gi;
 	stuffStandardFields($self);
 	stuffSpecials($self);
 	stuff945($self);
@@ -224,8 +231,6 @@ package sierraScraper;
 	}
 	$dbUserTrack{@dbUsers[0]}=1;
 	
-	figureSelectStatement($self);
-	my $selects = $self->{'selects'};
 	my @cha = split("",$selects);
 	my $tselects = "";	
 	my $chunks = 0;
@@ -404,11 +409,11 @@ package sierraScraper;
 		{
 			if(!$threadJustFinished)
 			{
-				my $pidFileNameStart=0;
+				my $pidFileNameStart=int(rand(10000));
 				if($finishedRecordCount<$max)
 				{
 					my $loops=0;
-					while( ($workingThreads<($threadsAllowed-1)) && ($finishedRecordCount+($loops*$chunkGoal)<$max))
+					while ($workingThreads<($threadsAllowed-1))#&& ($finishedRecordCount+($loops*$chunkGoal)<$max))
 					{
 						$loops++;
 						my $thisOffset = $offset;
@@ -453,8 +458,9 @@ package sierraScraper;
 							#print "Starting new thread\n";
 							#print "Max: $max   From: $thisOffset To: $thisIncrement\n";
 							my $thisPid = $mobUtil->chooseNewFileName("/tmp",$pidFileNameStart,"sierrapid");
+							my $ty = $self->{'type'};
 							#print "Spawning: $pathtothis $conffile thread $thisOffset $thisIncrement $thisPid $dbuser \n";
-							system("$pathtothis $conffile thread $thisOffset $thisIncrement $thisPid $dbuser &");
+							system("$pathtothis $conffile thread $thisOffset $thisIncrement $thisPid $dbuser $ty &");
 							push(@threadTracker,$thisPid);
 							#print "Just pushed thread onto stack\n";
 							$pidFileNameStart++;
@@ -514,7 +520,15 @@ package sierraScraper;
  sub findMaxRecordCount
  {
 	my $self = @_[0];
-	my $maxQuery = @_[1];
+	my $mm = @_[1];
+	my @cha = split("",$mm);
+	my $maxQuery;
+	foreach(@cha)
+	{
+		$maxQuery.=$_;
+	}
+	$maxQuery =~ s/\$recordSearch/COUNT(\*)/gi;
+	
 	my $dbHandler = $self->{'dbhandler'};
 	my $max = 0;
 	my @results = @{$dbHandler->query($maxQuery)};
@@ -1709,26 +1723,6 @@ sub stuff998alternate
 		$duration=.1;
 	}
 	return $duration;
- }
- 
- sub calcLimitChange
- {
-	my $speedDiff = @_[1];
-	my $limit = @_[2];
-	my $masterpid = @_[3];
-	if($speedDiff > 1) #This means that the previous query ran faster
-	{
-		$limit-=50;
-		#print "Adjusting limit DOWN to $limit\n";
-		$masterpid->addLine("Adjusting limit DOWN to $limit");
-	}
-	elsif($speedDiff < 1) #This means that current query ran faster - let's add more and see what happens next time!
-	{
-		$limit+=100;
-		#print "Adjusting limit UP to $limit\n";
-		$masterpid->addLine("Adjusting limit UP to $limit");
-	} 
-	return $limit;
  }
  
  sub dumpRamToDisk
