@@ -234,13 +234,16 @@ package recordItem;
 	{
 		for my $i (0..$#brokenFields)
 		{
-			my $recItem = @brokenFields[$i];
+			my $recItem = @brokenFields[$i];			
 			if($i==0)
 			{
+				#print "Adding $id\n";
 				$ret = MARC::Field->new($id, $ind1, $ind2, $recItem->getID() => $recItem->getData());
 			}
 			else
 			{
+				#my $tt = $recItem->getID();
+				#print "sAdding $tt\n";
 				$ret->add_subfields( $recItem->getID() => $recItem->getData() );
 			}
 		}

@@ -355,7 +355,7 @@ sub findQuery		#self, DBhandler(object), school(string), platform(string), addso
 	my $todate = $ndt;
 	my $tdate = $todate->ymd;
 	my $ttime = $yesterday->hms;
-	my $dbFromDate =  "2013-09-27 00:00:00"; #$fdate $ftime";  # "2013-02-16 05:00:00";
+	my $dbFromDate = "$fdate $ftime";  # "2013-02-16 05:00:00";
 	my $dbToDate =  "$tdate $ttime";
 	my $query;
 	#print "Key = $key\n";

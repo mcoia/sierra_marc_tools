@@ -273,6 +273,8 @@ package sierraScraper;
 	my $slowestQueryTime = 0;
 	my $rps = 0;
 	my $range=0;
+	my $recordsCollectedTotalPerLoop=0;
+	my $recordsCollectedStale=0;
 	while($threadsAlive)
 	{
 		#print "Starting main Thread loop\n";
@@ -405,6 +407,17 @@ package sierraScraper;
 		@threadTracker=@newThreads;
 		#print "$workingThreads / $threadsAllowed Threads\n";
 		
+		#Figure out if total collected records is the same as last time
+		#Count the number of times that the number of collected records are the same
+		if($finishedRecordCount==$recordsCollectedTotalPerLoop)
+		{
+			$recordsCollectedStale++;
+		}
+		else
+		{
+			$recordsCollectedStale=0;
+		}
+		
 		if($workingThreads<($threadsAllowed-1))
 		{
 			if(!$threadJustFinished)
@@ -484,6 +497,13 @@ package sierraScraper;
 				}
 			}
 		}
+		
+		#stop this nonsense - we have looped 100 times and not increased our records!		
+		if($recordsCollectedStale>100)
+		{
+			$threadsAlive=0;
+		}
+		
 		if($workingThreads==0 && !$threadJustFinished)
 		{
 			$threadsAlive=0;
@@ -1369,6 +1389,7 @@ sub stuff998alternate
 	my @fields;
 	if(exists $group{$recID})
 	{
+		#print "Creating MARC for $recID\n";
 		#print Dumper(\%group);
 		@fields = $group{$recID};
 		for my $i (0..$#fields)

@@ -332,9 +332,9 @@
 									{	
 										$marcOutFile = substr($marcOutFile,rindex($marcOutFile, '/')+1);
 									}
-									if(length($barcodes)>10000)
+									if(length($barcodes)>100)
 									{
-										$barcodes = substr($barcodes,0,10000);
+										$barcodes = substr($barcodes,0,100);
 									}
 									$email->send("RMO $school - $platform $type Success - Job # $dateString","$extraBlurb \r\nRecord gather duration: $gatherTime\r\nRecords per second: $rps\r\nTotal duration: $duration\r\n\r\nThis process finished without any errors!\r\n\r\nHere is some information:\r\n\r\nOutput File: \t\t$marcOutFile\r\n$recCount Record(s)\r\nFTP location: ".$conf{"ftphost"}."\r\nUserID: ".$conf{"ftplogin"}."\r\nFolder: $remoteDirectory\r\n\r\n$extraInformationOutput $couldNotBeCut -MOBIUS Perl Squad-\r\n\r\n$selectQuery\r\n\r\nThese are the included records:\r\n$barcodes");
 								}
