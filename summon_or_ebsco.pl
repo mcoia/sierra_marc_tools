@@ -224,7 +224,8 @@
 							my $rps;
 							if($valid)
 							{
-								my @marc = @{$sierraScraper->getAllMARC()};
+								my @all = @{$sierraScraper->getAllMARC()};
+								my @marc = @{@all[0]}; 
 								my @tobig = @{$sierraScraper->getTooBigList()};
 								$extraInformationOutput = @tobig[0];
 								$couldNotBeCut = @tobig[1];
@@ -232,55 +233,40 @@
 								$marcout->deleteFile();
 								my $output;
 								my $barcodes="";
-								foreach(@marc)
+								my @back = processMARC(\@marc,$platform,$type,$school,$marcout);
+								$extraInformationOutput.=@back[0];
+								$barcodes.=@back[1];
+								$couldNotBeCut.=@back[2];
+								$recCount+=@back[3];
+								
+								if(ref @all[1] eq 'ARRAY')
 								{
-									my $marc = $_;
-									$marc->encoding( 'UTF-8' );
-									my @count = @{$mobUtil->trucateMarcToFit($marc)};
-									#print @count[1]."\n";
-									my $addThisone=1;
-									if(@count[1]==1)
-									{
-										$marc = @count[0];
-										$extraInformationOutput.=$marc->subfield('907',"a");
-									}
-									elsif(@count[1]==0)
-									{
-										$addThisone=0;
-									}
-									
-									if($addThisone) #ISO2709 MARC record is limited to 99,999 octets 
-									{
-										#ebsco cancels needs the leader altered
-										if(($platform eq 'ebsco' ) && ($type eq 'cancels'))
+									my @dumpedFiles = @{@all[1]};
+									foreach(@dumpedFiles)
+									{	
+										@marc =();
+										my $marcfile = $_;
+										my $check = new Loghandler($marcfile);
+										if($check->fileExists())
 										{
-											my $leader = $marc->leader();
-											my @lchars = split('',$leader);
-											my $finalLeader = "";										
-											@lchars[5] = 'd';
-											foreach(@lchars)
-											{
-												$finalLeader.=$_;
+											my $file = MARC::File::USMARC->in( $marcfile );
+											my $r =0;
+											while ( my $marc = $file->next() ) 
+											{						
+												$r++;
+												push(@marc,$marc);
 											}
-											$marc->leader($finalLeader);
+											print "Read $r records from $_\n";
+											$check->deleteFile();
 										}
-										
-										#Dirty fix for tweaking the 856 stuff for MBTS
-										if($school eq 'midwestern_babtist')
-										{
-											$marc = mbts856fix($marc);
-										}
-										
-										$barcodes.=$marc->subfield('907',"a");
-										$barcodes.="\r\n";
-										$output.=$marc->as_usmarc();
-										$recCount++;
-									}
-									else
-									{
-										$couldNotBeCut.=$marc->subfield('907',"a");
+										my @back = processMARC(\@marc,$platform,$type,$school,$marcout);
+										$extraInformationOutput.=@back[0];
+										$barcodes.=@back[1];
+										$couldNotBeCut.=@back[2];
+										$recCount+=@back[3];
 									}
 								}
+								
 								
 								if(length($extraInformationOutput)>0)
 								{
@@ -292,12 +278,10 @@
 								}
 								
 								if($recCount>0)
-								{						
-									$marcout->addLine($output);
-									undef $output;
+								{	
 									undef @marc;
 									my @files = ($marcOutFile);
-									if(1)  #switch FTP on and off easily
+									if(0)  #switch FTP on and off easily
 									{
 										eval{$mobUtil->sendftp($conf{"ftphost"},$conf{"ftplogin"},$conf{"ftppass"},$remoteDirectory,\@files,$log);};
 										 if ($@) 
@@ -332,9 +316,9 @@
 									{	
 										$marcOutFile = substr($marcOutFile,rindex($marcOutFile, '/')+1);
 									}
-									if(length($barcodes)>100)
+									if(length($barcodes)>1000)
 									{
-										$barcodes = substr($barcodes,0,100);
+										$barcodes = substr($barcodes,0,1000);
 									}
 									$email->send("RMO $school - $platform $type Success - Job # $dateString","$extraBlurb \r\nRecord gather duration: $gatherTime\r\nRecords per second: $rps\r\nTotal duration: $duration\r\n\r\nThis process finished without any errors!\r\n\r\nHere is some information:\r\n\r\nOutput File: \t\t$marcOutFile\r\n$recCount Record(s)\r\nFTP location: ".$conf{"ftphost"}."\r\nUserID: ".$conf{"ftplogin"}."\r\nFolder: $remoteDirectory\r\n\r\n$extraInformationOutput $couldNotBeCut -MOBIUS Perl Squad-\r\n\r\n$selectQuery\r\n\r\nThese are the included records:\r\n$barcodes");
 								}
@@ -372,7 +356,74 @@
 	}
  }
  
- 
+ sub processMARC
+ {
+	my @marc = @{@_[0]};
+	my $platform = @_[1];
+	my $type = @_[2];
+	my $school = @_[3];
+	my $marcout = @_[4];
+	my $extraInformationOutput;
+	my $barcodes;
+	my $couldNotBeCut;
+	my $recCount=0;
+	foreach(@marc)
+	{
+		my $marc = $_;
+		$marc->encoding( 'UTF-8' );
+		my @count = @{$mobUtil->trucateMarcToFit($marc)};
+		#print @count[1]."\n";
+		my $addThisone=1;
+		if(@count[1]==1)
+		{
+			$marc = @count[0];
+			$extraInformationOutput.=$marc->subfield('907',"a");
+		}
+		elsif(@count[1]==0)
+		{
+			$addThisone=0;
+		}
+		
+		if($addThisone) #ISO2709 MARC record is limited to 99,999 octets 
+		{
+			#ebsco cancels needs the leader altered
+			if(($platform eq 'ebsco' ) && ($type eq 'cancels'))
+			{
+				my $leader = $marc->leader();
+				my @lchars = split('',$leader);
+				my $finalLeader = "";										
+				@lchars[5] = 'd';
+				foreach(@lchars)
+				{
+					$finalLeader.=$_;
+				}
+				$marc->leader($finalLeader);
+			}
+			
+			#Dirty fix for tweaking the 856 stuff for MBTS
+			if($school eq 'midwestern_babtist')
+			{
+				$marc = mbts856fix($marc);
+			}
+			
+			$barcodes.=$marc->subfield('907',"a");
+			if($marc->subfield('245',"a"))
+			{
+				$barcodes.=" - ".$marc->subfield('245',"a");
+			}
+			$barcodes.="\r\n";
+			#$output.=$marc->as_usmarc();
+			$marcout->appendLine($marc->as_usmarc());
+			$recCount++;
+		}
+		else
+		{
+			$couldNotBeCut.=$marc->subfield('907',"a");
+		}
+	}
+	my @ret=($extraInformationOutput,$barcodes,$couldNotBeCut,$recCount);
+	return \@ret;
+ }
  sub mbts856fix
  {
 	my $marc = @_[0];

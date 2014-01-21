@@ -63,24 +63,76 @@
 	{
 		my $log = new Loghandler($conf->{"logfile"});
 		$log->addLogLine(" ---------------- Script Starting ---------------- ");
-		 my @marcs = @{$mobUtil->getMarcFromZ3950("205.173.98.103/INNOPAC:A.T. STILL","\@attr 1=38 \"Writer's market\"",$log)};  #1889374
-		 my $outputstring;
-		 foreach(@marcs)
-		 {
+		my $file = MARC::File::USMARC->in('/tmp/run/barcodes.mrc');
+		my @final = ();
+		my $count=0;
+		my @header;
+		my @allOutCSV;
+		while ( my $marc = $file->next())
+		{
+			$count++;
+			my @marcOutput;
+			my @fields = $marc->fields();
+			foreach(@fields)
+			{
+				my $field = $_;
+				my $tag = $field->tag();
+				
+				if($field->is_control_field())
+				{
+					
+				}
+				else
+				{
+					if($field->tag() eq '852')
+					{
+						my @subfields = $field->subfields();
+						foreach(@subfields)
+						{
+							my @b = @{$_};
+							if(@b[0] eq 'p')
+							{
+								push(@allOutCSV,@b[1]);
+							}
+						}
+					}
+				}
+			}
+			
+		}
+		my $l = new Loghandler($conf->{"csvout"});
+		$l->deleteFile();
+		my $txtout = "";
+		
+		foreach(@allOutCSV)
+		{
+			$txtout.="$_";
+			$l->addLine($txtout);
+			$txtout = "";
+		}
+		
+		
+		print "Found $count Records outputed: ".$conf->{"csvout"}."\n";
+		if(0)
+		{
+			my @marcs = @{$mobUtil->getMarcFromZ3950("205.173.98.103/INNOPAC:A.T. STILL","\@attr 1=38 \"Writer's market\"",$log)};  #1889374
+			my $outputstring;
+			foreach(@marcs)
+			{
 			 $outputstring = $outputstring . $_->as_usmarc();
 			 #print "1: \"".$_->field('001')->data()."\"";
 			 #print "5: \"".$_->field('005')->data()."\"";
 			 #print "8: \"".$_->field('008')->data()."\"";
 			 print $_->as_formatted();
-		 }
-		 #$log->addLogLine("Outputting marc records into $marcOutFile");
-		 #my $marcout = new Loghandler($marcOutFile);
-		 #$marcout->deleteFile();
-		 #$marcout->addLine($outputstring);
-			
+			}
+			#$log->addLogLine("Outputting marc records into $marcOutFile");
+			#my $marcout = new Loghandler($marcOutFile);
+			#$marcout->deleteFile();
+			#$marcout->addLine($outputstring);
+		}	
 		if(0)
 		{
-		my @errors = @{$mobUtil->compare2MARCFiles("/tmp/run/marcout.mrc","/tmp/run/NoBarcodeFix.mrc", $log, 907, "a" )};
+			my @errors = @{$mobUtil->compare2MARCFiles("/tmp/run/marcout.mrc","/tmp/run/NoBarcodeFix.mrc", $log, 907, "a" )};
 			my $errors;
 			foreach(@errors)
 			{

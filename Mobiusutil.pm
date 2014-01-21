@@ -1115,5 +1115,31 @@ sub makeCommaFromArray
 	}
 	
  }
+ 
+sub generateRandomString
+{
+	my $length = @_[1];
+	my $i=0;
+	my $ret="";
+	my @letters = ('a','b','c','d','e','f','g','h','j','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z');
+	my $letterl = $#letters;
+	my @sym = ('[','!','#',')','(');
+	my $syml = $#sym;
+	my @both = ([@letters],[@sym]);
+	while($i<$length)
+	{
+		#print "first rand: ".$#both."\n";
+		my $r = int(rand($#both+1));
+		#print "Random array: $r\n";
+		my @t = @{@both[$r]};
+		#print "rand: ".$#t."\n";
+		my $int = int(rand($#t + 1));
+		#print "Random value: $int = ".@{$both[$r]}[$int]."\n";
+		$ret.= @{$both[$r]}[$int];
+		$i++;
+	}
+	
+	return $ret;
+}
 1;
 

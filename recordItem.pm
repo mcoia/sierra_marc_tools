@@ -227,58 +227,63 @@ package recordItem;
 	my @brokenFields = @{$self->{brokenFields}};
 	my $ind1 = $self->{indicator1};
 	my $ind2 = $self->{indicator2};
-	my $id = $self->{id};	
-	my $data = $self->{data};
-	my $ret;
-	if($self->{hasfields} && $id>9)
+	my $id = $self->{id};
+	#test the tag for numeric
+	if ($id =~ m/[^0-9.]/ ) { print "$id is not a valid tag\n";}
+    else
 	{
-		for my $i (0..$#brokenFields)
+		my $data = $self->{data};
+		my $ret;
+		if($self->{hasfields} && $id>9)
 		{
-			my $recItem = @brokenFields[$i];			
-			if($i==0)
+			for my $i (0..$#brokenFields)
 			{
-				#print "Adding $id\n";
-				$ret = MARC::Field->new($id, $ind1, $ind2, $recItem->getID() => $recItem->getData());
+				my $recItem = @brokenFields[$i];			
+				if($i==0)
+				{
+					#print "Adding $id\n";
+					$ret = MARC::Field->new($id, $ind1, $ind2, $recItem->getID() => $recItem->getData());
+				}
+				else
+				{
+					#my $tt = $recItem->getID();
+					#print "sAdding $tt\n";
+					$ret->add_subfields( $recItem->getID() => $recItem->getData() );
+				}
 			}
-			else
-			{
-				#my $tt = $recItem->getID();
-				#print "sAdding $tt\n";
-				$ret->add_subfields( $recItem->getID() => $recItem->getData() );
-			}
-		}
-	}
-	else
-	{
-		
-		if($id eq '001' || $id eq '002' || $id eq '003' || $id eq '004' || $id eq '005' || $id eq '006' || $id eq '007' || $id eq '008' || $id eq '009')
-		{
-			#Different Constructor for these fields
-			$ret = MARC::Field->new($id,$data);
 		}
 		else
 		{
-		#print "Adding $id = $data\n";
-			eval{$ret = MARC::Field->new($id,$ind1,$ind2,$data)};
-			 if ($@) 
-			 {
-			 #print "Could not create MARC Field object - trying to add subfield a\n";
-				#errors usually due to a required subfield
-				eval{$ret = MARC::Field->new($id,$ind1,$ind2,"a"=>$data)};
-				if ($@) 
-				{
-					 print "Could not add field to MARC\n";
-					 print "$id = \"$data\"\n";
-				 }
-				 else
-				 {
-					#print "That worked\n";
-					#print Dumper($ret);
-				 }
-			 }
 			
+			if($id eq '001' || $id eq '002' || $id eq '003' || $id eq '004' || $id eq '005' || $id eq '006' || $id eq '007' || $id eq '008' || $id eq '009')
+			{
+				#Different Constructor for these fields
+				$ret = MARC::Field->new($id,$data);
+			}
+			else
+			{
+			#print "Adding $id = $data\n";
+				eval{$ret = MARC::Field->new($id,$ind1,$ind2,$data)};
+				 if ($@) 
+				 {
+				 #print "Could not create MARC Field object - trying to add subfield a\n";
+					#errors usually due to a required subfield
+					eval{$ret = MARC::Field->new($id,$ind1,$ind2,"a"=>$data)};
+					if ($@) 
+					{
+						 print "Could not add field to MARC\n";
+						 print "$id = \"$data\"\n";
+					 }
+					 else
+					 {
+						#print "That worked\n";
+						#print Dumper($ret);
+					 }
+				 }
+				
+			}
 		}
-	}
+	}	
 	
 	return $ret;
  }

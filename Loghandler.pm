@@ -105,6 +105,30 @@ sub addLine
 	return $ret;
 }
 
+sub addLineRaw
+{
+	my ($fileName) = @_[0];
+	my $file = $fileName->{_file};
+	my $line = @_[1];
+	open(OUTPUT, '>> '.$file) or die $!;
+	binmode(OUTPUT, ":raw");
+	print OUTPUT "$line\n";
+	close(OUTPUT);
+}
+
+sub appendLine
+{
+	my ($fileName) = @_[0];
+	my $file = $fileName->{_file};
+	my $line = @_[1];
+	my $ret=1;
+	open(OUTPUT, '>> '.$file) or $ret=0;
+	binmode(OUTPUT, ":utf8");
+	print OUTPUT "$line";
+	close(OUTPUT);
+	return $ret;
+}
+
 sub truncFile
 {
 	my ($fileName) = @_[0];

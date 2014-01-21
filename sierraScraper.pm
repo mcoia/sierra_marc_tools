@@ -109,7 +109,7 @@ package sierraScraper;
 	figureSelectStatement($self);
 	my $max = findMaxRecordCount($self,$self->{'selects'});
 	#print "Max calc: $max\n";
-	if(($t) && ($t ne 'thread') && ($max > 2000))
+	if(($t) && ($t ne 'thread') && ($max > 5000))
 	{
 		gatherDataFromDB_spinThread_Controller($self);
 	}
@@ -283,6 +283,7 @@ package sierraScraper;
 		my $threadJustFinished=0;
 		#print Dumper(\@threadTracker);
 		#print "Looping through the threads\n";
+		$recordsCollectedTotalPerLoop = $finishedRecordCount;
 		foreach(@threadTracker)
 		{	
 			#print "Checking to see if thread $_ is done\n";
@@ -498,8 +499,8 @@ package sierraScraper;
 			}
 		}
 		
-		#stop this nonsense - we have looped 100 times and not increased our records!		
-		if($recordsCollectedStale>100)
+		#stop this nonsense - we have looped 600 times and not increased our records!  600 loops * 2 seconds per loop = 20 minutes
+		if($recordsCollectedStale>600)
 		{
 			$threadsAlive=0;
 		}
@@ -522,6 +523,7 @@ package sierraScraper;
 		$masterfile->truncFile($pidfile->getFileName);
 		$masterfile->addLine("$rps records/s Per Thread\n$overAllRPS records/s Average\nChunking: $chunkGoal\nRange: $range\n$remaining minutes remaining\n$minutesElapsed minute(s) elapsed\n");
 		$masterfile->addLine("Records On disk: $finishedRecordCount,\nNeed: $max  \n");
+		$masterfile->addLine("Loops with no records: $recordsCollectedStale");
 		$masterfile->addLine("Database User Utalization:");
 		$masterfile->addLine(Dumper(\%dbUserTrack));
 		if((scalar @recovers)>0)
@@ -1416,6 +1418,7 @@ sub stuff998alternate
 	my $self = @_[0];
 	my %standard = %{$self->{'standard'}};
 	my $dumpedFiles = $self->{'diskdump'};
+	my @ret;
 	my @marcout;
 	
 	#format memory into marc
@@ -1423,30 +1426,32 @@ sub stuff998alternate
 	{
 		push(@marcout,getSingleMARC($self,$internal));
 	}
+	push(@ret,[@marcout]);
 	#look for any dumped files and read those into the array
 	if(ref $dumpedFiles eq 'ARRAY')
 	{
 		my @dumpedFiles = @{$dumpedFiles};
+		push(@ret,[@dumpedFiles]);
 		#print Dumper(\@dumpedFiles);
-		foreach(@dumpedFiles)
-		{	
-			my $marcfile = $_;
-			my $check = new Loghandler($marcfile);
-			if($check->fileExists())
-			{
-				my $file = MARC::File::USMARC->in( $marcfile );
-				my $r =0;
-				while ( my $marc = $file->next() ) 
-				{						
-					$r++;
-					push(@marcout,$marc);
-				}
-				print "Read $r records from $_\n";
-				$check->deleteFile();
-			}
-		}
+		# foreach(@dumpedFiles)
+		# {	
+			# my $marcfile = $_;
+			# my $check = new Loghandler($marcfile);
+			# if($check->fileExists())
+			# {
+				# my $file = MARC::File::USMARC->in( $marcfile );
+				# my $r =0;
+				# while ( my $marc = $file->next() ) 
+				# {						
+					# $r++;
+					# push(@marcout,$marc);
+				# }
+				# print "Read $r records from $_\n";
+				# $check->deleteFile();
+			# }
+		# }
 	}
-	return \@marcout;
+	return \@ret;
  }
  
  sub figureSelectStatement
@@ -1552,7 +1557,7 @@ sub stuff998alternate
 		PTYPE_CODE)
 		FROM SIERRA_VIEW.PATRON_RECORD WHERE ID=A.PATRON_RECORD_ID),
 		TRIM(CONCAT('b',
-		(SELECT TRIM(CONTENT) FROM SIERRA_VIEW.SUBFIELD WHERE RECORD_ID=A.ITEM_RECORD_METADATA_ID AND FIELD_TYPE_CODE='b')
+		(SELECT TRIM(CONTENT) FROM SIERRA_VIEW.SUBFIELD WHERE RECORD_ID=A.ITEM_RECORD_METADATA_ID AND FIELD_TYPE_CODE='b' LIMIT 1)
 		)),
 		
 		TRIM(CONCAT(	
