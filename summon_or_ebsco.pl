@@ -44,6 +44,7 @@
  use Encode;
  use DateTime::Format::Duration;
 
+ my $barcodeCharacterAllowedInEmail=2000;
  
  #use warnings;
  #use diagnostics; 
@@ -233,7 +234,8 @@
 								$marcout->deleteFile();
 								my $output;
 								my $barcodes="";
-								my @back = processMARC(\@marc,$platform,$type,$school,$marcout);
+								my @back = @{processMARC(\@marc,$platform,$type,$school,$marcout)};
+								print Dumper(@back);
 								$extraInformationOutput.=@back[0];
 								$barcodes.=@back[1];
 								$couldNotBeCut.=@back[2];
@@ -241,6 +243,7 @@
 								
 								if(ref @all[1] eq 'ARRAY')
 								{
+									print "There were some files to process";
 									my @dumpedFiles = @{@all[1]};
 									foreach(@dumpedFiles)
 									{	
@@ -259,10 +262,11 @@
 											print "Read $r records from $_\n";
 											$check->deleteFile();
 										}
-										my @back = processMARC(\@marc,$platform,$type,$school,$marcout);
+										my @back = @{processMARC(\@marc,$platform,$type,$school,$marcout)};
 										$extraInformationOutput.=@back[0];
 										$barcodes.=@back[1];
 										$couldNotBeCut.=@back[2];
+										#print "Adding ".@back[3];
 										$recCount+=@back[3];
 									}
 								}
@@ -281,7 +285,7 @@
 								{	
 									undef @marc;
 									my @files = ($marcOutFile);
-									if(0)  #switch FTP on and off easily
+									if(1)  #switch FTP on and off easily
 									{
 										eval{$mobUtil->sendftp($conf{"ftphost"},$conf{"ftplogin"},$conf{"ftppass"},$remoteDirectory,\@files,$log);};
 										 if ($@) 
@@ -316,11 +320,11 @@
 									{	
 										$marcOutFile = substr($marcOutFile,rindex($marcOutFile, '/')+1);
 									}
-									if(length($barcodes)>1000)
+									if(length($barcodes)>$barcodeCharacterAllowedInEmail)
 									{
-										$barcodes = substr($barcodes,0,1000);
+										$barcodes = substr($barcodes,0,$barcodeCharacterAllowedInEmail);
 									}
-									$email->send("RMO $school - $platform $type Success - Job # $dateString","$extraBlurb \r\nRecord gather duration: $gatherTime\r\nRecords per second: $rps\r\nTotal duration: $duration\r\n\r\nThis process finished without any errors!\r\n\r\nHere is some information:\r\n\r\nOutput File: \t\t$marcOutFile\r\n$recCount Record(s)\r\nFTP location: ".$conf{"ftphost"}."\r\nUserID: ".$conf{"ftplogin"}."\r\nFolder: $remoteDirectory\r\n\r\n$extraInformationOutput $couldNotBeCut -MOBIUS Perl Squad-\r\n\r\n$selectQuery\r\n\r\nThese are the included records:\r\n$barcodes");
+									$email->send("RMO $school - $platform $type Success - Job # $dateString","$extraBlurb \r\nRecord gather duration: $gatherTime\r\nRecords per second: $rps\r\nTotal duration: $duration\r\n\r\nThis process finished without any errors!\r\n\r\nHere is some information:\r\n\r\nOutput File: \t\t$marcOutFile\r\n$recCount Record(s)\r\nFTP location: ".$conf{"ftphost"}."\r\nUserID: ".$conf{"ftplogin"}."\r\nFolder: $remoteDirectory\r\n\r\n$extraInformationOutput $couldNotBeCut -MOBIUS Perl Squad-\r\n\r\n$selectQuery\r\n\r\nThese are the top $barcodeCharacterAllowedInEmail characters included records:\r\n$barcodes");
 								}
 							}
 				#OUTPUT TO THE CSV
@@ -363,9 +367,9 @@
 	my $type = @_[2];
 	my $school = @_[3];
 	my $marcout = @_[4];
-	my $extraInformationOutput;
+	my $extraInformationOutput='';
 	my $barcodes;
-	my $couldNotBeCut;
+	my $couldNotBeCut='';
 	my $recCount=0;
 	foreach(@marc)
 	{
@@ -377,7 +381,9 @@
 		if(@count[1]==1)
 		{
 			$marc = @count[0];
+			print "Extrainformation adding: ".$marc->subfield('907',"a");
 			$extraInformationOutput.=$marc->subfield('907',"a");
+			print "Now it's\n $extraInformationOutput";
 		}
 		elsif(@count[1]==0)
 		{
@@ -499,7 +505,7 @@
 	if ($@) {
 		$pidWriter->truncFile("none\nnone\nnone\nnone\nnone\nnone\n$dbuser\nnone\n1\n$offset\n$increment");
 		$rangeWriter->addLine("$offset $increment DEFUNCT");
-		#print "******************* I DIED DBHANDLER ********************** $pid\n";
+		print "******************* I DIED DBHANDLER ********************** $pid\n";
 	}
 	else
 	{
@@ -513,6 +519,7 @@
 		#print "Thread started\n offset: $offset\n increment: $increment\n pidfile: $pid\n limit: $limit";
 		my $sierraScraper;
 		local $@;
+		#print "Scraping:\n$dbHandler,$log,$selectQuery,$type,".$conf{"school"}.",$pathtothis,$configFile";
 		eval{$sierraScraper = new sierraScraper($dbHandler,$log,$selectQuery,$type,$conf{"school"},$pathtothis,$configFile);};
 		if($@)
 		{

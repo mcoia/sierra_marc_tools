@@ -188,19 +188,30 @@ package sierraScraper;
 	my $selects = $self->{'selects'};
 	my $pidfile = $self->{'pidfile'};	
 	my $previousTime=DateTime->now;
+	#print "Thread starting\n";
 	$self->{'selects'}  = $self->{'bibids'};
+	#print "stuffStandardFields\n";
 	stuffStandardFields($self);
+	#print "stuffSpecials\n";
 	stuffSpecials($self);
+	#print "stuff945\n";
 	stuff945($self);
+	#print "stuff907\n";
 	stuff907($self);
+	#print "stuff998alternate\n";
 	stuff998alternate($self);
+	#print "stuffLeader\n";
 	stuffLeader($self);
+	#print "Done stuffing\n";
 	my $secondsElapsed = calcTimeDiff($self,$previousTime);
+	#print "time = $secondsElapsed\n";
 	my %standard = %{$self->{'standard'}};
 	my $currentRecordCount = scalar keys %standard;
+	#print "currentRecordCount = $currentRecordCount\n";
 	my @dumpedFiles = (0);
 	@dumpedFiles = @{dumpRamToDisk($self, \@dumpedFiles,1)};
 	$self->{'diskdump'}=\@dumpedFiles;
+	#print "Dumped files\n";
 	return $currentRecordCount;
  }
   
@@ -473,7 +484,7 @@ package sierraScraper;
 							#print "Max: $max   From: $thisOffset To: $thisIncrement\n";
 							my $thisPid = $mobUtil->chooseNewFileName("/tmp",$pidFileNameStart,"sierrapid");
 							my $ty = $self->{'type'};
-							#print "Spawning: $pathtothis $conffile thread $thisOffset $thisIncrement $thisPid $dbuser \n";
+							#print "Spawning: $pathtothis $conffile thread $thisOffset $thisIncrement $thisPid $dbuser $ty\n";
 							system("$pathtothis $conffile thread $thisOffset $thisIncrement $thisPid $dbuser $ty &");
 							push(@threadTracker,$thisPid);
 							#print "Just pushed thread onto stack\n";
@@ -1428,6 +1439,9 @@ sub stuff998alternate
 	}
 	push(@ret,[@marcout]);
 	#look for any dumped files and read those into the array
+	#print "Checking to see if it's array";
+	#print ref $dumpedFiles;
+	#print "\n";
 	if(ref $dumpedFiles eq 'ARRAY')
 	{
 		my @dumpedFiles = @{$dumpedFiles};
@@ -1780,28 +1794,50 @@ sub stuff998alternate
 		}
 		my $log = $self->{'log'};
 		my @try = ('nine45','nine07','nine98','specials','standard');
-		my @marc = @{getAllMARC($self)};
+		#print "Getting all marc\n";
+		my @both = @{getAllMARC($self)};
+		my @marc = @{@both[0]};
+		my $files = @both[1];
+		if(ref $files eq 'ARRAY')
+		{
+			print "There should not be any files here but there are:\n";
+			my @files = @{$files};
+			foreach(@files)
+			{
+				print "$_\n";
+			}
+		}
+		#print Dumper(@marc);
+		#print "Got em\n";
 		my $output;
 		
 		foreach(@marc)
 		{
+			#print "Loop through marc record";
 			my $marc = $_;
 			my $count = $mobUtil->marcRecordSize($marc);
+			#print "Got size\n";
 			my $addThisone=1;
 			if($count>99999) #ISO2709 MARC record is limited to 99,999 octets 
 			{
+				print "it's over 99999\n";	
 				my @re = @{$mobUtil->trucateMarcToFit($marc)};
 				$marc = @re[0];
 				$addThisone=@re[1];
 				if($addThisone)
 				{
+					print "Extrainfo Before: $extraInformationOutput\n";
 					$extraInformationOutput.=$marc->subfield('907',"a");
+					print "Extrainfo After: $extraInformationOutput\n";
 				}
 			}
 			if($addThisone) #ISO2709 MARC record is limited to 99,999 octets 
 			{
+				#print "About to set encoding\n";
 				$marc->encoding( 'UTF-8' );
+				#print "About to add it to output\n";
 				$output.=$marc->as_usmarc();
+				#print "Added it\n";
 			}
 			else
 			{	
@@ -1813,6 +1849,7 @@ sub stuff998alternate
 			$title=$title."_";
 		}
 		my $fileName = $mobUtil->chooseNewFileName("/tmp/temp",$title."tempmarc","mrc");
+		#print "Decided on $fileName \n";	
 		my $marcout = new Loghandler($fileName);
 		$marcout->addLine($output);
 		push(@newDump, $fileName);

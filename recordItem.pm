@@ -228,12 +228,13 @@ package recordItem;
 	my $ind1 = $self->{indicator1};
 	my $ind2 = $self->{indicator2};
 	my $id = $self->{id};
+	my $ret;
 	#test the tag for numeric
+	#print "Getting MARC field. id=$id\n";
+	my $data = $self->{data};	
 	if ($id =~ m/[^0-9.]/ ) { print "$id is not a valid tag\n";}
     else
 	{
-		my $data = $self->{data};
-		my $ret;
 		if($self->{hasfields} && $id>9)
 		{
 			for my $i (0..$#brokenFields)
