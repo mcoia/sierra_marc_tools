@@ -1,0 +1,54 @@
+#
+#
+# ~~ is the equal sign! (because there are equal signs in the queries we can't delimit by that)
+#	
+# FULL queries need to have an additional variable $recordSearch. This is so that the code can do
+# count(*) ahead of time so it knows when to stop searching.
+# The software will append RECORD_ID > X AND RECORD_ID < Y - Repeat for the population for the DB
+ebsco_theentityname_adds~~SELECT $recordSearch FROM SIERRA_VIEW.BIB_RECORD WHERE 
+			(
+				RECORD_ID IN
+				(
+					SELECT BIB_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_LOCATION WHERE 
+					(LOCATION_CODE BETWEEN 'wjb' AND 'wjt')
+					OR
+					(LOCATION_CODE BETWEEN 'wjx' AND 'wjy')
+				)
+			)
+			AND
+			(BCODE3='z' OR BCODE3='-')
+			AND
+			(RECORD_ID IN (SELECT ID FROM SIERRA_VIEW.RECORD_METADATA WHERE 
+			(RECORD_LAST_UPDATED_GMT > TO_DATE('$dbFromDate','YYYY-MM-DD HH24:MI:MS')) AND 
+			(RECORD_LAST_UPDATED_GMT < TO_DATE('$dbToDate','YYYY-MM-DD HH24:MI:MS'))));
+ebsco_theentityname_cancels~~SELECT $recordSearch FROM SIERRA_VIEW.BIB_RECORD WHERE 
+			(
+				RECORD_ID IN
+				(
+					SELECT BIB_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_LOCATION WHERE BIB_RECORD_ID IN
+					(
+						SELECT BIB_RECORD_ID FROM 
+						(
+							SELECT COUNT(*) AS COUNT ,BIB_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_LOCATION WHERE
+							LOCATION_CODE LIKE 'wj%' AND LENGTH(TRIM(LOCATION_CODE))=3
+							GROUP BY BIB_RECORD_ID
+						) AS C WHERE COUNT='1'
+					)  AND LOCATION_CODE ='wju'
+				)
+			)
+			AND
+			(RECORD_ID IN (SELECT ID FROM SIERRA_VIEW.RECORD_METADATA WHERE 
+			(RECORD_LAST_UPDATED_GMT > TO_DATE('$dbFromDate','YYYY-MM-DD HH24:MI:MS')) AND 
+			(RECORD_LAST_UPDATED_GMT < TO_DATE('$dbToDate','YYYY-MM-DD HH24:MI:MS'))));
+ebsco_theentityname_full~~SELECT $recordSearch FROM SIERRA_VIEW.BIB_RECORD WHERE 
+			(
+				RECORD_ID IN
+				(
+					SELECT BIB_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_LOCATION WHERE 
+					(LOCATION_CODE BETWEEN 'wjb' AND 'wjt')
+					OR
+					(LOCATION_CODE BETWEEN 'wjx' AND 'wjy')
+				)
+			)
+			AND
+			(BCODE3='z' OR BCODE3='-');

@@ -1,0 +1,58 @@
+#Log file location to write the log entries of the script
+logfile = /tmp/ebsco_school.log
+
+#
+#Folder to output marc records
+#
+pathtothis = /tmp/summon_or_ebsco.pl
+marcoutdir = /tmp/FTP Files
+school = theentityname
+#platform can be either 'ebsco' or 'summon'
+platform = ebsco
+queryfile = /tmp/queries_sample.txt
+
+#
+#CSV output file
+#
+csvoutput = /tmp/summon_ebsco_history.csv
+
+#
+#Sierra Database Connection Options
+#
+
+dbhost = hostIP
+db = iii
+#You can provide more than 1 username/password. This will only be utalized during full database scrapes
+dbuser = dbuser1,dbuser2
+dbpass = dbuserpassword1,dbuserpassword2
+port = 1032
+
+#Maximum database connections allowed per username(Default 2)
+maxdbconnections = 2
+
+#
+#FTP Server to drop off the marc output
+#
+
+ftphost = ftp.server.com
+ftplogin = loginname
+ftppass = ftppassword
+
+#
+#EMAIL OPTIONS
+#
+
+erroremaillist = whatever@domain.com, someoneelse@domain.com
+successemaillist = successfulemailaddress@email.com, someone_who_wants_to_know@email.com
+
+# only 1 email address for alwaysemail
+alwaysemail = catchall@mail.com
+fromemail = fromaddress@fromdomain.com
+
+#
+# File naming convention.
+# Script will name file example: ebsco_schoolabbv_updates_2013-04-18.mrc
+#
+
+fileprefix = schoolabbv
+
