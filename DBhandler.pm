@@ -37,7 +37,6 @@
 # 2013-1-24
 
 package DBhandler;
- #use DBI;
  use DBD::Pg;
  use Loghandler;
  use strict; 

@@ -41,7 +41,7 @@
 # Blake Graham-Henderson 
 # MOBIUS
 # blake@mobiusconsortium.org
-# 2013-4-8
+# 2014-2-22
 
 
 package Mobiusutil;
@@ -1055,7 +1055,6 @@ sub makeCommaFromArray
  {
 	my $marc = @_[1];
 	local $@;
-	my $bcode = $marc->subfield('907',"a");
 	my $count = marcRecordSize('',$marc);
 	#print "Recieved $count\n";
 	if($count)
@@ -1067,7 +1066,7 @@ sub makeCommaFromArray
 			my $marcField = $_;
 			#print $marcField->tag()."\n";
 			
-			if(($marcField->tag() > 899) && ($marcField->tag() != 907) && ($marcField->tag() != 998))
+			if(($marcField->tag() > 899) && ($marcField->tag() != 907) && ($marcField->tag() != 998) && ($marcField->tag() != 901))
 			{
 				my $id = (scalar keys %fieldsToChop)+1;
 				#print "adding to chop list: $id\n";
