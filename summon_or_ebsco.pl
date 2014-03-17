@@ -261,6 +261,8 @@
 											}
 											print "Read $r records from $_\n";
 											$check->deleteFile();
+											$file->close();
+											undef $file;
 										}
 										my @back = @{processMARC(\@marc,$platform,$type,$school,$marcout)};
 										$extraInformationOutput.=@back[0];

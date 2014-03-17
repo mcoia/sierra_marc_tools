@@ -473,7 +473,9 @@ sub makeCommaFromArray
 				push(@matchedFile1,$recID);
 			}
 		}
-		$file = MARC::File::USMARC->in( $secondFile );
+		$file->close();
+		undef $file;
+		my $file = MARC::File::USMARC->in( $secondFile );
 		while ( my $marc = $file->next() ) 
 		{	
 			if($matchOnTag > 9)
@@ -495,7 +497,8 @@ sub makeCommaFromArray
 				push(@matchedFile2,$recID);
 			}
 		}
-		
+		$file->close();
+		undef $file;
 		
 		my @matched;
 		

@@ -27,15 +27,20 @@ use utf8;
 sub new
 {
     my $class = shift;
-    my $fileName = {_file => shift};
-	bless $fileName, $class;
-    #return $fileName;
+    my $self = 
+	{
+		_file => shift,
+		'leaveopen' => 0
+	};
+	
+	bless $self, $class;
+    #return $self;
 } 
  
 sub deleteFile
 {
-	my ($fileName) = @_[0];
-	my $file = $fileName->{_file};
+	my ($self) = @_[0];
+	my $file = $self->{_file};
 	if (-e $file) 
 	{
 		$worked = unlink($file);
@@ -55,8 +60,8 @@ sub deleteFile
 
 sub fileExists
 {
-	my ($fileName) = @_[0];
-	my $file = $fileName->{_file};
+	my ($self) = @_[0];
+	my $file = $self->{_file};
 	if (-e $file)
 	{
 		return 1;
@@ -66,15 +71,15 @@ sub fileExists
 
 sub getFileName
 {
-	my ($fileName) = @_[0];
-	my $file = $fileName->{_file};
+	my ($self) = @_[0];
+	my $file = $self->{_file};
 	return $file;
 }
 
 sub addLogLine
 {
-	my ($fileName) = @_[0];
-	my $file = $fileName->{_file};	
+	my ($self) = @_[0];
+	my $file = $self->{_file};	
 	my $dt   = DateTime->now(time_zone => "local");   # Stores current date and time as datetime object
 	my $date = $dt->ymd;   # Retrieves date as a string in 'yyyy-mm-dd' format
 	my $time = $dt->hms;   # Retrieves time as a string in 'hh:mm:ss' format
@@ -94,8 +99,8 @@ sub addLogLine
 
 sub addLine
 {
-	my ($fileName) = @_[0];
-	my $file = $fileName->{_file};
+	my ($self) = @_[0];
+	my $file = $self->{_file};
 	my $line = @_[1];
 	my $ret=1;
 	open(OUTPUT, '>> '.$file) or $ret=0;
@@ -107,8 +112,8 @@ sub addLine
 
 sub addLineRaw
 {
-	my ($fileName) = @_[0];
-	my $file = $fileName->{_file};
+	my ($self) = @_[0];
+	my $file = $self->{_file};
 	my $line = @_[1];
 	open(OUTPUT, '>> '.$file) or die $!;
 	binmode(OUTPUT, ":raw");
@@ -116,10 +121,21 @@ sub addLineRaw
 	close(OUTPUT);
 }
 
+sub appendLineRaw
+{
+	my ($self) = @_[0];
+	my $file = $self->{_file};
+	my $line = @_[1];
+	open(OUTPUT, '>> '.$file) or die $!;
+	binmode(OUTPUT, ":raw");
+	print OUTPUT "$line";
+	close(OUTPUT);
+}
+
 sub appendLine
 {
-	my ($fileName) = @_[0];
-	my $file = $fileName->{_file};
+	my ($self) = @_[0];
+	my $file = $self->{_file};
 	my $line = @_[1];
 	my $ret=1;
 	open(OUTPUT, '>> '.$file) or $ret=0;
@@ -131,8 +147,8 @@ sub appendLine
 
 sub truncFile
 {
-	my ($fileName) = @_[0];
-	my $file = $fileName->{_file};
+	my ($self) = @_[0];
+	my $file = $self->{_file};
 	my $line = @_[1];
 	my $ret=1;
 	open(OUTPUT, '> '.$file) or $ret=0;
@@ -144,13 +160,13 @@ sub truncFile
 
 sub readFile
 {
-	my ($fileName) = @_[0];
-	my $file = $fileName->{_file};
+	my ($self) = @_[0];
+	my $file = $self->{_file};
 	my $trys=0;
 	my $failed=0;
 	my @lines;
 	#print "Attempting open\n";
-	if(fileExists($fileName))
+	if(fileExists($self))
 	{
 		my $worked = open (inputfile, '< '. $file);
 		if(!$worked)
@@ -181,7 +197,6 @@ sub readFile
 	}
 	return \@lines;
 }
-
 
 
 1;
