@@ -530,6 +530,47 @@
 			$rangeWriter->addLine("$offset $increment DEFUNCT");
 			exit;
 		}
+		my @diskDump = @{$sierraScraper->getDiskDump()};
+		my $disk =@diskDump[0];
+		my @marc =();
+		my $check = new Loghandler($disk);
+		if($check->fileExists())
+		{
+			local $@;
+			my $finishedprocessing=0;
+			my $file='';
+			eval{
+			#print "usmarc->\n";
+				$file = MARC::File::USMARC->in( $disk );			
+				my $r =0;
+				while ( my $marc = $file->next() ) 
+				{						
+					$r++;
+					#print "encoding\n";
+					#$marc->encoding('UTF-8');
+					push(@marc,$marc);
+				}
+				#print "after pushing\n";
+				$file->close();
+				undef $file;
+				#Just checking for errors - temporary file created and deleted
+				
+				my $marcout = new Loghandler('/tmp/t.mrc');
+				#print "processing\n";
+				my @back = @{processMARC(\@marc,$platform,$type,$school,$marcout,$log)};
+				$finishedprocessing=1;
+				$marcout->deleteFile();
+			};
+			
+			if($@ && $finishedprocessing==0)
+			{
+			print "fail\n";
+				$check->deleteFile();
+				$pidWriter->truncFile("none\nnone\nnone\nnone\nnone\nnone\n$dbuser\nnone\n1\n$offset\n$increment");
+				$rangeWriter->addLine("$offset $increment BAD OUTPUT".$check->getFileName()."\t".$@);
+				exit;
+			}
+		}		
 		
 		my $recordCount = $sierraScraper->getRecordCount();
 		my @tobig = @{$sierraScraper->getTooBigList()};

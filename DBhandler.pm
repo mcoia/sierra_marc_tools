@@ -2,15 +2,6 @@
 #
 # DBhandler.pm
 # 
-# Requires:
-# 
-# recordItem.pm
-# sierraScraper.pm
-# DBhandler.pm
-# Loghandler.pm
-# Mobiusutil.pm
-# MARC::Record (from CPAN)
-# 
 # This code will handle the connection and query to the DB
 #
 # 
@@ -34,7 +25,7 @@
 # Blake Graham-Henderson 
 # MOBIUS
 # blake@mobiusconsortium.org
-# 2013-1-24
+# 2014-4-03
 
 package DBhandler;
  use DBD::Pg;
@@ -75,7 +66,7 @@ package DBhandler;
 	my $login = $self->{login};
 	my $pass = $self->{password};
 	my $port = $self->{port};
-	$conn =  DBI->connect("DBI:Pg:dbname=$dbname;host=$host;port=$port", $login, $pass, {pg_utf8_strings => 1,AutoCommit => 1}); #'RaiseError' => 1,post_connect_sql => "SET CLIENT_ENCODING TO 'UTF8'"
+	$conn =  DBI->connect("DBI:Pg:dbname=$dbname;host=$host;port=$port", $login, $pass, {AutoCommit => 1}); #'RaiseError' => 1,post_connect_sql => "SET CLIENT_ENCODING TO 'UTF8'",pg_utf8_strings => 1
 	
 	$self->{conn} = $conn;
  }
@@ -90,6 +81,22 @@ package DBhandler;
 	return $ret;
  }
  
+ sub updateWithParameters
+ {
+	my ($self) = @_[0];
+	my $conn = $self->{conn};
+	my $querystring =  @_[1];	
+	my @values =  @{@_[2]};
+	my $q = $conn->prepare($querystring);
+	my $i=1;
+	foreach(@values)
+	{
+		$q->bind_param($i, $_);
+		$i++;
+	}
+	my $ret = $q->execute();
+	return $ret;
+ }
  sub query
  {
  
@@ -276,6 +283,15 @@ package DBhandler;
 	);
 	return \%info;
  }
+ 
+ sub getQuote
+ {
+	my ($self) = @_[0];
+	my $conn = $self->{conn};
+	my $string =  @_[1];	
+	return $conn->quote($string);
+ }
+ 
  sub DESTROY
  {
 	my ($self) = @_[0];

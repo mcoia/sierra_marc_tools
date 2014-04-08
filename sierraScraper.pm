@@ -297,123 +297,186 @@ package sierraScraper;
 		$recordsCollectedTotalPerLoop = $finishedRecordCount;
 		foreach(@threadTracker)
 		{	
-			#print "Checking to see if thread $_ is done\n";
-			my $done = threadDone($_);
-			if($done)
+			#print "Checking to see if thread $thisPidfile is done\n";
+			my @attr = @{$_};
+			my $thisPidfile = @attr[0];
+			my $thisOff = @attr[1];
+			my $thisInc = @attr[2];
+			my $checkcount = @attr[3];
+			@attr[3]++;
+			my $duser = @attr[4];
+			my $continueChecking=1;
+			print "$thisPidfile $thisOff $thisInc: $checkcount\n";
+			#give thread time to get started and create pidfile (40 seconds)
+			if($checkcount > 20)
 			{
-				#print "$_ Thread Finished.... Cleaning up\n";
-				$threadJustFinished=1;				
-				my $pidReader = new Loghandler($_);				
-				my @lines = @{ $pidReader->readFile() };				
-				$pidReader->deleteFile();
-				
-				undef $pidReader;
-				if(scalar @lines >6)
+				my $abandonThread=0;
+				my $splitChunk=0;
+				unless (-e $thisPidfile)
 				{
-					@lines[0] =~ s/\n//; # Output marc file location
-					@lines[1] =~ s/\n//; # Total Records Gathered
-					@lines[2] =~ s/\n//; # $self->{'toobig'} = $extraInformationOutput;
-					@lines[3] =~ s/\n//; # $self->{'toobigtocut'}					
-					@lines[4] =~ s/\n//; # Slowest Query Time
-					@lines[5] =~ s/\n//; # Chunk Size
-					@lines[6] =~ s/\n//; # DB Username
-					@lines[7] =~ s/\n//; # Execute Time in Seconds
-					my $dbuser = @lines[6];
-					if(@lines[8])
+					$abandonThread=1;					
+				}
+				if((-e $thisPidfile) && ($checkcount>1200))
+				{
+					$abandonThread=1;
+					$splitChunk=1;
+				}
+				if($abandonThread)
+				{
+					# Split the chunk because it too so long for it to finish
+					if($splitChunk)
 					{
-						@lines[8] =~ s/\n//;
-					}
-					if(scalar @lines >8 && @lines[8]==1)
-					{
-						#print "************************ RECOVERING ************************\n";
-						
-						#print "This thread died, going to restart it\n";
-						#This thread failed, we are going to try again (this is usually due to a database connection)
-						@lines[9] =~ s/\n//;
-						@lines[10] =~ s/\n//;
-						#print Dumper(\@lines);
-						my $off = @lines[9];
-						my $inc = @lines[10];
-						my @add = ($off,$inc);
+						print "Splitting Chunk $thisOff - $thisInc \n";
+						my $dif = $thisInc - $thisOff;
+						print "dif: $dif\n";
+						my $newd = int($dif/2) + $thisOff;
+						print "newd: $newd\n";
+						my @add = ($thisOff,$newd);						
+						print "add: $thisOff , $newd\n";
 						push(@recovers,[@add]);
-						if($dbUserTrack{$dbuser})
-						{
-							$dbUserTrack{$dbuser}--;
-						}
-						my $check = new Loghandler(@lines[0]);
-						if($check->fileExists())
-						{
-							#print "Deleting @lines[0]\n";
-							$check->deleteFile();
-						}
-						#print "Done recovering\n";
+						$newd++;
+						my @add = ($newd,$thisInc);
+						print "add: $newd , $thisInc\n";
+						push(@recovers,[@add]);
+						my @fil = split('/',$thisPidfile);
+						my $kill = @fil[$#fil];
+						print "kill \$(ps aux | grep '$kill' | grep -v 'grep' | awk '{print \$2}')\n";
+						system("kill \$(ps aux | grep '$kill' | grep -v 'grep' | awk '{print \$2}')");						
+						unlink $thisPidfile;
 					}
 					else
 					{
-						#print "Completed thread success, now cleaning\n";
-						if(@lines[1] == 0)
+						my @add = ($thisOff,$thisInc);
+						push(@recovers,[@add]);
+					}
+					if($dbUserTrack{$duser})
+					{
+						$dbUserTrack{$duser}--;
+					}
+					$threadJustFinished=1;
+					$continueChecking=0;
+				}
+			}
+			
+			if($continueChecking)
+			{
+				my $done = threadDone($thisPidfile);
+				if($done)
+				{
+					#print "$thisPidfile Thread Finished.... Cleaning up\n";
+					$threadJustFinished=1;				
+					my $pidReader = new Loghandler($thisPidfile);				
+					my @lines = @{ $pidReader->readFile() };				
+					$pidReader->deleteFile();
+					
+					undef $pidReader;
+					if(scalar @lines >6)
+					{
+						@lines[0] =~ s/\n//; # Output marc file location
+						@lines[1] =~ s/\n//; # Total Records Gathered
+						@lines[2] =~ s/\n//; # $self->{'toobig'} = $extraInformationOutput;
+						@lines[3] =~ s/\n//; # $self->{'toobigtocut'}					
+						@lines[4] =~ s/\n//; # Slowest Query Time
+						@lines[5] =~ s/\n//; # Chunk Size
+						@lines[6] =~ s/\n//; # DB Username
+						@lines[7] =~ s/\n//; # Execute Time in Seconds
+						my $dbuser = @lines[6];
+						if(@lines[8])
 						{
-							$zeroAdded++;
-							$max = findMaxRecordCount($self,$maxQuery);
-							print "Got 0 records $zeroAdded times\n";
-							if($zeroAdded>100) #we have looped 100 times with not a single record added to the collection. Time to quit.
+							@lines[8] =~ s/\n//;
+						}
+						if(scalar @lines >8 && @lines[8]==1)
+						{
+							#print "************************ RECOVERING ************************\n";
+							
+							#print "This thread died, going to restart it\n";
+							#This thread failed, we are going to try again (this is usually due to a database connection)
+							@lines[9] =~ s/\n//;
+							@lines[10] =~ s/\n//;
+							#print Dumper(\@lines);
+							my $off = @lines[9];
+							my $inc = @lines[10];
+							my @add = ($off,$inc);
+							push(@recovers,[@add]);
+							if($dbUserTrack{$dbuser})
 							{
-								$finishedRecordCount = $max;
+								$dbUserTrack{$dbuser}--;
 							}
+							my $check = new Loghandler(@lines[0]);
+							if($check->fileExists())
+							{
+								#print "Deleting @lines[0]\n";
+								$check->deleteFile();
+							}
+							#print "Done recovering\n";
 						}
 						else
 						{
-							$zeroAdded=0;
-						}
-						
-						$dbUserTrack{$dbuser}--;
-						if(@lines[1] !=0)
-						{
-							$self->{'toobig'}.=@lines[2];
-							$self->{'toobigtocut'}.=@lines[3];
-							if(@lines[7]<1)
+							#print "Completed thread success, now cleaning\n";
+							if(@lines[1] == 0)
 							{
-								@lines[7]=1;
+								$zeroAdded++;
+								$max = findMaxRecordCount($self,$maxQuery);
+								print "Got 0 records $zeroAdded times\n";
+								if($zeroAdded>1200) #we have looped 2400 times (20 minutes) and not a single record added to the collection. Time to quit.
+								{
+									$finishedRecordCount = $max;
+								}
 							}
-							my $trps = @lines[1] / @lines[7];
-							#print "Performed math\n";
-							if($rps < $trps-1)
+							else
 							{
-								$chunkGoal+=100;
+								$zeroAdded=0;
 							}
-							elsif($rps > $trps+1)
+							
+							$dbUserTrack{$dbuser}--;
+							if(@lines[1] !=0)
 							{
-								$chunkGoal-=100;
+								$self->{'toobig'}.=@lines[2];
+								$self->{'toobigtocut'}.=@lines[3];
+								if(@lines[7]<1)
+								{
+									@lines[7]=1;
+								}
+								my $trps = @lines[1] / @lines[7];
+								#print "Performed math\n";
+								if($rps < $trps-1)
+								{
+									$chunkGoal+=100;
+								}
+								elsif($rps > $trps+1)
+								{
+									$chunkGoal-=100;
+								}
+								if($chunkGoal<1)
+								{
+									$chunkGoal=10;
+								}
+								if(@lines[4] > 280)
+								{
+									$chunkGoal=10;
+								}
+								$rps = $trps;
+								#print "Adjusted chunk to $chunkGoal\n";
+								push(@dumpedFiles,@lines[0]);
+								#print "Added dump files to array\n";
+								$finishedRecordCount += @lines[1];
+								#print "Added dump count to total\n";
+								#print Dumper(\@dumpedFiles);
 							}
-							if($chunkGoal<1)
-							{
-								$chunkGoal=10;
-							}
-							if(@lines[4] > 280)
-							{
-								$chunkGoal=10;
-							}
-							$rps = $trps;
-							#print "Adjusted chunk to $chunkGoal\n";
-							push(@dumpedFiles,@lines[0]);
-							#print "Added dump files to array\n";
-							$finishedRecordCount += @lines[1];
-							#print "Added dump count to total\n";
-							#print Dumper(\@dumpedFiles);
 						}
 					}
+					else
+					{
+						print "For some reason the thread PID file did not output the expected stuff\n";
+					}
+					#print "Looping back through the rest of running threads\n";
 				}
 				else
 				{
-					print "For some reason the thread PID file did not output the expected stuff\n";
+					#print "Thread not finished, adding it to \"running\"\n";
+					$workingThreads++;
+					push(@newThreads,[@attr]);
 				}
-				#print "Looping back through the rest of running threads\n";
-			}
-			else
-			{
-				#print "Thread not finished, adding it to \"running\"\n";
-				$workingThreads++;
-				push(@newThreads,$_);
 			}
 		}
 		@threadTracker=@newThreads;
@@ -486,7 +549,8 @@ package sierraScraper;
 							my $ty = $self->{'type'};
 							#print "Spawning: $pathtothis $conffile thread $thisOffset $thisIncrement $thisPid $dbuser $ty\n";
 							system("$pathtothis $conffile thread $thisOffset $thisIncrement $thisPid $dbuser $ty &");
-							push(@threadTracker,$thisPid);
+							my @ran = ($thisPid,$thisOffset,$thisIncrement,0,$dbuser);
+							push(@threadTracker,[@ran]);
 							#print "Just pushed thread onto stack\n";
 							$pidFileNameStart++;
 							if(!$choseRecover)
@@ -510,7 +574,7 @@ package sierraScraper;
 			}
 		}
 		
-		#stop this nonsense - we have looped 600 times and not increased our records!  600 loops * 2 seconds per loop = 20 minutes
+		#stop this nonsense - we have looped 600 times and not increased our records!  1200 loops * 2 seconds per loop = 40 minutes
 		if($recordsCollectedStale>600)
 		{
 			$threadsAlive=0;

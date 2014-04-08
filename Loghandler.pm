@@ -22,6 +22,7 @@ package Loghandler;
 
 use DateTime;
 use Mobiusutil;
+use File::Copy;
 use utf8;
 
 sub new
@@ -56,6 +57,14 @@ sub deleteFile
 	
 	return 0;
 
+}
+
+sub copyFile
+{
+	my ($self) = @_[0];
+	my $file = $self->{_file};
+	my $destination = @_[1];
+	return copy($file,$destination);
 }
 
 sub fileExists
