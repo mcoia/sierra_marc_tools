@@ -554,8 +554,8 @@
 				$file->close();
 				undef $file;
 				#Just checking for errors - temporary file created and deleted
-				
-				my $marcout = new Loghandler('/tmp/t.mrc');
+				my $tempOutputFileName = $mobUtil->chooseNewFileName("/tmp","t","mrc");
+				my $marcout = new Loghandler($tempOutputFileName);
 				#print "processing\n";
 				my @back = @{processMARC(\@marc,$platform,$type,$school,$marcout,$log)};
 				$finishedprocessing=1;
