@@ -378,15 +378,20 @@ sub findQuery		#self, DBhandler(object), school(string), platform(string), addso
 
 sub makeCommaFromArray
  {
-	my @array = @{@_[1]};	
+	my @array = @{@_[1]};
+	my $delimter=',';
+	if(@_[2])
+	{	
+		$delimter=@_[2];
+	}
 	my $ret = "";
 	for my $i (0..$#array)
 	{
-		$ret.=@array[$i].",";
+		$ret.=@array[$i].$delimter;
 	}
-	$ret= substr($ret,0,length($ret)-1);
+	$ret= substr($ret,0,length($ret)-(length($delimter)));
 	return $ret;
- }
+ } 
  
  sub makeArrayFromComma
  {
