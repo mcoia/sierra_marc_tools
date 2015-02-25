@@ -455,6 +455,10 @@
 			{
 				$found = 1;
 			}
+			if(index($z, "mbts") != -1)
+			{
+				$found = 1;
+			}
 			if(!$found)
 			{
 				$marc->delete_field($this856);
