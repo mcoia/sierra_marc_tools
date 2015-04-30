@@ -33,6 +33,7 @@ package sierraScraper;
  use MARC::Record;
  use MARC::File;
  use MARC::File::USMARC;
+ use MARC::File::XML (BinaryEncoding => 'utf8');
  use Loghandler;
  use recordItem;
  use strict; 
@@ -255,8 +256,9 @@ package sierraScraper;
 		$tselects.=$_;
 	}
 	
-	my $query = "SELECT MIN(ID) FROM SIERRA_VIEW.BIB_RECORD";
-	my @results = @{$dbHandler->query($query)};
+	my $minQuery = $tselects;
+	$minQuery =~ s/\$recordSearch/MIN(ID)/gi;
+	my @results = @{$dbHandler->query($minQuery)};
 	my $min = 0;
 	my $max = 1;
 	foreach(@results)
@@ -267,9 +269,9 @@ package sierraScraper;
 	}
 	$min--;
 	my $maxQuery = $tselects;
-	$maxQuery =~ s/\$recordSearch/COUNT(\*)/gi;
 	$max = findMaxRecordCount($self,$maxQuery);
 	
+	my $query = '';
 	my @dumpedFiles = (0);
 	my $finishedRecordCount=0;
 	my @threadTracker = ();
@@ -1840,6 +1842,11 @@ sub stuff998alternate
 	my @dumpedFiles = @{@_[1]};
 	my $threshHold = @_[2];
 	my @newDump=@dumpedFiles;
+	my $xmlSeed=int(rand(10000));
+	my $marcoutfile = new Loghandler($mobUtil->chooseNewFileName("/tmp","$xmlSeed","xml"));
+	$marcoutfile->deleteFile();
+	my $outputxmlfile = MARC::File::XML->out( $marcoutfile->getFileName() );
+	
 	if(scalar keys %standard >$threshHold)
 	{	
 		@newDump=();
@@ -1900,7 +1907,8 @@ sub stuff998alternate
 				#print "About to set encoding\n";
 				$marc->encoding( 'UTF-8' );
 				#print "About to add it to output\n";
-				$output.=$marc->as_usmarc();
+				#$output.=$marc->as_usmarc();
+				$outputxmlfile->write( $marc );
 				#print "Added it\n";
 			}
 			else
@@ -1912,11 +1920,8 @@ sub stuff998alternate
 		{
 			$title=$title."_";
 		}
-		my $fileName = $mobUtil->chooseNewFileName("/tmp/temp",$title."tempmarc","mrc");
-		#print "Decided on $fileName \n";	
-		my $marcout = new Loghandler($fileName);
-		$marcout->appendLineRaw($output);
-		push(@newDump, $fileName);
+		$outputxmlfile->close();
+		push(@newDump, $marcoutfile->getFileName());
 		my $addedToDisk = scalar keys %standard;
 		$recordsInFiles+=$addedToDisk;
 		push(@newDump, $recordsInFiles);
