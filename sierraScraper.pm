@@ -1511,25 +1511,7 @@ sub stuff998alternate
 	if(ref $dumpedFiles eq 'ARRAY')
 	{
 		my @dumpedFiles = @{$dumpedFiles};
-		push(@ret,[@dumpedFiles]);
-		#print Dumper(\@dumpedFiles);
-		# foreach(@dumpedFiles)
-		# {	
-			# my $marcfile = $_;
-			# my $check = new Loghandler($marcfile);
-			# if($check->fileExists())
-			# {
-				# my $file = MARC::File::USMARC->in( $marcfile );
-				# my $r =0;
-				# while ( my $marc = $file->next() ) 
-				# {						
-					# $r++;
-					# push(@marcout,$marc);
-				# }
-				# print "Read $r records from $_\n";
-				# $check->deleteFile();
-			# }
-		# }
+		push(@ret,[@dumpedFiles]);		
 	}
 	return \@ret;
  }
@@ -1839,11 +1821,14 @@ sub stuff998alternate
 	my $extraInformationOutput = $self->{'toobig'};
 	my $couldNotBeCut = $self->{'toobigtocut'};
 	my $title=$self->{'title'};
+	if(length($title)>0)
+	{
+		$title=$title."_";
+	}
 	my @dumpedFiles = @{@_[1]};
 	my $threshHold = @_[2];
 	my @newDump=@dumpedFiles;
-	my $xmlSeed=int(rand(10000));
-	my $marcoutfile = new Loghandler($mobUtil->chooseNewFileName("/tmp","$xmlSeed","xml"));
+	my $marcoutfile = new Loghandler($mobUtil->chooseNewFileName("/tmp/temp",$title."tempmarc","xml"));
 	$marcoutfile->deleteFile();
 	my $outputxmlfile = MARC::File::XML->out( $marcoutfile->getFileName() );
 	
@@ -1916,10 +1901,7 @@ sub stuff998alternate
 				$couldNotBeCut.=$marc->subfield('907',"a");
 			}
 		}
-		if(length($title)>0)
-		{
-			$title=$title."_";
-		}
+		
 		$outputxmlfile->close();
 		push(@newDump, $marcoutfile->getFileName());
 		my $addedToDisk = scalar keys %standard;

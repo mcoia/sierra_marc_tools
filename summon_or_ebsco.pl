@@ -387,7 +387,19 @@
 	my $marcoutfile = new Loghandler($mobUtil->chooseNewFileName("/tmp","$xmlSeed","xml"));
 	$marcoutfile->deleteFile();
 	$log->addLine("Chose ".$marcoutfile->getFileName());
-	my $outputxmlfile = MARC::File::XML->out( $marcout );	
+	my $readingMARCfile = MARC::File::XML->in( $marcout );
+	my @readingMARC = ();
+	if($readingMARCfile)
+	{
+		while ( my $marc = $readingMARCfile->next() ) 
+		{	
+			push(@readingMARC,$marc);
+		}
+		$readingMARCfile->close();
+	}
+	undef $readingMARCfile;	
+	my $outputxmlfile = MARC::File::XML->out( $marcout );
+	foreach(@readingMARC){$outputxmlfile->write( $_ );}
 	
 	foreach(@marc)
 	{
