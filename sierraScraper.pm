@@ -1915,7 +1915,7 @@ sub stuff998alternate
 		my $fileName = $mobUtil->chooseNewFileName("/tmp/temp",$title."tempmarc","mrc");
 		#print "Decided on $fileName \n";	
 		my $marcout = new Loghandler($fileName);
-		$marcout->addLine($output);
+		$marcout->appendLineRaw($output);
 		push(@newDump, $fileName);
 		my $addedToDisk = scalar keys %standard;
 		$recordsInFiles+=$addedToDisk;

@@ -126,6 +126,7 @@ sub readConfFile
 	foreach my $line (@lines)
 	{
 		$line =~ s/\n//;  #remove newline characters
+		$line =~ s/^\s+//; #left trim
 		my $cur = trim('',$line);
 		my $len = length($cur);
 		if($len>0)
@@ -225,7 +226,7 @@ sub padLeft  #line, width, fill char
     my $ftp = Net::FTP->new($hostname, Debug => 0)
     or die $log->addLogLine("Cannot connect to ".$hostname);
     $ftp->login($login,$pass)
-    or die $log->addLogLine("Cannot login ", $ftp->message);
+    or die $log->addLogLine("Cannot login ".$ftp->message);
     $ftp->cwd($remotedir)
     or die $log->addLogLine("Cannot change working directory ", $ftp->message);
 	foreach my $file (@files)
@@ -276,7 +277,8 @@ sub padLeft  #line, width, fill char
 	 }
 	 
 	 $log->addLogLine("************Ending Z39.50 Connection************");
-	 undef $conection, $results;
+	 $connection->destroy();
+	 undef $connection, $results;
 	 return \@ret;
  }
  
@@ -387,9 +389,9 @@ sub makeCommaFromArray
 	my $ret = "";
 	for my $i (0..$#array)
 	{
-		$ret.=@array[$i].$delimter;
+		$ret.="\"".@array[$i]."\"".$delimter;
 	}
-	$ret= substr($ret,0,length($ret)-(length($delimter)));
+	$ret = substr($ret,0,length($ret)-(length($delimter)));
 	return $ret;
  } 
  
@@ -423,7 +425,7 @@ sub makeCommaFromArray
 		my @ogchars = split("",$ret);
 		my @insertChars = split("",$data);
 		my $len = $#insertChars;
-		for my $i (0..$#insertChars-1)
+		for my $i (0..$#insertChars)
 		{
 			@ogchars[$i+$column-1] = @insertChars[$i];
 		}

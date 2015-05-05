@@ -421,7 +421,7 @@
 			}
 			$barcodes.="\r\n";
 			#$output.=$marc->as_usmarc();
-			$marcout->appendLine($marc->as_usmarc());
+			$marcout->appendLineRaw($marc->as_usmarc());
 			$recCount++;
 		}
 		else
