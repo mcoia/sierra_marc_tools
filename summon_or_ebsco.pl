@@ -43,10 +43,6 @@
  use utf8;
  use Encode;
  use DateTime::Format::Duration;
- use MARC::Record;
- use MARC::File;
- use MARC::File::XML (BinaryEncoding => 'utf8');
-
 
  my $barcodeCharacterAllowedInEmail=2000;
  
@@ -60,7 +56,7 @@
 	exit;
  }
  
- our $mobUtil = new Mobiusutil(); 
+ my $mobUtil = new Mobiusutil(); 
  my $conf = $mobUtil->readConfFile($configFile);
  
  if($conf)
@@ -179,9 +175,9 @@
 						my $dt   = DateTime->now(time_zone => "local"); 	
 						my $fdate = $dt->ymd;
 						
-						my $outputMarcMRCFile = $mobUtil->chooseNewFileName($conf->{"marcoutdir"},$fileNamePrefix.$fdate,"mrc");
+						my $outputMarcFile = $mobUtil->chooseNewFileName($conf->{"marcoutdir"},$fileNamePrefix.$fdate,"mrc");
 												
-						if($outputMarcMRCFile ne "0")
+						if($outputMarcFile ne "0")
 						{	
 						#Logging and emailing
 							$log->addLogLine("$school $platform $type *STARTING*");
@@ -195,9 +191,8 @@
 						#Logging and emailing
 						
 		
-							#print $outputMarcMRCFile."\n";
-							my $marcOutXMLFile =  $mobUtil->chooseNewFileName($conf->{"marcoutdir"},$fileNamePrefix.$fdate,"xml");							
-							#print $marcOutXMLFile."\n";
+							#print $outputMarcFile."\n";
+							my $marcOutFile = $outputMarcFile;
 							my $sierraScraper;
 							$valid=1;
 							my $selectQuery = $mobUtil->findQuery($dbHandler,$school,$platform,$type,$queries);
@@ -214,6 +209,7 @@
 								$log->addLogLine("Sierra scraping Failed. The cron standard output will have more clues.\r\n$selectQuery");
 								$failString = "Scrape Fail";
 							}
+							
 							my $recCount=0;
 							my $format = DateTime::Format::Duration->new(
 								pattern => '%M:%S' #%e days, %H hours,
@@ -234,12 +230,12 @@
 								my @tobig = @{$sierraScraper->getTooBigList()};
 								$extraInformationOutput = @tobig[0];
 								$couldNotBeCut = @tobig[1];
-								my $marcout = new Loghandler($marcOutXMLFile);
+								my $marcout = new Loghandler($marcOutFile);
 								$marcout->deleteFile();
 								my $output;
 								my $barcodes="";
-								my @back = @{processMARC(\@marc,$platform,$type,$school,$marcOutXMLFile,$log)};
-								#print Dumper(@back);
+								my @back = @{processMARC(\@marc,$platform,$type,$school,$marcout)};
+								print Dumper(@back);
 								$extraInformationOutput.=@back[0];
 								$barcodes.=@back[1];
 								$couldNotBeCut.=@back[2];
@@ -247,7 +243,7 @@
 								
 								if(ref @all[1] eq 'ARRAY')
 								{
-									#print "There were some files to process";
+									print "There were some files to process";
 									my @dumpedFiles = @{@all[1]};
 									foreach(@dumpedFiles)
 									{	
@@ -256,7 +252,7 @@
 										my $check = new Loghandler($marcfile);
 										if($check->fileExists())
 										{
-											my $file = MARC::File::XML->in( $marcfile );
+											my $file = MARC::File::USMARC->in( $marcfile );
 											my $r =0;
 											while ( my $marc = $file->next() ) 
 											{						
@@ -268,7 +264,7 @@
 											$file->close();
 											undef $file;
 										}
-										my @back = @{processMARC(\@marc,$platform,$type,$school,$marcOutXMLFile,$log)};
+										my @back = @{processMARC(\@marc,$platform,$type,$school,$marcout)};
 										$extraInformationOutput.=@back[0];
 										$barcodes.=@back[1];
 										$couldNotBeCut.=@back[2];
@@ -290,12 +286,7 @@
 								if($recCount>0)
 								{	
 									undef @marc;
-									my $cmd = "yaz-marcdump -i marcxml -o marc \"$marcOutXMLFile\" > \"$outputMarcMRCFile\"";
-									$log->addLine("Running YAZ");
-									$log->addLine($cmd);
-									system($cmd);
-									unlink $marcOutXMLFile;
-									my @files = ($outputMarcMRCFile);
+									my @files = ($marcOutFile);
 									if(1)  #switch FTP on and off easily
 									{
 										eval{$mobUtil->sendftp($conf{"ftphost"},$conf{"ftplogin"},$conf{"ftppass"},$remoteDirectory,\@files,$log);};
@@ -303,7 +294,7 @@
 										 {
 											$log->addLogLine("FTP FAILED");
 											$email = new email($conf{"fromemail"},\@tolist,1,0,\%conf);
-											$email->send("RMO $school - $platform $type FTP FAIL - Job # $dateString","I'm just going to apologize right now, I could not FTP the file to ".$conf{"ftphost"}." ! Remote directory: $remoteDirectory\r\n\r\nYou are going to have to do it by hand. Bummer.\r\n\r\nCheck the log located: ".$conf{"logfile"}." and you will know more about why. Please fix this so that I can FTP the file in the future!\r\n\r\n File:\r\n\r\n$outputMarcMRCFile\r\n$recCount record(s).  \r\n\r\n-MOBIUS Perl Squad-");
+											$email->send("RMO $school - $platform $type FTP FAIL - Job # $dateString","I'm just going to apologize right now, I could not FTP the file to ".$conf{"ftphost"}." ! Remote directory: $remoteDirectory\r\n\r\nYou are going to have to do it by hand. Bummer.\r\n\r\nCheck the log located: ".$conf{"logfile"}." and you will know more about why. Please fix this so that I can FTP the file in the future!\r\n\r\n File:\r\n\r\n$marcOutFile\r\n$recCount record(s).  \r\n\r\n-MOBIUS Perl Squad-");
 											$failString = "FTP Fail";
 											$valid=0;
 										 }
@@ -311,7 +302,7 @@
 								}
 								else
 								{
-									$outputMarcMRCFile = "(none)";
+									$marcOutFile = "(none)";
 								}
 								if($valid)
 								{
@@ -324,25 +315,25 @@
 									$afterProcess = DateTime->now(time_zone => "local");
 									$difference = $afterProcess - $dt;
 									$duration =  $format->format_duration($difference);
-									$log->addLogLine("$school $platform $type: $outputMarcMRCFile");
+									$log->addLogLine("$school $platform $type: $marcOutFile");
 									$log->addLogLine("$school $platform $type: $recCount Record(s)");
 									$email = new email($conf{"fromemail"},\@tolist,0,1,\%conf);
 									if($recCount>0)
 									{	
-										$outputMarcMRCFile = substr($outputMarcMRCFile,rindex($outputMarcMRCFile, '/')+1);
+										$marcOutFile = substr($marcOutFile,rindex($marcOutFile, '/')+1);
 									}
 									if(length($barcodes)>$barcodeCharacterAllowedInEmail)
 									{
 										$barcodes = substr($barcodes,0,$barcodeCharacterAllowedInEmail);
 									}
-									$email->send("RMO $school - $platform $type Success - Job # $dateString","$extraBlurb \r\nRecord gather duration: $gatherTime\r\nRecords per second: $rps\r\nTotal duration: $duration\r\n\r\nThis process finished without any errors!\r\n\r\nHere is some information:\r\n\r\nOutput File: \t\t$outputMarcMRCFile\r\n$recCount Record(s)\r\nFTP location: ".$conf{"ftphost"}."\r\nUserID: ".$conf{"ftplogin"}."\r\nFolder: $remoteDirectory\r\n\r\n$extraInformationOutput $couldNotBeCut -MOBIUS Perl Squad-\r\n\r\n$selectQuery\r\n\r\nThese are the top $barcodeCharacterAllowedInEmail characters included records:\r\n$barcodes");
+									$email->send("RMO $school - $platform $type Success - Job # $dateString","$extraBlurb \r\nRecord gather duration: $gatherTime\r\nRecords per second: $rps\r\nTotal duration: $duration\r\n\r\nThis process finished without any errors!\r\n\r\nHere is some information:\r\n\r\nOutput File: \t\t$marcOutFile\r\n$recCount Record(s)\r\nFTP location: ".$conf{"ftphost"}."\r\nUserID: ".$conf{"ftplogin"}."\r\nFolder: $remoteDirectory\r\n\r\n$extraInformationOutput $couldNotBeCut -MOBIUS Perl Squad-\r\n\r\n$selectQuery\r\n\r\nThese are the top $barcodeCharacterAllowedInEmail characters included records:\r\n$barcodes");
 								}
 							}
 				#OUTPUT TO THE CSV
 							if($conf{"csvoutput"})
 							{
 								 my $csv = new Loghandler($conf{"csvoutput"});
-								 my $csvline = "\"$dateString\",\"$school\",\"$platform\",\"$type\",\"$failString\",\"$outputMarcMRCFile\",\"$gatherTime\",\"$rps\",\"$duration\",\"$recCount Record(s)\",\"".$conf{"ftphost"}."\",\"".$conf{"ftplogin"}."\",\"$remoteDirectory\",\"$extraInformationOutput\",\"$couldNotBeCut\"";
+								 my $csvline = "\"$dateString\",\"$school\",\"$platform\",\"$type\",\"$failString\",\"$marcOutFile\",\"$gatherTime\",\"$rps\",\"$duration\",\"$recCount Record(s)\",\"".$conf{"ftphost"}."\",\"".$conf{"ftplogin"}."\",\"$remoteDirectory\",\"$extraInformationOutput\",\"$couldNotBeCut\"";
 								 $csvline=~s/\n//g;
 								 $csvline=~s/\r//g;
 								 $csvline=~s/\r\n//g;
@@ -378,17 +369,10 @@
 	my $type = @_[2];
 	my $school = @_[3];
 	my $marcout = @_[4];
-	my $log = @_[5];
 	my $extraInformationOutput='';
 	my $barcodes;
 	my $couldNotBeCut='';
-	my $recCount=0; ;
-	my $xmlSeed=int(rand(10000));
-	my $marcoutfile = new Loghandler($mobUtil->chooseNewFileName("/tmp","$xmlSeed","xml"));
-	$marcoutfile->deleteFile();
-	$log->addLine("Chose ".$marcoutfile->getFileName());
-	my $outputxmlfile = MARC::File::XML->out( $marcout );	
-	
+	my $recCount=0;
 	foreach(@marc)
 	{
 		my $marc = $_;
@@ -437,9 +421,7 @@
 			}
 			$barcodes.="\r\n";
 			#$output.=$marc->as_usmarc();
-			#$marcout->appendLine($marc->as_usmarc());
-			$log->addLine("Adding xml");
-			$outputxmlfile->write( $marc );
+			$marcout->appendLine($marc->as_usmarc());
 			$recCount++;
 		}
 		else
@@ -447,12 +429,9 @@
 			$couldNotBeCut.=$marc->subfield('907',"a");
 		}
 	}
-	$log->addLine("Closing XML File");
-	$outputxmlfile->close();
 	my @ret=($extraInformationOutput,$barcodes,$couldNotBeCut,$recCount);
 	return \@ret;
  }
- 
  sub mbts856fix
  {
 	my $marc = @_[0];
@@ -566,9 +545,7 @@
 			my $file='';
 			eval{
 			#print "usmarc->\n";
-				#$log->addLine("Starting eval");
-				$file = MARC::File::XML->in( $disk );
-				#$log->addLine("done reading disk");
+				$file = MARC::File::USMARC->in( $disk );			
 				my $r =0;
 				while ( my $marc = $file->next() ) 
 				{						
@@ -577,10 +554,16 @@
 					#$marc->encoding('UTF-8');
 					push(@marc,$marc);
 				}
-				#$log->addLine("done looping records");
 				#print "after pushing\n";
 				$file->close();
-				undef $file;				
+				undef $file;
+				#Just checking for errors - temporary file created and deleted
+				my $tempOutputFileName = $mobUtil->chooseNewFileName("/tmp","t","mrc");
+				my $marcout = new Loghandler($tempOutputFileName);
+				#print "processing\n";
+				my @back = @{processMARC(\@marc,$platform,$type,$school,$marcout,$log)};
+				$finishedprocessing=1;
+				$marcout->deleteFile();
 			};
 			
 			if($@ && $finishedprocessing==0)
@@ -591,7 +574,7 @@
 				$rangeWriter->addLine("$offset $increment BAD OUTPUT".$check->getFileName()."\t".$@);
 				exit;
 			}
-		}
+		}		
 		
 		my $recordCount = $sierraScraper->getRecordCount();
 		my @tobig = @{$sierraScraper->getTooBigList()};
