@@ -574,8 +574,8 @@ package sierraScraper;
 			}
 		}
 		
-		#stop this nonsense - we have looped 600 times and not increased our records!  1200 loops * 2 seconds per loop = 40 minutes
-		if($recordsCollectedStale>600)
+		#stop this nonsense - we have looped 1200 times and not increased our records!  1200 loops * 2 seconds per loop = 40 minutes
+		if($recordsCollectedStale>1200)
 		{
 			$threadsAlive=0;
 		}
@@ -1915,7 +1915,7 @@ sub stuff998alternate
 		my $fileName = $mobUtil->chooseNewFileName("/tmp/temp",$title."tempmarc","mrc");
 		#print "Decided on $fileName \n";	
 		my $marcout = new Loghandler($fileName);
-		$marcout->appendLineRaw($output);
+		$marcout->appendLine($output);
 		push(@newDump, $fileName);
 		my $addedToDisk = scalar keys %standard;
 		$recordsInFiles+=$addedToDisk;
