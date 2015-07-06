@@ -125,7 +125,7 @@ sub readConfFile
 	my $fullFile = "";
 	foreach my $line (@lines)
 	{
-		$line =~ s/\n//;  #remove newline characters
+		#$line =~ s/\n//;  #remove newline characters
 		$line =~ s/^\s+//; #left trim
 		my $cur = trim('',$line);
 		my $len = length($cur);
@@ -133,7 +133,7 @@ sub readConfFile
 		{
 			if(substr($cur,0,1)ne"#")
 			{
-				$line=~s/\t//g;
+				#$line=~s/\t//g;
 				$fullFile.=" $line"; #collapse all lines into one string
 			}
 		}

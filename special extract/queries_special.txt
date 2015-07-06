@@ -1,0 +1,132 @@
+#
+#
+# ~~ is the equal sign! (because there are equal signs in the queries we can't delimit by that)
+#	
+# FULL queries need to have an additional variable $recordSearch. This is so that the code can do
+# count(*) ahead of time so it knows when to stop searching.
+# The software will append RECORD_ID > X AND RECORD_ID < Y - Repeat for the population for the DB
+
+ebsco_merlin_mpm_full~~SELECT $recordSearch FROM SIERRA_VIEW.ITEM_RECORD WHERE
+			record_id in(select ITEM_RECORD_ID from SIERRA_VIEW.BIB_RECORD_ITEM_RECORD_LINK where bib_record_id in (select record_id from sierra_view.bib_record where bcode3='-'))			
+			AND
+			(
+				(
+					location_code between 'ca' and 'cdzzz' and
+					location_code != 'caiiv' and
+					location_code != 'caiih'
+				)
+				or
+				(
+					location_code between 'ce' and 'cgzzz' or
+					location_code between 'cj' and 'cjxzz' or
+					location_code between 'cm' and 'cpzzz' or
+					location_code between 'cy' and 'cyzzz' or
+					location_code between 'fc' and 'fcgzz' or
+					location_code between 'fci' and 'fcjzz' or
+					location_code between 'fcm' and 'fctzz'
+				)
+			
+			and
+			itype_code_num not in(149,7,11,16,18,151,173,176)
+			)
+			$rangestatement_id
+			;			
+ebsco_merlin_oldmpm_full~~SELECT $recordSearch FROM SIERRA_VIEW.ITEM_RECORD WHERE
+			record_id in(select ITEM_RECORD_ID from SIERRA_VIEW.BIB_RECORD_ITEM_RECORD_LINK where bib_record_id in (select record_id from sierra_view.bib_record where bcode3='-'))
+			and
+			record_id in
+			(
+				select ITEM_RECORD_ID from SIERRA_VIEW.BIB_RECORD_ITEM_RECORD_LINK where bib_record_id in
+				(
+					select bib_record_id from sierra_view.bib_record_property where bib_record_id in(select bib_record_id from SIERRA_VIEW.BIB_RECORD_ITEM_RECORD_LINK where 1=1 $rangestatement_ITEM_RECORD_ID )
+					and material_code in('a','t') and bib_level_code = 'm'
+				) $rangestatement_ITEM_RECORD_ID
+			)
+			and
+			record_id in
+			(
+				select ITEM_RECORD_ID from SIERRA_VIEW.BIB_RECORD_ITEM_RECORD_LINK where bib_record_id in
+				(					
+					select record_id from SIERRA_VIEW.VARFIELD_VIEW where record_id in(select bib_record_id from SIERRA_VIEW.BIB_RECORD_ITEM_RECORD_LINK where 1=1 $rangestatement_ITEM_RECORD_ID )
+					and marc_tag = '001' and field_content!~'\D'
+				) $rangestatement_ITEM_RECORD_ID
+			)
+			AND
+			(
+				(
+					location_code between 'ca' and 'cdzzz' and
+					location_code != 'caiiv' and
+					location_code != 'caiih'
+				)
+				or
+				(
+					location_code between 'ce' and 'cgzzz' or
+					location_code between 'cj' and 'cjxzz' or
+					location_code between 'cm' and 'cpzzz' or
+					location_code between 'cy' and 'cyzzz' or
+					location_code between 'fc' and 'fcgzz' or
+					location_code between 'fci' and 'fcjzz' or
+					location_code between 'fcm' and 'fctzz'
+				)
+			
+			and
+			itype_code_num not in(149,7,11,16,18,151,173,176)
+			)
+			$rangestatement_id
+			;
+ebsco_merlin_mono_full~~SELECT $recordSearch FROM SIERRA_VIEW.ITEM_RECORD WHERE
+			record_id in(select ITEM_RECORD_ID from SIERRA_VIEW.BIB_RECORD_ITEM_RECORD_LINK where bib_record_id in (select record_id from sierra_view.bib_record where bcode3='-'))
+			and
+			record_id in
+			(
+				select ITEM_RECORD_ID from SIERRA_VIEW.BIB_RECORD_ITEM_RECORD_LINK where bib_record_id in
+				(
+					select bib_record_id from sierra_view.bib_record_property where material_code in('a','t') and bib_level_code = 'm'
+				)
+			)
+			AND
+			(
+				(
+					location_code between 'ca' and 'cdzzz' and
+					location_code != 'caiiv' and
+					location_code != 'caiih'
+				)
+				or
+				(
+					location_code between 'ce' and 'cgzzz' or
+					location_code between 'cj' and 'cjxzz' or
+					location_code between 'cm' and 'cpzzz' or
+					location_code between 'cy' and 'cyzzz' or
+					location_code between 'fc' and 'fcgzz' or
+					location_code between 'fci' and 'fcjzz' or
+					location_code between 'fcm' and 'fctzz'
+				)
+			
+			and
+			itype_code_num not in(149,7,11,16,18,151,173,176)
+			)
+			and id < 450972569164
+			;
+ebsco_merlin_serials_full~~SELECT $recordSearch FROM SIERRA_VIEW.BIB_RECORD WHERE 
+			BCODE3!='n'
+			AND
+			RECORD_ID IN(
+				SELECT BIB_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_ITEM_RECORD_LINK WHERE ITEM_RECORD_ID IN(
+					SELECT ID FROM SIERRA_VIEW.ITEM_RECORD WHERE 
+					(
+						(
+							(
+								location_code ~ '^rw' and
+								itype_code_num = 2
+							)
+							or
+							(
+								location_code ~ '^frw' and
+								itype_code_num = 150
+							)
+						)
+						and
+						location_code !~ '^rweii'
+					)
+				)
+			);
