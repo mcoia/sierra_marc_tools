@@ -89,44 +89,56 @@ package sierraScraper;
 	$self->{'pathtothis'} = shift;
 	$self->{'conffile'} = shift;
 	my $m = shift;
-	if($m)
+	my $launch = shift;
+	if(!defined $launch)
 	{
-		$self->{'maxdbconnection'} = $m;
+		$launch = 1;
 	}
-	if($title)
+	if($launch)
 	{
-		$pidfile = new Loghandler($mobutil->chooseNewFileName('/tmp',"scraper_pid_$title",'pid'));
-		$self->{'pidfile'} = $pidfile;
-		$self->{'title'} = $title;
+		if($m)
+		{
+			$self->{'maxdbconnection'} = $m;
+		}
+		if($title)
+		{
+			$pidfile = new Loghandler($mobutil->chooseNewFileName('/tmp',"scraper_pid_$title",'pid'));
+			$self->{'pidfile'} = $pidfile;
+			$self->{'title'} = $title;
+		}
+		$pidfile->addLine("starting up....");
+		#print "4: $t\n";
+		if($t)
+		{
+			$self->{'type'}=$t;
+		}
+		bless $self, $class;
+		figureSelectStatement($self);
+		my $max = findMaxRecordCount($self,$self->{'selects'});
+		#print "Max calc: $max\n";
+		if(($t) && ($t ne 'thread') && ($max > 5000))
+		{
+			gatherDataFromDB_spinThread_Controller($self);
+		}
+		elsif(($t) && ($t eq 'full'))
+		{		
+			gatherDataFromDB_spinThread_Controller($self);
+		}
+		elsif(($t) && ($t eq 'thread'))
+		{
+			my $cou = spinThread($self);
+			$self->{'recordcount'} = $cou;
+		}	
+		else
+		{
+			gatherDataFromDB($self);
+		}
+		$pidfile->deleteFile();
 	}
-	$pidfile->addLine("starting up....");
-	#print "4: $t\n";
-	if($t)
-	{
-		$self->{'type'}=$t;
-	}
-	bless $self, $class;
-	figureSelectStatement($self);
-	my $max = findMaxRecordCount($self,$self->{'selects'});
-	#print "Max calc: $max\n";
-	if(($t) && ($t ne 'thread') && ($max > 5000))
-	{
-		gatherDataFromDB_spinThread_Controller($self);
-	}
-	elsif(($t) && ($t eq 'full'))
-	{		
-		gatherDataFromDB_spinThread_Controller($self);
-	}
-	elsif(($t) && ($t eq 'thread'))
-	{
-		my $cou = spinThread($self);
-		$self->{'recordcount'} = $cou;
-	}	
 	else
 	{
-		gatherDataFromDB($self);
+		bless $self, $class;
 	}
-	$pidfile->deleteFile();
     return $self;
  }
  
