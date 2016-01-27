@@ -86,7 +86,7 @@
 	# Timeout (in seconds), Prompt searching for, Keystroke when prompt is found, True/False to throw error if prompt doesn't appear
 	# The reason there are multiple arrays:
 	# If a prompt is not found, the rest of the array is skipped and the next array begins
-				my @firstPrompts = (
+				my @firstPrompts = (				
 				50,"ADDITIONAL system functions","a",1,
 				10,"Scope Authorit","u",1,
 				10,"Login",$conf{"secondlogin"}."\r",1,
@@ -96,6 +96,21 @@
 				352800,"Choose one","q",1,
 				10,"Choose on","q",1
 				);
+				if($cluster eq 'explore')
+				{
+					@firstPrompts = (
+					10,"Login",$conf{"secondlogin"}."\r",1,
+					10,"Password",$conf{"secondpassword"}."\r",1,					
+					50,"ADDITIONAL system functions","a",1,
+					10,"Scope Authorit","u",1,
+					10,"Login",$conf{"secondlogin"}."\r",1,
+					10,"Password",$conf{"secondpassword"}."\r",1,
+					10,"Scope authority records now? (y/n)","y",1,
+					10,"(Press <RETURN> to start)","\r",1,
+					352800,"Choose one","q",1,
+					10,"Choose on","q",1
+					);
+				}
 				my @allPrompts = ([@firstPrompts]);
 				if($type eq "global")
 				{
