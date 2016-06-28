@@ -120,6 +120,17 @@
 					10,"Login",$conf{"secondlogin"}."\r",1,
 					10,"Password",$conf{"secondpassword"}."\r",1
 					);
+					if($cluster eq 'explore')
+					{
+						@firstPrompts = (
+						10,"Login",$conf{"secondlogin"}."\r",1,
+						10,"Password",$conf{"secondpassword"}."\r",1,	
+						50,"ADDITIONAL system functions","a",1,
+						10,"Maintain record LINKS","l",1,
+						10,"Login",$conf{"secondlogin"}."\r",1,
+						10,"Password",$conf{"secondpassword"}."\r",1
+						);
+					}
 					
 					my @more = (
 					10,"BOTH rearrange attached records and update","b",0

@@ -207,5 +207,12 @@ sub readFile
 	return \@lines;
 }
 
+sub DESTROY
+ {
+	my ($self) = @_[0];
+	my $file = $self->{_file};
+	undef $self->{_file};
+	undef $self;
+ }
 
 1;

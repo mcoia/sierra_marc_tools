@@ -1134,21 +1134,29 @@ sub generateRandomString
 	my $letterl = $#letters;
 	my @sym = ('[','!','#',')','(');
 	my $syml = $#sym;
-	my @both = ([@letters],[@sym]);
+	my @nums = (1,2,3,4,5,6,7,8,9,0);
+	my $nums = $#nums;
+	my @all = ([@letters],[@sym],[@nums]);
 	while($i<$length)
 	{
-		#print "first rand: ".$#both."\n";
-		my $r = int(rand($#both+1));
+		#print "first rand: ".$#all."\n";
+		my $r = int(rand($#all+1));
 		#print "Random array: $r\n";
-		my @t = @{@both[$r]};
+		my @t = @{@all[$r]};
 		#print "rand: ".$#t."\n";
 		my $int = int(rand($#t + 1));
-		#print "Random value: $int = ".@{$both[$r]}[$int]."\n";
-		$ret.= @{$both[$r]}[$int];
+		#print "Random value: $int = ".@{$all[$r]}[$int]."\n";
+		$ret.= @{$all[$r]}[$int];
 		$i++;
 	}
 	
 	return $ret;
 }
+
+sub is_integer 
+{
+   defined @_[1] && @_[1] =~ /^[+-]?\d+$/;
+}
+
 1;
 
