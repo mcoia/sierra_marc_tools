@@ -223,7 +223,7 @@ sub padLeft  #line, width, fill char
 	my $log = @_[6];
 	
 	$log->addLogLine("**********FTP starting -> $hostname with $login and $pass -> $remotedir");
-    my $ftp = Net::FTP->new($hostname, Debug => 0)
+    my $ftp = Net::FTP->new($hostname, Debug => 0, Passive=> 1)
     or die $log->addLogLine("Cannot connect to ".$hostname);
     $ftp->login($login,$pass)
     or die $log->addLogLine("Cannot login ".$ftp->message);
@@ -1132,7 +1132,7 @@ sub generateRandomString
 	my $ret="";
 	my @letters = ('a','b','c','d','e','f','g','h','j','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z');
 	my $letterl = $#letters;
-	my @sym = ('[','!','#',')','(');
+	my @sym = ('@','#','$');
 	my $syml = $#sym;
 	my @nums = (1,2,3,4,5,6,7,8,9,0);
 	my $nums = $#nums;
