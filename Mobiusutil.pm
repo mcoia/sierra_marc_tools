@@ -266,7 +266,7 @@ sub padLeft  #line, width, fill char
 	 my $results = $connection->search_pqf( qq[$query] );
 	 
 	 my $size = $results->size();
-	 $log->addLogLine("Received $size records");
+	 $log->addLogLine("Received $size records $DATABASE $query");
 	 my $index = 0;
 	 for my $i ( 0 .. $results->size()-1 ) 
 	 {
@@ -276,7 +276,7 @@ sub padLeft  #line, width, fill char
 		 push(@ret,$marc);
 	 }
 	 
-	 $log->addLogLine("************Ending Z39.50 Connection************");
+	 #$log->addLogLine("************Ending Z39.50 Connection************");
 	 $connection->destroy();
 	 undef $connection, $results;
 	 return \@ret;
@@ -1064,7 +1064,7 @@ sub makeCommaFromArray
  sub trucateMarcToFit
  {
 	my $marc = @_[1];
-	local $@;
+	local $@;	
 	my $count = marcRecordSize('',$marc);
 	#print "Recieved $count\n";
 	if($count)
