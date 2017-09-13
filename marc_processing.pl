@@ -72,44 +72,42 @@ while(1)
         
         if( !($path =~ m/marc_done_processing/) && ($fExtension =~ 'mrc'))
         {
-            # ensure that our final directory exists
-            ensureFinalFolderExists($finalpath);
-            $originalFileName = $baseFileName."_org.".$fExtension;
-            $processingFileName = $baseFileName.".processing";
-            $processedFileName = $baseFileName."_processed.".$fExtension;
-print "path = $path  Base = $baseFileName  Orgname = $originalFileName  ProcessingFN = $processingFileName  Processed = $processedFileName\n";
-            checkFileReady($file);
-
-            move($file,$path.$processingFileName);
-            #moveFile($file,$path.$processingFileName);
-            
-            my $marcfile = MARC::File::USMARC->in($path.$processingFileName);
-            my $writeOut = '';
-            while ( my $marc = $marcfile->next() )
+            # Make sure we have a function for this directory
+            my $functionCall;
+            while (my ($key, $value) = each %functionMaps)
             {
-                my $functionCall;
-                while (my ($key, $value) = each %functionMaps)
-                {
-                    $functionCall = $value if($path =~ m/$key/);
-                }
-                my $finalmarc;
-    #print "Function detected: $functionCall\n";
-                $functionCall = "\$finalmarc = $functionCall(\$marc);";
-    #print "eval function: $functionCall\n";
-                eval ($functionCall);
-                $writeOut.=$finalmarc->as_usmarc();
+                $functionCall = $value if($path =~ m/$key/);
             }
-            
-            my $doneFH = new Loghandler($finalpath.'/'.$processedFileName);
-            $doneFH->appendLineRaw($writeOut);
-            undef $doneFH;
-            moveFile($path.$processingFileName,$finalpath.'/'.$originalFileName);
+            if($functionCall)
+            {
+                $functionCall = "\$finalmarc = $functionCall(\$marc);";
+                # ensure that our final directory exists
+                ensureFinalFolderExists($finalpath);
+                $originalFileName = $baseFileName."_org.".$fExtension;
+                $processingFileName = $baseFileName.".processing";
+                $processedFileName = $baseFileName."_processed.".$fExtension;
+print "path = $path  Base = $baseFileName  Orgname = $originalFileName  ProcessingFN = $processingFileName  Processed = $processedFileName\n";
+                checkFileReady($file);
+                # move($file,$path.$processingFileName);
+                moveFile($file,$path.$processingFileName);
+                my $marcfile = MARC::File::USMARC->in($path.$processingFileName);
+                my $writeOut = '';
+                while ( my $marc = $marcfile->next() )
+                {
+                    my $finalmarc;
+                    eval ($functionCall);
+                    $writeOut.=$finalmarc->as_usmarc();
+                }
+                
+                my $doneFH = new Loghandler($finalpath.'/'.$processedFileName);
+                $doneFH->appendLineRaw($writeOut);
+                undef $doneFH;
+                moveFile($path.$processingFileName,$finalpath.'/'.$originalFileName);
+            }
         }
-    }
-    
+    }    
     sleep 5;
 }
-
 
 sub moveFile
 {
@@ -163,7 +161,6 @@ sub manipulate_another_project
     
 sub prefix856u
 {
-
     my $marc = @_[0];
     my $prefix = @_[1];
     my @e856s = $marc->field('856');
