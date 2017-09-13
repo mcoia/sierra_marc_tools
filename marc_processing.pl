@@ -22,10 +22,11 @@ our $pidfile = "/tmp/marc_processing.pl.pid";
 if (-e $pidfile)
 {
     #Check the processes and see if there is a copy running:
-    my $thisID = $$;
     my $thisScriptName = $0;
-    my $numberOfNonMeProcesses = scalar grep /$thisID/ , grep /$thisScriptName/, (split /\n/, `ps -aef`);
-    if($numberOfNonMeProcesses == 1)
+    my $numberOfNonMeProcesses = scalar grep /$thisScriptName/, (split /\n/, `ps -aef`);
+    # The number of processes running in the grep statement will include this process,
+    # if there is another one the count will be greater than 1
+    if($numberOfNonMeProcesses > 1)
     {
         print "Sorry, it looks like I am already running.\nIf you know that I am not, please delete $pidfile\n";
         exit;
