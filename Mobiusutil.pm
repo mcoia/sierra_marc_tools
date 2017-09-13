@@ -125,7 +125,7 @@ sub readConfFile
 	my $fullFile = "";
 	foreach my $line (@lines)
 	{
-		#$line =~ s/\n//;  #remove newline characters
+		$line =~ s/\n//;  #remove newline characters
 		$line =~ s/^\s+//; #left trim
 		my $cur = trim('',$line);
 		my $len = length($cur);
@@ -133,7 +133,7 @@ sub readConfFile
 		{
 			if(substr($cur,0,1)ne"#")
 			{
-				#$line=~s/\t//g;
+				$line=~s/\t//g;
 				$fullFile.=" $line"; #collapse all lines into one string
 			}
 		}
@@ -358,9 +358,9 @@ sub findQuery		#self, DBhandler(object), school(string), platform(string), addso
 	my $tdate = $todate->ymd;
 	my $ttime = $yesterday->hms;
 	my $dbFromDate = "$fdate $ftime";  # "2013-02-16 05:00:00";
-	my $dbToDate =  "$tdate $ttime";
+	my $dbToDate = "$tdate $ttime";
 	my $query;
-	#print "Key = $key\n";
+	
 	if(!$queries{$key})
 	{
 		return "-1";
@@ -384,7 +384,7 @@ sub makeCommaFromArray
 	my $delimter=',';
 	if(@_[2])
 	{	
-		$delimter=@_[2];
+		$delimter=@_[2];		
 	}
 	my $ret = "";
 	for my $i (0..$#array)
@@ -931,20 +931,26 @@ sub makeCommaFromArray
 	my $pass = @_[2];
 	my $host = @_[3];
 	my @allPrompts = @{@_[4]};
+	my $keyfile = @_[5];
 	my $errorMessage = "";
 	my @promptsResponded;
 	my $timeout  = 30;
 	
-	my $h = Expect->spawn("ssh $login\@$host");
+	my $connectVar = "ssh $login\@$host";
+	$connectVar .=' -i '.$keyfile if $keyfile;
+	my $h = Expect->spawn($connectVar);
 	#turn off command output to the screen
 	$h->log_stdout(0);
 	my $acceptkey=1;
 	unless ($h->expect($timeout, "yes/no")){$acceptkey=0;}
 	if($acceptkey){print $h "yes\r";}
-	unless ($h->expect($timeout, "password")) { return "No Password Prompt"; }
-	print $h $pass."\r";
+	if(!$keyfile)
+	{
+		unless ( $h->expect($timeout, "password") ) { return "No Password Prompt"; }
+	}
+	print $h $pass."\r" if !$keyfile;
 	unless ($h->expect($timeout, ":")) { }  #there is a quick screen directly after logging in 
-	
+
 	$i=0;
 	#print Dumper(@allPrompts);
 	foreach(@allPrompts)
