@@ -284,8 +284,8 @@ sub SWAN_FOD_OTC
     return $marc;
 
 }
-#SWAN FOD SGF
-sub SWAN_FOD_SGF
+#SWAN FOD SBU
+sub SWAN_FOD_SBU
 	
 {
 	my $marc = @_[0];
