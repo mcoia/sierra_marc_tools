@@ -70,6 +70,10 @@ while(1)
 	'EMO/New_Update/KC-Towers/' => 'EMO_Updates_KC_Towers',
 	'EMO/New_Update/Galahad/' => 'EMO_Updates_Galahad',
 	'KC-Towers-ebrary/' => 'Ebrary_ebrary',
+	'SWAN FOD OTC/' => 'SWAN_FOD_OTC',
+	'SWAN FOD SBU/' => 'SWAN_FOD_SBU',
+	'SWAN FOD MSU-WP/' => 'SWAN_FOD_MSU_WP',
+	'SWAN FOD MSU-SGF/' => 'SWAN_FOD_MSU_SGF',
 			
     );
 
@@ -265,7 +269,21 @@ sub KC_Towers_FOD_NWMSU
 	$marc = change856z($marc,"NORTHWEST streaming video; click to access");
     return $marc;
 }
+#SWAN FOD OTC
+sub SWAN_FOD_OTC
+	
+{
+	my $marc = @_[0];
+    my $z001 = $marc->field('001');
+    $z001->update("FOD".$z001->data());
+	#my $new_field_949 = MARC::Field->new('949',' ','1', 'a' => 'MW Films on Demand', 'g' => '1', 'h' => '020','i' => '0','l' => 'm2wii', 'o' => '','r' => '-','s' => '-', 't' => '014', 'u' => '','z' => '099', );
+	#$marc->insert_grouped_field( $new_field_949 );
+	$marc = postfix856u($marc, '"target=_blank"');
+	$marc = indicator856u($marc, '8');
+	$marc = change856z($marc,"OTC Access via Films on Demand");
+    return $marc;
 
+}
 #EMO Deletes IR
 sub EMO_Deletes_IR
 
@@ -721,6 +739,30 @@ sub prefix856u
     return $marc;
 }
 
+sub postfix856u
+{
+    my $marc = @_[0];
+    my $postfix = @_[1];
+    my @e856s = $marc->field('856');
+    foreach(@e856s)
+    {
+        my $thisfield = $_;
+        $thisfield->update('u' => $thisfield->subfield('u').$postfix );
+    }
+    return $marc;
+}
+
+sub indicator856u
+{
+    my $marc = @_[0];
+    my $indicator2 = @_[1];
+	#print "indicator:".$ind2;
+    my $f856s = $marc->field('856');
+    
+        $f856s->update(ind2 => $indicator2 );
+    
+    return $marc;
+}
 sub prepost856z
 {
     my $marc = @_[0];
