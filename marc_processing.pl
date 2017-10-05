@@ -276,11 +276,56 @@ sub SWAN_FOD_OTC
 	my $marc = @_[0];
     my $z001 = $marc->field('001');
     $z001->update("FOD".$z001->data());
-	#my $new_field_949 = MARC::Field->new('949',' ','1', 'a' => 'MW Films on Demand', 'g' => '1', 'h' => '020','i' => '0','l' => 'm2wii', 'o' => '','r' => '-','s' => '-', 't' => '014', 'u' => '','z' => '099', );
-	#$marc->insert_grouped_field( $new_field_949 );
-	$marc = postfix856u($marc, '"target=_blank"');
+	$marc = postfix856u($marc, ' "target=_blank"');
 	$marc = indicator856u($marc, '8');
 	$marc = change856z($marc,"OTC Access via Films on Demand");
+	my $new_field_949 = MARC::Field->new('949', ' ','1', 'a' => 'Films on Demand', 'g' => '1', 'h' => '040','i' => '0','l' => 'oseei', 'o' => '-','r' => '-','s' => 'e', 't' => '015', 'u' => '-', 'z' =>'099');
+	$marc->insert_grouped_field( $new_field_949 );
+    return $marc;
+
+}
+#SWAN FOD SGF
+sub SWAN_FOD_SGF
+	
+{
+	my $marc = @_[0];
+    my $z001 = $marc->field('001');
+    $z001->update("FOD".$z001->data());
+	#$marc = postfix856u($marc, ' "target=_blank"');
+	$marc = indicator856u($marc, '1');
+	$marc = change856z($marc,"SBU: Streaming Media, click to connect");
+	my $new_field_949 = MARC::Field->new('949', ' ','1', 'a' => 'Films on Demand Streaming Media', 'g' => '1', 'h' => '050','i' => '0','l' => 'bbemi', 'o' => '-','r' => '-','s' => '-', 't' => '015', 'u' => '-', 'z' =>'099', 'n' => 'For access, click the link above');
+	$marc->insert_grouped_field( $new_field_949 );
+    return $marc;
+
+}
+#SWAN FOD Missouri State University - West Plains
+sub SWAN_FOD_MSU_WP
+	
+{
+	my $marc = @_[0];
+    my $z001 = $marc->field('001');
+    $z001->update("fod".$z001->data());
+	$marc = postfix856u($marc, ' "target=_blank"');
+	$marc = indicator856u($marc, '0');
+	$marc = change856z($marc,"MSU-WP Only Available Electronically");
+	my $new_field_949 = MARC::Field->new('949', ' ','1', 'h' => '060','l' => 'sglae', 'o' => '-','r' => 's','s' => '-', 't' => '015', 'p' => '0');
+	$marc->insert_grouped_field( $new_field_949 );
+    return $marc;
+
+}
+#SWAN FOD Missouri State University - Springfield
+sub SWAN_FOD_MSU_SGF
+	
+{
+	my $marc = @_[0];
+    my $z001 = $marc->field('001');
+    $z001->update("fod".$z001->data());
+	$marc = postfix856u($marc, ' "target=_blank"');
+	$marc = indicator856u($marc, '2');
+	$marc = change856z($marc,"MSU Only Available Electronically");
+	my $new_field_949 = MARC::Field->new('949', ' ','1', 'h' => '060','l' => 'smeai', 'o' => '-','r' => 's','s' => '-', 't' => '015', 'p' => '0');
+	$marc->insert_grouped_field( $new_field_949 );
     return $marc;
 
 }
