@@ -21,7 +21,6 @@
 package Loghandler;
 
 use DateTime;
-use Mobiusutil;
 use File::Copy;
 use utf8;
 
@@ -95,8 +94,7 @@ sub addLogLine
 
 	my $line = @_[1];
 	my $datetime = "$date $time";   # creates 'yyyy-mm-dd hh:mm:ss' string
-	my $mobutil = new Mobiusutil();
-	$datetime = $mobutil->makeEvenWidth($datetime,20);
+	$datetime = makeEvenWidth('',$datetime,20);
 	undef $mobutil;
 	my $ret = 1;
 	open(OUTPUT, '>> '.$file) or $ret=0;
@@ -205,6 +203,34 @@ sub readFile
 		print "File does not exist: $file\n";
 	}
 	return \@lines;
+}
+
+sub makeEvenWidth  #line, width
+{
+	my $ret;
+	
+	if($#_+1 !=3)
+	{
+		return;
+	}
+	$line = @_[1];	
+	$width = @_[2];
+	#print "I got \"$line\" and width $width\n";
+	$ret=$line;
+	if(length($line)>=$width)
+	{
+		$ret=substr($ret,0,$width);
+	} 
+	else
+	{
+		while(length($ret)<$width)
+		{
+			$ret=$ret." ";
+		}
+	}
+	#print "Returning \"$ret\"\nWidth: ".length($ret)."\n";
+	return $ret;
+	
 }
 
 sub DESTROY
