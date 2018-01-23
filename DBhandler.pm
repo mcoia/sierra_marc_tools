@@ -292,6 +292,14 @@ package DBhandler;
 	return $conn->quote($string);
  }
  
+ sub breakdown
+ {
+	my ($self) = @_[0];
+	my $conn = $self->{conn};
+	$conn->disconnect();
+	$conn = undef;
+ }
+ 
  sub DESTROY
  {
 	my ($self) = @_[0];
