@@ -44,13 +44,7 @@ my $writePid = new Loghandler($pidfile);
 $writePid->addLine("running");
 undef $writePid;
 
-while(1)
-{
-
-
-    my @files;
-    @files = @{dirtrav(\@files, $dirRoot)};
-    my %functionMaps = (
+my %functionMaps = (
     'EWL YBP DDA' => 'EWL_YBP_DDA',
 	'KC-Towers FOD Avila' => 'KC_Towers_FOD_Avila',
 	'KC-Towers FOD MBTS' => 'KC_Towers_FOD_MBTS',
@@ -73,10 +67,14 @@ while(1)
 	'SWAN FOD OTC/' => 'SWAN_FOD_OTC',
 	'SWAN FOD SBU/' => 'SWAN_FOD_SBU',
 	'SWAN FOD MSU-WP/' => 'SWAN_FOD_MSU_WP',
-	'SWAN FOD MSU-SGF/' => 'SWAN_FOD_MSU_SGF',
-			
+	'SWAN FOD MSU-SGF/' => 'SWAN_FOD_MSU_SGF'
     );
 
+while(1)
+{
+    my @files;
+    @files = @{dirtrav(\@files, $dirRoot)};
+   
     foreach(@files)
     {
         my $file = $_;
@@ -87,8 +85,7 @@ while(1)
         my $originalFileName;
         my $processedFileName;
         my @sp = split('/',$file);
-       
-       
+
         $path=substr($file,0,( (length(@sp[$#sp]))*-1) );
 		
     #print "lastE = ".@sp[$#sp]."\n";
@@ -314,7 +311,8 @@ sub SWAN_FOD_MSU_WP
     return $marc;
 
 }
-#SWAN FOD Missouri State University - Springfield
+
+
 sub SWAN_FOD_MSU_SGF
 	
 {
@@ -329,25 +327,25 @@ sub SWAN_FOD_MSU_SGF
     return $marc;
 
 }
-#EMO Deletes IR
-sub EMO_Deletes_IR
 
+sub EMO_Deletes_IR
 {
     my $marc = @_[0];
+    my $z001 = $marc->field('001');
+    my $z0012 = EMO_001($z001->data());
+    $z0012 =~ s/[^\d]//g;
+	$z001->update($z0012.'eMOeIR');
     my $field590 = MARC::Field->new( '590',' ',' ', a => 'MOBIUS INN-Reach eMO Collection' );
     $marc->insert_grouped_field( $field590 );
     return $marc;
 }
 
 sub EMO_Deletes_Bridges
-
 {
 	my $marc = @_[0];
-
     my $z001 = $marc->field('001');
-    my $z0011= $z001->data();
-	$z0011=~s/[^0-9]//g;
-	$z001->update("eMOe".$z0011);
+	$z001->update(EMO_001($z001->data()));
+    
 	my @e019s = $marc -> field('019');
 	foreach(@e019s)
     {
@@ -371,7 +369,7 @@ sub EMO_Deletes_Everyone
 {
     my $marc = @_[0];
 	my $z001 = $marc->field('001');
-    $z001->update("eMOe".$z001->data());
+	$z001->update(EMO_001($z001->data()));
 	my @e019s = $marc -> field('019');
 	    
 	foreach(@e019s)
@@ -392,12 +390,12 @@ sub EMO_Deletes_Everyone
     $marc->insert_grouped_field( $field590 );
     return $marc;
 }
-#Updates Archway/ EMO_Updates_Archway
+
 sub EMO_Updates_Archway
 {
     my $marc = @_[0];
 	my $z001 = $marc->field('001');
-	$z001->update("eMOe".$z001->data());
+	$z001->update(EMO_001($z001->data()));
 	my @e019s = $marc -> field('019');
 	    
 	foreach(@e019s)
@@ -428,13 +426,11 @@ sub EMO_Updates_Archway
     return $marc;
 }
 
-#Updates Galahad/ EMO_Updates_Galahad
 sub EMO_Updates_Galahad
 {
     my $marc = @_[0];
 	my $z001 = $marc->field('001');
-	
-    $z001->update("eMOe".$z001->data());
+	$z001->update(EMO_001($z001->data()));
 	
 	my @e019s = $marc -> field('019');
 	   
@@ -464,12 +460,11 @@ sub EMO_Updates_Galahad
     return $marc;
 }
 
-#Updates Arthur/ EMO_Updates_Arthur
 sub EMO_Updates_Arthur
 {
     my $marc = @_[0];
 	my $z001 = $marc->field('001');
-	$z001->update("eMOe".$z001->data());
+	$z001->update(EMO_001($z001->data()));
 	
 	my @e019s = $marc -> field('019');
 	  
@@ -495,14 +490,11 @@ sub EMO_Updates_Arthur
     return $marc;
 }
 
-#Updates Christian County/ EMO_Updates_Christian_County
 sub EMO_Updates_Christian_County
 {
     my $marc = @_[0];
-
-	my $z001 = $marc->field('001');
-	
-    $z001->update("eMOe".$z001->data());
+    my $z001 = $marc->field('001');
+	$z001->update(EMO_001($z001->data()));
 	my @e019s = $marc -> field('019');
 	    
 	foreach(@e019s)
@@ -527,12 +519,11 @@ sub EMO_Updates_Christian_County
     return $marc;
 }
 
-#Updates KC-Towers/ EMO_Updates_KC_Towers
 sub EMO_Updates_KC_Towers
 {
     my $marc = @_[0];
 	my $z001 = $marc->field('001');
-	$z001->update("eMOe".$z001->data());
+	$z001->update(EMO_001($z001->data()));
 	
 	my @e019s = $marc -> field('019');
 	    
@@ -545,9 +536,8 @@ sub EMO_Updates_KC_Towers
 		$thisfield->delete_subfield(code =>'a');
 		foreach my $someline(@newline)
 		{
-			$thisfield->add_subfields ('a'=>'eMOe'.$someline);		
-		}
-				
+			$thisfield->add_subfields ('a'=>'eMOe'.$someline);
+		}		
     }
     my $field590 = MARC::Field->new( '590',' ',' ', a => 'MOBIUS eMO Collection' );
     $marc->insert_grouped_field( $field590 );
@@ -558,23 +548,25 @@ sub EMO_Updates_KC_Towers
     return $marc;
 }
 
-#Updates INN-Reach/ EMO_Updates_IR
 sub EMO_Updates_IR
 {
     my $marc = @_[0];
-
+    my $z001 = $marc->field('001');
+    my $z0012 = EMO_001($z001->data());
+    $z0012 =~ s/[^\d]//g;
+	$z001->update($z0012.'eMOeIR');
+    
     my $field590 = MARC::Field->new( '590',' ',' ', a => 'MOBIUS INN-Reach eMO Collection' );
     $marc->insert_grouped_field( $field590 );
 	
 	return $marc;
 }
 
-#Updates Avalon/ EMO_Updates_Avalon
 sub EMO_Updates_Avalon
 {
 	my $marc = @_[0];
 	my $z001 = $marc->field('001');
-	$z001->update("eMOe".$z001->data());
+	$z001->update(EMO_001($z001->data()));
 	
 	my @e019s = $marc -> field('019');
 	foreach(@e019s)
@@ -620,12 +612,12 @@ sub EMO_Updates_Avalon
 		
 	return $marc;
 }
-#Updates SWAN/ EMO_Updates_SWAN
+
 sub EMO_Updates_SWAN
 {
     my $marc = @_[0];
 	my $z001 = $marc->field('001');
-    $z001->update("eMOe".$z001->data());
+	$z001->update(EMO_001($z001->data()));
 	
 	my @e019s = $marc -> field('019');
     
@@ -695,16 +687,11 @@ sub EMO_Updates_SWAN
     return $marc;
 }
 
-#Updates Bridges/ EMO_Updates_Bridges
 sub EMO_Updates_Bridges
 {
 	my $marc = @_[0];
-	#my $z001 = $marc->field('001');
-	#$z001->update("eMOe".$z001->data());
 	my $z001 = $marc->field('001');
-    my $z0011= $z001->data();
-	$z0011=~s/[^0-9]//g;
-	$z001->update("eMOe".$z0011);
+	$z001->update(EMO_001($z001->data()));
 	
 	my @e019s = $marc -> field('019');
 	
@@ -755,6 +742,15 @@ sub EMO_Updates_Bridges
 	}
     return $marc;
 }
+
+sub EMO_001
+{
+    my $t001 = shift;
+    $t001 =~ s/[^0-9]//g;
+    $t001 =~ s/^0*//g;
+    return "eMOe".$t001;
+}
+
 sub Ebrary_ebrary
 {
 	my $marc = @_[0];
@@ -766,39 +762,37 @@ sub Ebrary_ebrary
 		my $thisfield = $_;
 		if (defined($thisfield->subfield('z')))
 		{
-		$mytemp1= $thisfield->as_usmarc;
-		#print $mytemp1."\n";
-			if ($mytemp1  =~m/William\sJewell\sOnline\sAccess/i){
-				
+            $mytemp1= $thisfield->as_usmarc;
+			if ($mytemp1  =~m/William\sJewell\sOnline\sAccess/i)
+            {				
 				$marc->delete_fields($thisfield);
 			}
-			if ($mytemp1  =~m/MBTS\sOnline\sAccess/i){
-				
+			elsif ($mytemp1  =~m/MBTS\sOnline\sAccess/i)
+            {				
 				$thisfield->update('z' =>"MBTS electronic book; click here to access");
 				$prefix='http://proxy01.mbts.edu/login?url=';
 				$thisfield->update('u' => $prefix.$thisfield->subfield('u') );
 			}
-			if ($mytemp1  =~m/Nazarene\sLibrary\sOnline\sAccess/i){
-				
+			elsif ($mytemp1  =~m/Nazarene\sLibrary\sOnline\sAccess/i)
+            {				
 				$thisfield->update('z' =>"Nazarene Library users click here");
 				$prefix='http://ezproxy.nts.edu/login?url=';
 				$thisfield->update('u' => $prefix.$thisfield->subfield('u') );
 			}
-			if ($mytemp1  =~m/SPST\sOnline\sAccess/i){
-				
+			elsif ($mytemp1  =~m/SPST\sOnline\sAccess/i)
+            {				
 				$thisfield->update('z' =>"SPST electronic book; click here to access");
 				$prefix='https://ezproxy.spst.edu/login?url=';
 				$thisfield->update('u' => $prefix.$thisfield->subfield('u') );
 			}
-			if ($mytemp1  =~m/Avila\sOnline\sAccess/i){
+			elsif ($mytemp1  =~m/Avila\sOnline\sAccess/i)
+            {
 				#print "avila test string:".$mytemp1;
 				$prefix='<a href="http://proxy.avila.edu:2048/login?url=';
 				$postfix="><img src=\"/screens/avila_856_icon.jpg \" alt=\"Avila Online Access\"></a>";
 				$thisfield->update('z' => $prefix.$thisfield->subfield('u').$postfix );
 				#####$marc = prepost856z($marc,'<a href="http://proxy.avila.edu:2048/login?url=',"><img src=\"/screens/avila_856_icon.jpg \" alt=\"Avila Online Access\"></a>");
 				$thisfield->delete_subfield(code => 'u');
-    
-				
 			}
 		}
 	}
@@ -829,6 +823,7 @@ sub Ebrary_MBTS
 	$marc->insert_grouped_field($newfiled949s);
 	return $marc;
 }
+
 sub Ebrary_NTS
 {
 	my $marc = @_[0];
@@ -947,8 +942,6 @@ sub change949a
     return $marc;
 }
 
-
-
 sub checkFileReady
 {
     my $file = @_[0];
@@ -1005,23 +998,7 @@ sub dirtrav
 	}
 	return \@files;
 }
-sub copy_recursively {
-    my ($from_dir, $to_dir, $regex) = @_;
-    opendir(my($dh),"$pwd") or die "Could not open dir '$from_dir': $!";
-    for my $entry (readdir $dh) {
-        next if $entry =~ /$regex/;
-        my $source = "$from_dir/$entry";
-        my $destination = "$to_dir/$entry";
-        if (-d $source) {
-            #mkdir $destination or die "mkdir '$destination' failed: $!" if not -e $destination;
-            copy_recursively($source, $destination, $regex);
-        } else {
-            copy($source, $destination) or die "copy failed: $!";
-        }
-    }
-    closedir $dh;
-    return;
-}
+
 sub DESTROY
 {
     print "I'm dying, deleting PID file $pidFile\n";
