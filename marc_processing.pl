@@ -67,15 +67,19 @@ my %functionMaps = (
     'SWAN FOD MSU-WP/' => 'SWAN_FOD_MSU_WP',
     'SWAN FOD MSU-SGF/' => 'SWAN_FOD_MSU_SGF'
     );
+    my @emodirs = ("EMO\/New_Update","EMO\/Deletes");
 
-while(1)
+    my $loops = 0;
+while(1) #$loops==0)
 {
     my @files;
     @files = @{dirtrav(\@files, $dirRoot)};
-
-    foreach(@files)
+    my $i = 0;
+    while($i < scalar(@files))
     {
-        my $file = $_;
+        # print "max is $#files\n";
+        # print "i = $i\n";
+        my $file = @files[$i];
         my $path;
         my $finalpath;
         our $baseFileName;
@@ -86,28 +90,60 @@ while(1)
 
         $path=substr($file,0,( (length(@sp[$#sp]))*-1) );
 
-    #print "lastE = ".@sp[$#sp]."\n";
+    # print "lastE = ".@sp[$#sp]."\n";
         my @fsp = split('\.',@sp[$#sp]);
         $fExtension = pop @fsp;
         $baseFileName = join('.', @fsp);
         $baseFileName= Encode::encode("CP1252", $baseFileName);
         $finalpath = $path."/marc_done_processing";
-        # #Copy EMO files
-        # if(($path =~ m/EMO\/New_Update/)&& ($fExtension =~ 'mrc')&& !($path =~ m/marc_done_processing/))
-        # {
-            # my $sendthere=$path.'Bridges/';
-            # my $original_file=$path.$baseFileName.$fExtension;
-            # my $new_file = $sendthere.$baseFileName.$fExtension;
-            # #rcopy($original_file, $new_file);
-            # #print $original_file."->".$new_file;
-            # #my $from_dir=$path;
-            # my $from_dir='/dfsdump/Data Archive/RMO/auto_marc_changes/EMO/New_Update';
-            # my $to_dir=$sendthere;
-            # my $regex=".mrc";
-            # #copy_recursively($path,$sendthere,$regex);
-
-        # }
-        if( !($path =~ m/marc_done_processing/) && ($fExtension =~ 'mrc'))
+        #Copy EMO files
+        my $is_emo = 0;
+        my $was_emo = 0;
+        foreach(@emodirs)
+        {
+            $is_emo = 1 if $path =~ m/$_/i;
+        }
+        if( ($is_emo) && ($fExtension =~ 'mrc') && !($path =~ m/marc_done_processing/) )
+        {
+            # Make sure that the file is directly inside of the folder
+            my $test = $file;
+            # print "path = $path\n";
+            
+            $test =~ s/$dirRoot//i;
+            $test =~ s/$_//i foreach(@emodirs);
+            $test =~ s/^\/*//g;
+            if("$baseFileName.$fExtension" eq $test)
+            {
+                $was_emo = 1;
+                checkFileReady($file);
+                ## Get the list of subdirectories here
+                # print "using $file;\n";
+                my $cfile = new Loghandler($file);
+                opendir(DIR,"$path") or die "Cannot open $path\n";
+                my @thisdir = readdir(DIR);
+                closedir(DIR);
+                foreach (@thisdir)
+                {
+                    if( ($_ ne ".") && ($_ ne "..") && (-d "$path/$_") )
+                    {
+                        # print "copying $path$_/$baseFileName.$fExtension\n";
+                        my $filenameforcmd = $file;
+                        my $destfilenameforcmd = "$path$_/$baseFileName.$fExtension";
+                        # escape the space characters
+                        $filenameforcmd =~ s/\s/\\ /g;
+                        $destfilenameforcmd =~ s/\s/\\ /g;
+                        my $cmd = "cp $filenameforcmd $destfilenameforcmd";
+                        #print "calling \n$cmd\n";
+                        system($cmd);
+                        push(@files,"$path$_/$baseFileName.$fExtension");
+                    }
+                }
+                checkFileReady($file);
+                $cfile->deleteFile();
+                #print Dumper(\@files);
+            }
+        }
+        if( !$was_emo && !($path =~ m/marc_done_processing/) && ($fExtension =~ 'mrc'))
         {
             # Make sure we have a function for this directory
             my $functionCall;
@@ -125,7 +161,6 @@ while(1)
                 $processedFileName = $baseFileName."_processed.".$fExtension;
 print "path = $path  Base = $baseFileName  Orgname = $originalFileName  ProcessingFN = $processingFileName  Processed = $processedFileName\n";
                 checkFileReady($file);
-                # move($file,$path.$processingFileName);
                 moveFile($file,$path.$processingFileName);
                 my $marcfile = MARC::File::USMARC->in($path.$processingFileName);
                 my $writeOut = '';
@@ -142,26 +177,16 @@ print "path = $path  Base = $baseFileName  Orgname = $originalFileName  Processi
                 moveFile($path.$processingFileName,$finalpath.'/'.$originalFileName);
             }
         }
-    }    
-   sleep 5;
+        $i++;
+    }
+    sleep 5;
+    $loops++;
 }
 
 sub moveFile
 {
     my $file = @_[0];
     my $destination = @_[1];
-
-# $file =~s/\s/\\ /g;
-# $file =~s/&/_/g;
-# $destination =~s/\s/\\ /g;
-# $destination =~s/&/_/g;
-
-#    system("mv {oldfilename} {newfilename}");
-#print "Moving file from $file to $destination\n";
-
-# special characters that Windows inserts in the file name (sometimes).
-# The baseFileName just needs to be encoded CP1252. Use Encode Module
-
     my $fhandle = new Loghandler($file);
 
     if( $fhandle->copyFile($destination) )
@@ -915,23 +940,6 @@ sub remove856u
         my $thisfield = $_;
         $thisfield->delete_subfield(code => 'u');
     }
-    return $marc;
-}
-
-sub change949a
-{
-    my $marc = @_[0];
-    my $subfds = @_[1];
-    #my @subfields=();
-
-    #my @ssub = split /\$/, $subfds ;
-    my @ftd = $marc->field('949');
-    #if (defined @ftd)
-    #{
-        print "here it is".$subfds;
-        #$marc -> delete_fields(@ftd);
-    #};
-
     return $marc;
 }
 
