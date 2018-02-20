@@ -176,7 +176,6 @@ print "path = $path  Base = $baseFileName  Orgname = $originalFileName  Processi
                 undef $doneFH;
                 moveFile($path.$processingFileName,$finalpath.'/'.$originalFileName);
                 # CAG doesn't care to see the original files for EMO
-                unlink $finalpath.'/'.$originalFileName if($functionCall =~ m/^EMO/);
             }
         }
         $i++;
@@ -304,7 +303,6 @@ sub SWAN_FOD_OTC
 }
 
 sub SWAN_FOD_SBU
-
 {
     my $marc = @_[0];
     my $z001 = $marc->field('001');
