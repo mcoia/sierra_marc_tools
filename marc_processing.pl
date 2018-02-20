@@ -288,9 +288,8 @@ sub KC_Towers_FOD_NWMSU
     $marc = change856z($marc,"NORTHWEST streaming video; click to access");
     return $marc;
 }
-#SWAN FOD OTC
-sub SWAN_FOD_OTC
 
+sub SWAN_FOD_OTC
 {
     my $marc = @_[0];
     my $z001 = $marc->field('001');
@@ -303,7 +302,7 @@ sub SWAN_FOD_OTC
     return $marc;
 
 }
-#SWAN FOD SBU
+
 sub SWAN_FOD_SBU
 
 {
@@ -318,9 +317,8 @@ sub SWAN_FOD_SBU
     return $marc;
 
 }
-#SWAN FOD Missouri State University - West Plains
-sub SWAN_FOD_MSU_WP
 
+sub SWAN_FOD_MSU_WP
 {
     my $marc = @_[0];
     my $z001 = $marc->field('001');
@@ -335,7 +333,6 @@ sub SWAN_FOD_MSU_WP
 }
 
 sub SWAN_FOD_MSU_SGF
-
 {
     my $marc = @_[0];
     my $z001 = $marc->field('001');
@@ -853,6 +850,7 @@ sub Ebrary_NTS
     $marc->insert_grouped_field($newfiled949s);
     return $marc;
 }
+
 sub Ebrary_SPST
 {
     my $marc = @_[0];
@@ -864,6 +862,7 @@ sub Ebrary_SPST
     $marc->insert_grouped_field($newfiled949s);
     return $marc;
 }
+
 sub prefix856u
 {
     my $marc = @_[0];
@@ -901,6 +900,7 @@ sub indicator856u
 
     return $marc;
 }
+
 sub prepost856z
 {
     my $marc = @_[0];
