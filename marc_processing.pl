@@ -176,6 +176,7 @@ print "path = $path  Base = $baseFileName  Orgname = $originalFileName  Processi
                 undef $doneFH;
                 moveFile($path.$processingFileName,$finalpath.'/'.$originalFileName);
                 # CAG doesn't care to see the original files for EMO
+                unlink ($finalpath.'/'.$originalFileName) if($functionCall =~ m/\$finalmarc = EMO.*/);
             }
         }
         $i++;
