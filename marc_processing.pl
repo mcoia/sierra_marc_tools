@@ -49,7 +49,7 @@ my %functionMaps = (
     'KC-Towers FOD MWSU' => 'KC_Towers_FOD_MWSU',
     'KC-Towers FOD NCMC' => 'KC_Towers_FOD_NCMC',
     'KC-Towers FOD NWMSU' => 'KC_Towers_FOD_NWMSU',
-    'EMO/Deletes/IR/' => 'EMO_Deletes_IR',
+    'EMO/Deletes/IR/' => 'EMO_IR',
     'EMO/Deletes/Bridges/' => 'EMO_Deletes_Bridges',
     'EMO/Deletes/Everyone/' => 'EMO_Deletes_Everyone',    
     'EMO/New_Update/Archway/' => 'EMO_Updates_Archway',
@@ -57,7 +57,7 @@ my %functionMaps = (
     'EMO/New_Update/Avalon/' => 'EMO_Updates_Avalon',
     'EMO/New_Update/Bridges/' => 'EMO_Updates_Bridges',
     'EMO/New_Update/Arthur/' => 'EMO_Updates_Arthur',
-    'EMO/New_Update/InnReach/' => 'EMO_Updates_IR',
+    'EMO/New_Update/InnReach/' => 'EMO_IR',
     'EMO/New_Update/ChristianCounty/' => 'EMO_Updates_Christian_County',
     'EMO/New_Update/KC-Towers/' => 'EMO_Updates_KC_Towers',
     'EMO/New_Update/Galahad/' => 'EMO_Updates_Galahad',
@@ -175,6 +175,8 @@ print "path = $path  Base = $baseFileName  Orgname = $originalFileName  Processi
                 $doneFH->appendLineRaw($writeOut);
                 undef $doneFH;
                 moveFile($path.$processingFileName,$finalpath.'/'.$originalFileName);
+                # CAG doesn't care to see the original files for EMO
+                unlink $finalpath.'/'.$originalFileName if($functionCall =~ m/^EMO/);
             }
         }
         $i++;
@@ -347,13 +349,25 @@ sub SWAN_FOD_MSU_SGF
 
 }
 
-sub EMO_Deletes_IR
+sub EMO_IR
 {
     my $marc = @_[0];
     my $z001 = $marc->field('001');
     my $z0012 = EMO_001($z001->data());
     $z0012 =~ s/[^\d]//g;
     $z001->update($z0012.'eMOeIR');
+    my @f019 = $marc->field('019');
+    foreach(@f019)
+    {
+        my $thisfield = $_;
+        my @f019as = $thisfield->subfield('a');
+        $thisfield->delete_subfield(code => 'a');
+        foreach(@f019as)
+        {
+            $thisfield->add_subfields( 'a' => $_."eMOeIR");
+        }
+    }
+    
     my $field590 = MARC::Field->new( '590',' ',' ', a => 'MOBIUS INN-Reach eMO Collection' );
     $marc->insert_grouped_field( $field590 );
     return $marc;
@@ -567,20 +581,6 @@ sub EMO_Updates_KC_Towers
     return $marc;
 }
 
-sub EMO_Updates_IR
-{
-    my $marc = @_[0];
-    my $z001 = $marc->field('001');
-    my $z0012 = EMO_001($z001->data());
-    $z0012 =~ s/[^\d]//g;
-    $z001->update($z0012.'eMOeIR');
-
-    my $field590 = MARC::Field->new( '590',' ',' ', a => 'MOBIUS INN-Reach eMO Collection' );
-    $marc->insert_grouped_field( $field590 );
-
-    return $marc;
-}
-
 sub EMO_Updates_Avalon
 {
     my $marc = @_[0];
@@ -601,7 +601,7 @@ sub EMO_Updates_Avalon
         }
     }
 
-    if ($baseFileName =~ m/\.M(\d+.*?)\.T/) {
+    if ($baseFileName =~ m/\.[MD](\d+.*?)\.T/) {
         my $bfndate = $1;
         my $bfnyyy=substr($bfndate, 0, 4);
         my $bfnmm=substr($bfndate, 4, 2);
