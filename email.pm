@@ -1,17 +1,11 @@
 #!/usr/bin/perl
 #
-# Mobiusutil.pm
+# email.pm
 # 
 # Requires:
 #
-# recordItem.pm sierraScraper.pm DBhandler.pm Loghandler.pm Mobiusutil.pm MARC::Record (from CPAN) Net::FTP
+# Mobiusutil.pm
 # 
-# This is a simple utility class that provides some common functions
-#
-# Usage: my $mobUtil = new Mobiusutil(); #No constructor my $conf = $mobUtil->readConfFile($configFile);
-#
-# Other Functions available:
-#	makeEvenWidth sendftp getMarcFromZ3950 chooseNewFileName trim findSummonIDs makeCommaFromArray
 #
 # Blake Graham-Henderson MOBIUS blake@mobiusconsortium.org 2013-1-24
 package email;
