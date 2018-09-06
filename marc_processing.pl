@@ -443,14 +443,18 @@ sub EMO_Updates_Archway
     my $field590 = MARC::Field->new( '590',' ',' ', a => 'MOBIUS eMO Collection' );
     $marc->insert_grouped_field( $field590 );
 
-    my $new_field_9491 = MARC::Field->new('949', ' ','1', 'v' => 'eBooks on EBSCOhost', 'g' => '1', 'h' => '001','i' => '0','l' => 'eceii', 'o' => '-','r' => 'z','s' => 'i', 't' => '058', 'u' => '-');
-    $marc->insert_grouped_field( $new_field_9491 );
-    my $new_field_9492 = MARC::Field->new('949', ' ','1', 'v' => 'eBooks on EBSCOhost', 'g' => '1', 'h' => '002','i' => '0','l' => 'jheri', 'o' => '-','r' => 'z','s' => 'i', 't' => '058', 'u' => '-');
-    $marc->insert_grouped_field( $new_field_9492 );
-    my $new_field_9493 = MARC::Field->new('949', ' ','1', 'v' => 'eBooks on EBSCOhost', 'g' => '1', 'h' => '003','i' => '0','l' => 'cleni', 'o' => '-','r' => 'z','s' => 'i', 't' => '058', 'u' => '-');
-    $marc->insert_grouped_field( $new_field_9493 );
-    my $new_field_9494 = MARC::Field->new('949', ' ','1', 'v' => 'eBooks on EBSCOhost', 'g' => '1', 'h' => '005','i' => '0','l' => 'pcleb', 'o' => '-','r' => 'z','s' => 'i', 't' => '058', 'u' => '-');
-    $marc->insert_grouped_field( $new_field_9494 );
+    my $new_field = MARC::Field->new('949', ' ','1', 'v' => 'eBooks on EBSCOhost', 'g' => '1', 'h' => '001','i' => '0','l' => 'eceii', 'o' => '-','r' => 'z','s' => 'i', 't' => '058', 'u' => '-');
+    $marc->insert_grouped_field( $new_field );
+    $new_field = MARC::Field->new('949', ' ','1', 'v' => 'eBooks on EBSCOhost', 'g' => '1', 'h' => '002','i' => '0','l' => 'jheri', 'o' => '-','r' => 'z','s' => 'i', 't' => '058', 'u' => '-');
+    $marc->insert_grouped_field( $new_field );
+    $new_field = MARC::Field->new('949', ' ','1', 'v' => 'eBooks on EBSCOhost', 'g' => '1', 'h' => '003','i' => '0','l' => 'cleni', 'o' => '-','r' => 'z','s' => 'i', 't' => '058', 'u' => '-');
+    $marc->insert_grouped_field( $new_field );
+    $new_field = MARC::Field->new('949', ' ','1', 'v' => 'eBooks on EBSCOhost', 'g' => '1', 'h' => '005','i' => '0','l' => 'pcleb', 'o' => '-','r' => 'z','s' => 'i', 't' => '058', 'u' => '-');
+    $marc->insert_grouped_field( $new_field );
+    $new_field = MARC::Field->new('949', ' ','1', 'a' => 'eBook', 'g' => '1', 'h' => '006','i' => '0','l' => 'mcecp', 'o' => '-','r' => 'z','s' => '-', 't' => '058', 'u' => '-', 'z' => '099');
+    $marc->insert_grouped_field( $new_field );
+    $new_field = MARC::Field->new('949', ' ','1', 'a' => 'eMO', 'g' => '1', 'h' => '007','i' => '0','l' => 'trers', 'o' => '-','r' => 'n','s' => '-', 't' => '058', 'u' => '-', 'z' => '099');
+    $marc->insert_grouped_field( $new_field );
 
     return $marc;
 }
