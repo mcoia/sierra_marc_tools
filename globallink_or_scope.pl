@@ -96,7 +96,7 @@
 				352800,"Choose one","q",1,
 				10,"Choose on","q",1
 				);
-				if($cluster eq 'explore' or $cluster eq 'swbts' or $cluster eq 'swan')
+				if($cluster eq 'explore' or $cluster eq 'swbts' or $cluster eq 'swan' or $cluster eq 'archway' or $cluster eq 'arthur' or $cluster eq 'bridges')
 				{
 					@firstPrompts = (
 					10,"Login",$conf{"secondlogin"}."\r",1,
@@ -120,7 +120,7 @@
 					10,"Login",$conf{"secondlogin"}."\r",1,
 					10,"Password",$conf{"secondpassword"}."\r",1
 					);
-					if($cluster eq 'explore' or $cluster eq 'swbts' or $cluster eq 'swan')
+					if($cluster eq 'explore' or $cluster eq 'swbts' or $cluster eq 'swan' or $cluster eq 'archway' or $cluster eq 'arthur' or $cluster eq 'bridges')
 					{
 						@firstPrompts = (
 						10,"Login",$conf{"secondlogin"}."\r",1,
