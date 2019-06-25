@@ -1621,7 +1621,7 @@ sub stuff998alternate
 	return $checkDigit;
  }
  
-  sub getBridgesFiscalInfo
+ sub getBridgesFiscalInfo
  {
 	my $self = @_[0];
 	my $selects = $self->{'selects'};
