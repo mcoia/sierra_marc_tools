@@ -606,7 +606,7 @@ sub EMO_Updates_Avalon
         my $bfnyyy=substr($bfndate, 0, 4);
         my $bfnmm=substr($bfndate, 4, 2);
         my $bfnd= $bfnyyy."-".$bfnmm;
-        my $new_field_949 = MARC::Field->new('949', ' ','1', 'a' => 'eMO E-Book', 'd' => $bfnd, 'g' => '1', 'h' => '000', 'i' => '0', 'k' => 'load-update', 'l' => 'emo', 'o' => '-', 'r' => 'n', 's' => '-', 't' => '015', 'u' => '-','z' => '099');
+        my $new_field_949 = MARC::Field->new('949', ' ','1', 'a' => 'eMO E-Book', 'd' => $bfnd, 'g' => '1', 'h' => '000', 'i' => '0', 'k' => 'load-update', 'l' => 'emo', 'o' => '-', 'r' => 's', 's' => '-', 't' => '015', 'u' => '-','z' => '099');
         $marc->insert_grouped_field( $new_field_949 );
     }
     my $field590 = MARC::Field->new( '590',' ',' ', a => 'MOBIUS eMO Collection' );
