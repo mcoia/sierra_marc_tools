@@ -693,8 +693,6 @@ sub EMO_Updates_SWAN
     $marc->insert_grouped_field( $new_field_9495 );
     my $new_field_9496 = MARC::Field->new('949', ' ','1', 'h' => '30','l' => 'msebk','s' => '-', 'r' => 's');
     $marc->insert_grouped_field( $new_field_9496 );
-    my $new_field_9497 = MARC::Field->new('949', ' ','1', 'h' => '60','l' => 'smeeb','s' => '-', 'r' => 's');
-    $marc->insert_grouped_field( $new_field_9497 );
     my $new_field_9498 = MARC::Field->new('949', ' ','1', 'h' => '110','l' => '77er0','s' => '-', 'r' => 's');
     $marc->insert_grouped_field( $new_field_9498 );
     my $new_field_9499 = MARC::Field->new('949', ' ','1', 'h' => '40','l' => 'oseei','s' => 'e');
