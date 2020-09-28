@@ -485,6 +485,8 @@ package sierraScraper;
 									$chunkGoal=10;
 								}
 								$rps = $trps;
+                                $rps =~ s/^([^\.]*\.?\d{3}?).*/$1/g;
+                                $rps += 0; # back to numeric
 								#print "Adjusted chunk to $chunkGoal\n";
 								push(@dumpedFiles,@lines[0]);
 								#print "Added dump files to array\n";
@@ -754,6 +756,8 @@ package sierraScraper;
         my @row = @{$row};
         $min = @row[0];
     }
+    $min = $thisOffset + 1  if($min !=~ m/^[^\d]/); # Failsafe
+
 	my $secondsElapsed = calcTimeDiff($self,$previousTime);
 	return ($min--);
  }
