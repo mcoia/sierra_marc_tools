@@ -40,7 +40,6 @@ package recordItem;
  
  sub new   #ID, indicator1, indicator2, data
  {
- my $marcRecord = MARC::Record->new();
 	my $class = shift;
 	my @t = ();
 	my $mobiusUtil = new Mobiusutil();

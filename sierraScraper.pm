@@ -54,6 +54,7 @@ package sierraScraper;
 	my %f=();
 	my %g=();
 	my %h=();
+    my @i=();
 	my $mobutil = new Mobiusutil();
 	my $pidfile = new Loghandler($mobutil->chooseNewFileName('/tmp','scraper_pid','pid'));
     my $self = 
@@ -81,7 +82,9 @@ package sierraScraper;
 		'pathtothis' =>"",
 		'conffile' =>"",
 		'recordcount' => 0,
-		'maxdbconnection' =>3
+		'maxdbconnection' => 3,
+        'current_query' => '',
+        'query_log' => \@i
 	};
 	
 	my $t = shift;
@@ -146,7 +149,7 @@ package sierraScraper;
  {
 	my $self = @_[0];
 	my $previousTime = DateTime->now();
-	$self->{'selects'} =~ s/\$recordSearch/RECORD_ID/gi;
+	$self->{'selects'} =~ s/\$recordSearch/SIERRA_VIEW.BIB_RECORD.RECORD_ID/gi;
 	stuffStandardFields($self);
 	stuffSpecials($self);
 	stuff945($self);
@@ -226,6 +229,18 @@ package sierraScraper;
 	#print "Dumped files\n";
 	return $currentRecordCount;
  }
+ 
+ sub getLastQuery
+ {
+    my $self = shift;
+    return $self->{'current_query'};
+ }
+ 
+ sub getQueryLog
+ {
+    my $self = shift;
+    return $self->{'query_log'};
+ }
   
  sub gatherDataFromDB_spinThread_Controller
  {
@@ -261,6 +276,7 @@ package sierraScraper;
 	my $chunkGoal = 100;
 	my $title = $self->{'title'};
 	my $masterfile = new Loghandler($mobUtil->chooseNewFileName('/tmp',"master_$title",'pid'));
+    print "NOTICE: see progress with 'watch \"cat " . $masterfile->getFileName() . "\"'\n";
 	my $previousTime=DateTime->now;
 	foreach(@cha)
 	{
@@ -279,7 +295,6 @@ package sierraScraper;
 	}
 	$min--;
 	my $maxQuery = $tselects;
-	$maxQuery =~ s/\$recordSearch/COUNT(\*)/gi;
 	$max = findMaxRecordCount($self,$maxQuery);
 	
 	my @dumpedFiles = (0);
@@ -308,7 +323,7 @@ package sierraScraper;
 		#print "Looping through the threads\n";
 		$recordsCollectedTotalPerLoop = $finishedRecordCount;
 		foreach(@threadTracker)
-		{	
+		{
 			#print "Checking to see if thread $thisPidfile is done\n";
 			my @attr = @{$_};
 			my $thisPidfile = @attr[0];
@@ -318,7 +333,7 @@ package sierraScraper;
 			@attr[3]++;
 			my $duser = @attr[4];
 			my $continueChecking=1;
-			print "$thisPidfile $thisOff $thisInc: $checkcount\n";
+			# print "$thisPidfile $thisOff $thisInc: $checkcount\n";
 			#give thread time to get started and create pidfile (40 seconds)
 			if($checkcount > 20)
 			{
@@ -355,11 +370,13 @@ package sierraScraper;
 						print "kill \$(ps aux | grep '$kill' | grep -v 'grep' | awk '{print \$2}')\n";
 						system("kill \$(ps aux | grep '$kill' | grep -v 'grep' | awk '{print \$2}')");						
 						unlink $thisPidfile;
+                        undef @add;
 					}
 					else
 					{
 						my @add = ($thisOff,$thisInc);
 						push(@recovers,[@add]);
+                        undef @add;
 					}
 					if($dbUserTrack{$duser})
 					{
@@ -482,6 +499,7 @@ package sierraScraper;
 						print "For some reason the thread PID file did not output the expected stuff\n";
 					}
 					#print "Looping back through the rest of running threads\n";
+                    undef @lines;
 				}
 				else
 				{
@@ -489,7 +507,15 @@ package sierraScraper;
 					$workingThreads++;
 					push(@newThreads,[@attr]);
 				}
+                undef $done;
 			}
+            undef @attr;
+			undef $thisPidfile;
+			undef $thisOff;
+			undef $thisInc;
+			undef $checkcount;
+			undef $duser;
+			undef $continueChecking;
 		}
 		@threadTracker=@newThreads;
 		#print "$workingThreads / $threadsAllowed Threads\n";
@@ -531,14 +557,16 @@ package sierraScraper;
 								$dbuser=$internal;
 								$dbUserTrack{$dbuser}++;
 								#print "$dbuser: $value\n";
-							}							
+							}
 						}
 						if($dbuser ne "")
 						{	
 							if((scalar @recovers) == 0)
 							{
-								#print "Sending off for range....\n";
-								$thisIncrement = calcDBRange($self,$thisOffset,$chunkGoal,$dbHandler,$tselects);								
+								# print "Sending off for range min: $thisOffset\n";
+                                $thisOffset = calcDBMinID($self,$thisOffset,$dbHandler,$tselects);
+                                # print "got min: $thisOffset\n";
+								$thisIncrement = calcDBRange($self,$thisOffset,$chunkGoal,$dbHandler,$tselects);
 								#print "Got range: $thisIncrement\n";
 							}
 							else
@@ -577,7 +605,13 @@ package sierraScraper;
 						}
 						$workingThreads++;
 						#print "End of while loop for $workingThreads< ( $threadsAllowed - 1 )\n";
+                        undef $thisOffset;
+						undef $thisIncrement;
+						undef $choseRecover;
+						undef $dbuser;
+						undef $keepsearching;
 					}
+                    undef $loops;
 				}
 				else
 				{
@@ -599,13 +633,17 @@ package sierraScraper;
 		my $secondsElapsed = calcTimeDiff($self,$previousTime);
 		my $minutesElapsed = $secondsElapsed / 60;
 		my $overAllRPS = $finishedRecordCount / $secondsElapsed;
+        $overAllRPS =~ s/^([^\.]*\.?\d{3}?).*/$1/g;
+        $minutesElapsed =~ s/^([^\.]*\.\d{3}).*/$1/g;
 		my $devideTemp = $overAllRPS;
 		if($devideTemp<1)
 		{
 			$devideTemp=1;
 		}
+        $devideTemp =~ s/^([^\.]*\.?\d{3}?).*/$1/g;
 		
 		my $remaining = ($max - $finishedRecordCount) / $devideTemp / 60;
+        $remaining =~ s/^([^\.]*\.?\d{3}?).*/$1/g;
 		$self->{'rps'}=$overAllRPS;
 		$masterfile->truncFile($pidfile->getFileName);
 		$masterfile->addLine("$rps records/s Per Thread\n$overAllRPS records/s Average\nChunking: $chunkGoal\nRange: $range\n$remaining minutes remaining\n$minutesElapsed minute(s) elapsed\n");
@@ -636,8 +674,8 @@ package sierraScraper;
 	{
 		$maxQuery.=$_;
 	}
-	$maxQuery =~ s/\$recordSearch/COUNT(\*)/gi;
-	
+	$maxQuery =~ s/\$recordSearch/COUNT(DISTINCT SIERRA_VIEW\.BIB_RECORD\.RECORD_ID)/gi;
+
 	my $dbHandler = $self->{'dbhandler'};
 	my $max = 0;
 	my @results = @{$dbHandler->query($maxQuery)};
@@ -647,21 +685,21 @@ package sierraScraper;
 		my @row = @{$row};
 		$max = @row[0];
 	}
-	return $max;
+    return $max;
  }
  
  sub calcDBRange
  {
 	#print "starting rangefinding\n";
 	my $self = @_[0];
-	my $previousTime=DateTime->now;
 	my $thisOffset = @_[1];	
 	my $chunkGoal = @_[2];
 	my $dbHandler = @_[3];
 	my $countQ = @_[4];
+	my $previousTime=DateTime->now;
 	my $thisIncrement = $thisOffset;
 	
-	$countQ =~s/\$recordSearch/COUNT(\*)/gi;
+	$countQ =~s/\$recordSearch/COUNT(DISTINCT SIERRA_VIEW\.BIB_RECORD\.RECORD_ID)/gi;
 	my $yeild=0;
 	if($chunkGoal<1)
 	{
@@ -671,8 +709,8 @@ package sierraScraper;
 	my $trys = 0;
 	while($yeild<$chunkGoal)  ## Figure out how many rows to read into the database to get the goal number of records
 	{	
-		my $selects = $countQ." AND ID > $thisOffset AND ID <= $thisIncrement";
-		#print "$selects\n";
+		my $selects = $countQ." AND SIERRA_VIEW.BIB_RECORD.ID > $thisOffset AND SIERRA_VIEW.BIB_RECORD.ID <= $thisIncrement";
+		# print "$selects\n";
 		my @results = @{$dbHandler->query($selects)};
 		foreach(@results)
 		{
@@ -680,11 +718,11 @@ package sierraScraper;
 			my @row = @{$row};
 			$yeild = @row[0];
 		}
-		#print "Yeild: $yeild\n";
+		# print "Yeild: $yeild\n";
 		if($yeild<$chunkGoal)
 		{
 			$trys++;
-			if($trys>20)	#well, 100 * 10 and we didn't get 1000 rows returned, so we are stopping here.
+			if($trys>5)	#well, 100 * 10 and we didn't get 1000 rows returned, so we are stopping here.
 			{
 				$yeild=$chunkGoal;
 			}
@@ -696,6 +734,28 @@ package sierraScraper;
 	
 	#print "ending rangefinding\n";
 	return $thisIncrement;
+ }
+ 
+ sub calcDBMinID
+ {
+    my $self = @_[0];
+	my $thisOffset = @_[1];
+	my $dbHandler = @_[2];
+	my $countQ = @_[3];
+    my $previousTime=DateTime->now;
+	my $thisIncrement = $thisOffset;
+	$countQ =~s/\$recordSearch/MIN(SIERRA_VIEW\.BIB_RECORD\.RECORD_ID)/gi;
+    my $min = 1;
+    my $selects = $countQ." AND SIERRA_VIEW.BIB_RECORD.ID >= $thisOffset";
+    my @results = @{$dbHandler->query($selects)};
+    foreach(@results)
+    {
+        my $row = $_;
+        my @row = @{$row};
+        $min = @row[0];
+    }
+	my $secondsElapsed = calcTimeDiff($self,$previousTime);
+	return ($min--);
  }
  
  sub getRecordCount
@@ -749,7 +809,8 @@ package sierraScraper;
 	(SELECT MARC_IND1 FROM SIERRA_VIEW.SUBFIELD_VIEW WHERE VARFIELD_ID=A.ID LIMIT 1),
 	(SELECT MARC_IND2 FROM SIERRA_VIEW.SUBFIELD_VIEW WHERE VARFIELD_ID=A.ID LIMIT 1),
 	RECORD_ID FROM SIERRA_VIEW.VARFIELD_VIEW A WHERE A.RECORD_ID IN($selects) ORDER BY A.MARC_TAG, A.OCC_NUM";
-	#print "$query\n";	
+	#print "$query\n";
+    recordQuery($self, $query);
 	$pidfile->truncFile($query);
 	my @results = @{$dbHandler->query($query)};
 	updateQueryDuration($self,$previousTime,$query);
@@ -804,6 +865,7 @@ package sierraScraper;
 	$concatPhrase=substr($concatPhrase,0,length($concatPhrase)-1).")";
 	my $query = "SELECT CONTROL_NUM,$concatPhrase,RECORD_ID FROM SIERRA_VIEW.CONTROL_FIELD WHERE RECORD_ID IN($selects)";	
 	#print "$query\n";
+    recordQuery($self, $query);
 	$pidfile->truncFile($query);
 	my $previousTime=DateTime->now;		
 	my @results = @{$dbHandler->query($query)};
@@ -858,6 +920,7 @@ sub stuffLeader
     FROM SIERRA_VIEW.LEADER_FIELD A WHERE A.RECORD_ID IN($selects)";
 	my $pidfile = $self->{'pidfile'};
 	$pidfile->truncFile($query);
+    recordQuery($self, $query);
 	#print "$query\n";
 	my $previousTime=DateTime->now;	
 	my @results = @{$dbHandler->query($query)};
@@ -906,28 +969,41 @@ sub stuff945
 	my $selects = $self->{'selects'};
 	
 	my $query = "SELECT
-		(SELECT BIB_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_ITEM_RECORD_LINK WHERE ITEM_RECORD_ID = A.ID AND BIB_RECORD_ID IN($selects) LIMIT 1),
-		A.ID,
-		(SELECT MARC_IND1 FROM SIERRA_VIEW.SUBFIELD_VIEW WHERE VARFIELD_ID=A.ID LIMIT 1),
-		(SELECT MARC_IND2 FROM SIERRA_VIEW.SUBFIELD_VIEW WHERE VARFIELD_ID=A.ID LIMIT 1),
-		CONCAT('|g',A.COPY_NUM) AS \"g\",
-		(SELECT CONCAT('|i',BARCODE) FROM SIERRA_VIEW.ITEM_VIEW WHERE ID=A.ID) AS \"i\",
-		CONCAT('|j',A.AGENCY_CODE_NUM) AS \"j\",
-		CONCAT('|l',A.LOCATION_CODE) AS \"l\",
-		CONCAT('|o',A.ICODE2) AS \"o\",
-		CONCAT('|p\$',TRIM(TO_CHAR(A.PRICE,'9999999999990.00'))) AS \"p\",
-		CONCAT('|q',A.ITEM_MESSAGE_CODE) AS \"q\",
-		CONCAT('|r',A.OPAC_MESSAGE_CODE) AS \"r\",
-		CONCAT('|s',A.ITEM_STATUS_CODE) AS \"s\",
-		CONCAT('|t',A.ITYPE_CODE_NUM) AS \"t\",
-		CONCAT('|u',A.CHECKOUT_TOTAL) AS \"u\",
-		CONCAT('|v',A.RENEWAL_TOTAL) AS \"v\",
-		CONCAT('|w',A.YEAR_TO_DATE_CHECKOUT_TOTAL) AS \"w\",
-		CONCAT('|x',A.LAST_YEAR_TO_DATE_CHECKOUT_TOTAL) AS \"x\",
-		(SELECT CONCAT('|z',TO_CHAR(CREATION_DATE_GMT, 'MM-DD-YY')) FROM SIERRA_VIEW.RECORD_METADATA WHERE ID=A.ID) AS \"z\"
-		FROM SIERRA_VIEW.ITEM_RECORD A WHERE A.ID IN(SELECT ITEM_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_ITEM_RECORD_LINK WHERE BIB_RECORD_ID IN ($selects))";
-		my $pidfile = $self->{'pidfile'};
+svbr.id,
+sviv.id,
+concat('|g',sviv.copy_num) as \"g\",
+concat('|i',regexp_replace(sviv.barcode,'\\|','','g')) as \"i\",
+concat('|j',sviv.agency_code_num) as \"j\",
+concat('|l',regexp_replace(sviv.location_code,'\\|','','g')) as \"l\",
+concat('|o',regexp_replace(sviv.icode2,'\\|','','g')) as \"o\",
+concat('|p\$',trim(to_char(sviv.price,'9999999999990.00'))) as \"p\",
+concat('|q',regexp_replace(sviv.item_message_code,'\\|','','g')) as \"q\",
+concat('|r',regexp_replace(sviv.opac_message_code,'\\|','','g')) as \"r\",
+concat('|s',regexp_replace(sviv.item_status_code,'\\|','','g')) as \"s\",
+concat('|t',sviv.itype_code_num) as \"t\",
+concat('|u',sviv.checkout_total) as \"u\",
+concat('|v',sviv.renewal_total) as \"v\",
+concat('|w',sviv.year_to_date_checkout_total) as \"w\",
+concat('|x',sviv.last_year_to_date_checkout_total) as \"x\",
+concat('|z',to_char(min(mvrm.creation_date_gmt), 'mm-dd-yy')) as \"z\"
+from 
+sierra_view.item_view sviv
+left join SIERRA_VIEW.record_metadata mvrm on (mvrm.record_num=sviv.record_num AND mvrm.record_type_code='i'),
+sierra_view.bib_record svbr,
+sierra_view.bib_record_item_record_link svbrir,
+(
+	$selects
+) 
+as selects
+WHERE 
+svbr.record_id = selects.record_id AND
+svbrir.bib_record_id=svbr.id AND
+sviv.id=svbrir.item_record_id
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16
+";
+    my $pidfile = $self->{'pidfile'};
 	$pidfile->truncFile($query);
+    recordQuery($self, $query);
 	#print "$query\n";
 	my $previousTime=DateTime->now;	
 	my @results = @{$dbHandler->query($query)};
@@ -938,17 +1014,6 @@ sub stuff945
 	{
 		my $row = $_;
 		my @row = @{$row};
-		my $ind1 = @row[2];
-		my $ind2 = @row[3];
-		if(length($ind1)<1)
-		{
-			$ind1=' ';
-		}
-		
-		if(length($ind2)<1)
-		{
-			$ind2=' ';
-		}
 		
 		my $recordID = @row[0];		
 		my $subItemID = @row[1];
@@ -973,145 +1038,156 @@ sub stuff945
 			$log->addLogLine("945 Scrape: Huston, we have a problem, the query returned more than one of the same item(duplicate 945 record) - $recordID");
 		}
 		my $all;
-		foreach my $b (4..$#row)
+		foreach my $b (2..$#row)
 		{
 			$all = $all.@row[$b];
 		}
-		push(@{$nineHundreds{$recordID}},new recordItem('945',$ind1,$ind2,$all));
+		push(@{$nineHundreds{$recordID}},new recordItem('945',' ',' ',$all));
 		
 	}
 
-	$query = "SELECT
-	RECORD_ID,
-	VARFIELD_TYPE_CODE,
-	MARC_TAG,
-	FIELD_CONTENT,
-	(SELECT BIB_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_ITEM_RECORD_LINK WHERE ITEM_RECORD_ID=A.RECORD_ID AND BIB_RECORD_ID IN ($selects) LIMIT 1) AS \"BIB_ID\",
-	RECORD_NUM
-	FROM SIERRA_VIEW.VARFIELD_VIEW A WHERE RECORD_ID IN(SELECT ITEM_RECORD_ID FROM SIERRA_VIEW.BIB_RECORD_ITEM_RECORD_LINK WHERE BIB_RECORD_ID IN($selects))
-	AND VARFIELD_TYPE_CODE !='a' ORDER BY RECORD_ID";
-	$pidfile->truncFile($query); 
-	#print "$query\n";
-	my $previousTime=DateTime->now;		
-	@results = @{$dbHandler->query($query)};
-	updateQueryDuration($self,$previousTime,$query);
-	my $outterp = 0;
-	my $startSection=0;
-	while($outterp<=$#results)
-	{
-		my $row = @results[$outterp];
-		my @row = @{$row};
-		my $trimmedID = $mobiusUtil->trim(@row[2]);
-		if(exists $nineHundreds{@row[4]})
-		{
-			my @thisArray = @{$nineHundreds{@row[4]}};
-			if(exists ${$tracking{@row[4]}}{@row[0]})
-			{
-				my $thisArrayPosition = ${$tracking{@row[4]}}{@row[0]};				
-				if(($trimmedID eq '082') || ($trimmedID eq '090') || ($trimmedID eq '086') || ($trimmedID eq '099') || ($trimmedID eq '866') || ($trimmedID eq '050') || ($trimmedID eq '912') || ($trimmedID eq '900') || ($trimmedID eq '927') || ($trimmedID eq '926') || ($trimmedID eq '929') || ($trimmedID eq '928') || ($trimmedID eq '060'))
-				{
+	# $query = "
+     # SELECT
+        # svvv.record_id,
+        # svvv.varfield_type_code,
+        # svvv.marc_tag,
+        # svvv.field_content,
+        # svbr.id as \"BIB_ID\",
+        # svvv.record_num
+        # FROM 
+        # sierra_view.varfield_view svvv,
+        # sierra_view.bib_record svbr,
+        # (
+            # $selects
+        # ) as selects
+         # WHERE
+        # selects.record_id = svvv.record_id and
+        # svvv.record_id = svbr.record_id and
+        # varfield_type_code !='a'
+        # ORDER BY 1";
+	# $pidfile->truncFile($query); 
+	# #print "$query\n";
+    # recordQuery($self, $query);
+	# my $previousTime=DateTime->now;		
+	# @results = @{$dbHandler->query($query)};
+	# updateQueryDuration($self,$previousTime,$query);
+	# my $outterp = 0;
+	# my $startSection=0;
+	# while($outterp<=$#results)
+	# {
+		# my $row = @results[$outterp];
+		# my @row = @{$row};
+		# my $trimmedID = $mobiusUtil->trim(@row[2]);
+		# if(exists $nineHundreds{@row[4]})
+		# {
+			# my @thisArray = @{$nineHundreds{@row[4]}};
+			# if(exists ${$tracking{@row[4]}}{@row[0]})
+			# {
+				# my $thisArrayPosition = ${$tracking{@row[4]}}{@row[0]};				
+				# if(($trimmedID eq '082') || ($trimmedID eq '090') || ($trimmedID eq '086') || ($trimmedID eq '099') || ($trimmedID eq '866') || ($trimmedID eq '050') || ($trimmedID eq '912') || ($trimmedID eq '900') || ($trimmedID eq '927') || ($trimmedID eq '926') || ($trimmedID eq '929') || ($trimmedID eq '928') || ($trimmedID eq '060'))
+				# {
 				
-					my $thisRecord = @thisArray[$thisArrayPosition];
-					$thisRecord->addData(@row[3]);
-					my $checkDigit = calcCheckDigit($self,@row[5]);
-					my $barcodeNum = "i".@row[5].$checkDigit;
-					$thisRecord->addData("|y.$barcodeNum");
-					my $recordID = @row[4];
-					my $subItemID = @row[0];
-					my $foundMatch=0;
-					my $pointer=$startSection;
-					while($pointer<=$#results)# Find Null marc_tag values related to 082,090,086,099,866,050,912,900,927,926,929,928,060
-					{
-						my $rowsearch = @results[$pointer];
-						my @rowsearch = @{$rowsearch};
-						if(@rowsearch[3] ne '')
-						{
-							#print "@rowsearch[0] == @row[0]\n";
-							if(@rowsearch[0] == @row[0]) 
-							{
-								#print "$pointer / $#results\n";
-								$foundMatch=1;
-								if(@rowsearch[2] eq '')
-								{	
-									my $firstChar = substr($rowsearch[3],0,1);
-									if((@rowsearch[1] eq 'b') && ($firstChar ne '|'))
-									{
-										$thisRecord->addData('|i'.@rowsearch[3]);
-									}
-									elsif((@rowsearch[1] eq 'v') && ($firstChar ne '|'))
-									{
-										$thisRecord->addData('|c'.@rowsearch[3]);
-									}
-									elsif((@rowsearch[1] eq 'x') && ($firstChar ne '|'))
-									{
-										$thisRecord->addData('|n'.@rowsearch[3]);
-									}
-									elsif((@rowsearch[1] eq 'm') && ($firstChar ne '|'))
-									{
-										$thisRecord->addData('|m'.@rowsearch[3]);
-									}
-									elsif((@rowsearch[1] eq 'c') && ($firstChar eq '|'))
-									{
-										$thisRecord->addData(@rowsearch[3]);
-									}
-									elsif((@rowsearch[1] eq 'v') && ($firstChar eq '|'))
-									{
-										$thisRecord->addData(@rowsearch[3]);
-									}
-									elsif((@rowsearch[1] eq 'd') && ($firstChar eq '|'))
-									{
-										$thisRecord->addData(@rowsearch[3]);
-									}
-									else
-									{
-										if((@rowsearch[1] ne 'n') && (@rowsearch[1] ne 'p')&& (@rowsearch[1] ne 'r'))
-										{
-											$log->addLogLine("Related 082,090,086,099,866,050,912,900,927,926,929,928,060 item(".@row[0].") bib($recordID) barcode($barcodeNum) value omitted: ".@rowsearch[1]." = ".@rowsearch[3]);
-										}
-									}
-								}								
-							}
-							elsif($foundMatch)#stop looping because it has found all related rows (they are sorted as per the order clause in the query)
-							{
-								$outterp=$pointer-2;
-								$startSection=$pointer;
-								$pointer=$#results+1;
+					# my $thisRecord = @thisArray[$thisArrayPosition];
+					# $thisRecord->addData(@row[3]);
+					# my $checkDigit = calcCheckDigit($self,@row[5]);
+					# my $barcodeNum = "i".@row[5].$checkDigit;
+					# $thisRecord->addData("|y.$barcodeNum");
+					# my $recordID = @row[4];
+					# my $subItemID = @row[0];
+					# my $foundMatch=0;
+					# my $pointer=$startSection;
+					# while($pointer<=$#results)# Find Null marc_tag values related to 082,090,086,099,866,050,912,900,927,926,929,928,060
+					# {
+						# my $rowsearch = @results[$pointer];
+						# my @rowsearch = @{$rowsearch};
+						# if(@rowsearch[3] ne '')
+						# {
+							# #print "@rowsearch[0] == @row[0]\n";
+							# if(@rowsearch[0] == @row[0]) 
+							# {
+								# #print "$pointer / $#results\n";
+								# $foundMatch=1;
+								# if(@rowsearch[2] eq '')
+								# {	
+									# my $firstChar = substr($rowsearch[3],0,1);
+									# if((@rowsearch[1] eq 'b') && ($firstChar ne '|'))
+									# {
+										# $thisRecord->addData('|i'.@rowsearch[3]);
+									# }
+									# elsif((@rowsearch[1] eq 'v') && ($firstChar ne '|'))
+									# {
+										# $thisRecord->addData('|c'.@rowsearch[3]);
+									# }
+									# elsif((@rowsearch[1] eq 'x') && ($firstChar ne '|'))
+									# {
+										# $thisRecord->addData('|n'.@rowsearch[3]);
+									# }
+									# elsif((@rowsearch[1] eq 'm') && ($firstChar ne '|'))
+									# {
+										# $thisRecord->addData('|m'.@rowsearch[3]);
+									# }
+									# elsif((@rowsearch[1] eq 'c') && ($firstChar eq '|'))
+									# {
+										# $thisRecord->addData(@rowsearch[3]);
+									# }
+									# elsif((@rowsearch[1] eq 'v') && ($firstChar eq '|'))
+									# {
+										# $thisRecord->addData(@rowsearch[3]);
+									# }
+									# elsif((@rowsearch[1] eq 'd') && ($firstChar eq '|'))
+									# {
+										# $thisRecord->addData(@rowsearch[3]);
+									# }
+									# else
+									# {
+										# if((@rowsearch[1] ne 'n') && (@rowsearch[1] ne 'p')&& (@rowsearch[1] ne 'r'))
+										# {
+											# $log->addLogLine("Related 082,090,086,099,866,050,912,900,927,926,929,928,060 item(".@row[0].") bib($recordID) barcode($barcodeNum) value omitted: ".@rowsearch[1]." = ".@rowsearch[3]);
+										# }
+									# }
+								# }								
+							# }
+							# elsif($foundMatch)#stop looping because it has found all related rows (they are sorted as per the order clause in the query)
+							# {
+								# $outterp=$pointer-2;
+								# $startSection=$pointer;
+								# $pointer=$#results+1;
 								
-							}
-						}
-						$pointer++;
-					}
-					@{$nineHundreds{@row[4]}}[$thisArrayPosition] = $thisRecord;
-				}
-				elsif( $trimmedID ne '')
-				{
-					$log->addLogLine(@row[4]." not added \"$trimmedID\" = ".@row[3]);
-					#push(@{$nineHundreds{@row[4]}},new recordItem(@row[2],'','',@row[3]));;
-				}
-			}
-			else
-			{
-				if(@row[2] eq '086')
-				{
-					$log->addLogLine("I found a row and it looks like this \"$trimmedID\" = ".@row[3]);
-					$log->addLogLine("I'm adding that as a 945");
-					push(@{$nineHundreds{@row[4]}},new recordItem('945','','',@row[3]));
-				}
-				else
-				{
-					$log->addLogLine("945 scrape: Strange results: ".@row[0]." ".@row[1]." ".@row[2]." ".@row[3]." ".@row[4]);
-				}
-			}
+							# }
+						# }
+						# $pointer++;
+					# }
+					# @{$nineHundreds{@row[4]}}[$thisArrayPosition] = $thisRecord;
+				# }
+				# elsif( $trimmedID ne '')
+				# {
+					# $log->addLogLine(@row[4]." not added \"$trimmedID\" = ".@row[3]);
+					# #push(@{$nineHundreds{@row[4]}},new recordItem(@row[2],'','',@row[3]));;
+				# }
+			# }
+			# else
+			# {
+				# if(@row[2] eq '086')
+				# {
+					# $log->addLogLine("I found a row and it looks like this \"$trimmedID\" = ".@row[3]);
+					# $log->addLogLine("I'm adding that as a 945");
+					# push(@{$nineHundreds{@row[4]}},new recordItem('945','','',@row[3]));
+				# }
+				# else
+				# {
+					# $log->addLogLine("945 scrape: Strange results: ".@row[0]." ".@row[1]." ".@row[2]." ".@row[3]." ".@row[4]);
+				# }
+			# }
 			
-		}
-		else
-		{
-			$log->addLogLine("There were items in varfield_view that didn't appear before now:");
-			$log->addLogLine("Bib id  = ".@row[4]." Item id = ".@row[0].",$trimmedID = ".@row[3]);
-			$log->addLogLine("This was not added to the marc array");
-		}
-		$outterp++;
-	}
+		# }
+		# else
+		# {
+			# $log->addLogLine("There were items in varfield_view that didn't appear before now:");
+			# $log->addLogLine("Bib id  = ".@row[4]." Item id = ".@row[0].",$trimmedID = ".@row[3]);
+			# $log->addLogLine("This was not added to the marc array");
+		# }
+		# $outterp++;
+	# }
 	$self->{'nine45'} = \%nineHundreds;
 }
 
@@ -1131,6 +1207,7 @@ sub stuff907
 	my $pidfile = $self->{'pidfile'};
 	$pidfile->truncFile($query);
 	#print "$query\n";
+    recordQuery($self, $query);
 	my $previousTime=DateTime->now;		
 	my @results = @{$dbHandler->query($query)};
 	updateQueryDuration($self,$previousTime,$query);
@@ -1171,8 +1248,9 @@ sub stuff998
 	CONCAT('|h',SKIP_NUM)
 	)
 	FROM SIERRA_VIEW.BIB_VIEW WHERE ID IN($selects)";
-	print "$query\n";
-	my $previousTime=DateTime->now;		
+	# print "$query\n";
+    recordQuery($self, $query);
+	my $previousTime=DateTime->now;
 	my @results = @{$dbHandler->query($query)};
 	updateQueryDuration($self,$previousTime,$query);
 	foreach(@results)
@@ -1273,6 +1351,7 @@ sub stuff998alternate
 	my $pidfile = $self->{'pidfile'};
 	$pidfile->truncFile($query);
 	#print "$query\n";
+    recordQuery($self, $query);
 	my $previousTime=DateTime->now;	
 	my @results = @{$dbHandler->query($query)};
 	updateQueryDuration($self,$previousTime,$query);
@@ -1412,7 +1491,7 @@ sub stuff998alternate
 	}
 	
 	#turn off sorting because it's a cpu hog when doing huge dumps
-	if(1)#$self->{'type'} ne 'full')
+	if(0)#$self->{'type'} ne 'full')
 	{
 		#Sort by MARC Tag
 
@@ -1760,15 +1839,23 @@ sub stuff998alternate
 	my $previousTime = @_[1];
 	my $currentTime=DateTime->now;
 	my $difference = $currentTime - $previousTime;#
-	my $format = DateTime::Format::Duration->new(pattern => '%M');
+    my $format = DateTime::Format::Duration->new(pattern => '%D');
+	my $days = $format->format_duration($difference);
+	$format = DateTime::Format::Duration->new(pattern => '%M');
 	my $minutes = $format->format_duration($difference);
 	$format = DateTime::Format::Duration->new(pattern => '%S');
 	my $seconds = $format->format_duration($difference);
-	my $duration = ($minutes * 60) + $seconds;
+	my $duration = ($days * 86400) + ($minutes * 60) + $seconds;
 	if($duration<.1)
 	{
 		$duration=.1;
 	}
+    $duration += ''; # Making it a string
+    if($duration !=~ m/\./) # putting a decimal point if none exists
+    {
+        $duration .= ".000";
+    }
+    $duration =~ s/^([^\.]*\.\d{3}).*/$1/g;
 	return $duration;
  }
  
@@ -1783,6 +1870,7 @@ sub stuff998alternate
 	my @dumpedFiles = @{@_[1]};
 	my $threshHold = @_[2];
 	my @newDump=@dumpedFiles;
+    my $previousTime = DateTime->now();
 	if(scalar keys %standard >$threshHold)
 	{	
 		@newDump=();
@@ -1873,6 +1961,8 @@ sub stuff998alternate
 	#print Dumper(\@newDump);
 	$self->{'toobig'} = $extraInformationOutput;
 	$self->{'toobigtocut'} = $couldNotBeCut;
+    my $secondsElapsed = calcTimeDiff($self,$previousTime); ## Timed this, consistently .1 seconds
+    # print "Dumpram: $secondsElapsed\n";
 	return \@newDump;
  }
  
@@ -1881,6 +1971,16 @@ sub stuff998alternate
 	my $self = @_[0];
 	my @ret = ($self->{'toobig'},$self->{'toobigtocut'});
 	return \@ret;
+ }
+ 
+ sub recordQuery
+ {
+    my $self = shift;
+    my $query = shift;
+    my @qlog = @{$self->{'query_log'}};
+    push @qlog, $query;
+    $self->{'query_log'} = \@qlog;
+    $self->{'current_query'} = $query;
  }
  
  1;
