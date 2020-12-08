@@ -84,7 +84,8 @@ package sierraScraper;
 		'recordcount' => 0,
 		'maxdbconnection' => 3,
         'current_query' => '',
-        'query_log' => \@i
+        'query_log' => \@i,
+        'bursar' => shift
 	};
 	
 	my $t = shift;
@@ -97,7 +98,7 @@ package sierraScraper;
 	{
 		$launch = 1;
 	}
-	if($launch)
+	if($launch && !$self->{'bursar'})
 	{
 		if($m)
 		{
