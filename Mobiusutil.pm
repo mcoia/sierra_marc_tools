@@ -96,7 +96,9 @@ sub readConfFile
 			{
 		
 				my $Name, $Value;
-				($Name, $Value) = split (/=/, $cur);
+				my @s = split (/=/, $cur);
+                my $Name = shift @s;
+                my $Value = join('=', @s);
 				$$ret{trim('',$Name)} = trim('',$Value);
 			}
 		}
