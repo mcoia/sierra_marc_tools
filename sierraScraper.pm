@@ -253,7 +253,7 @@ package sierraScraper;
 	my $mobUtil = $self->{'mobiusutil'};
 	my $dbHandler = $self->{'dbhandler'};
 	my $log = $self->{'log'};
-	my $selects = $self->{'selects'};
+	my $tselects = $self->{'selects'};
 	my $pidfile = $self->{'pidfile'};
 	my $pathtothis = $self->{'pathtothis'};
 	my $conffile = $self->{'conffile'};
@@ -270,8 +270,6 @@ package sierraScraper;
 	}
 	$dbUserTrack{@dbUsers[0]}=1;
 	
-	my @cha = split("",$selects);
-	my $tselects = "";	
 	my $chunks = 0;
 	my $zeroAdded = 0;
 	my $chunkGoal = 100;
@@ -279,10 +277,6 @@ package sierraScraper;
 	my $masterfile = new Loghandler($mobUtil->chooseNewFileName('/tmp',"master_$title",'pid'));
     print "NOTICE: see progress with 'watch \"cat " . $masterfile->getFileName() . "\"'\n";
 	my $previousTime=DateTime->now;
-	foreach(@cha)
-	{
-		$tselects.=$_;
-	}
 	
 	my $query = "SELECT MIN(ID) FROM SIERRA_VIEW.BIB_RECORD";
 	my @results = @{$dbHandler->query($query)};
@@ -758,7 +752,6 @@ package sierraScraper;
         $min = @row[0];
     }
     $min = $thisOffset + 1  if($min !=~ m/^[^\d]/); # Failsafe
-
 	my $secondsElapsed = calcTimeDiff($self,$previousTime);
 	return ($min--);
  }

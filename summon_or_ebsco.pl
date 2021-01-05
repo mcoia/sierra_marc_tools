@@ -200,7 +200,7 @@
 							#print "Path: $pathtothis\n";
 							my $gatherTime = DateTime->now();
 							local $@;
-							eval{$sierraScraper = new sierraScraper($dbHandler,$log,$selectQuery,$type,$conf{"school"},$pathtothis,$configFile,$maxdbconnections);};
+							eval{$sierraScraper = new sierraScraper($dbHandler,$log,$selectQuery,0,$type,$conf{"school"},$pathtothis,$configFile,$maxdbconnections);};
 							if($@)
 							{
 								$valid=0;
@@ -518,22 +518,27 @@
 		my $dbHandler = new DBhandler($conf{"db"},$conf{"dbhost"},$dbuser,$dbpass,$conf{"port"});
 		#print "Sending off to get thread query: $school, $platform, $type";
 		my $selectQuery = $mobUtil->findQuery($dbHandler,$school,$platform,$typ,$queries);		
-		$selectQuery=~s/\$recordSearch/RECORD_ID/gi;
-		$selectQuery.= " AND ID > $offset AND ID <= $increment";
+		$selectQuery=~s/\$recordSearch/SIERRA_VIEW.BIB_RECORD.RECORD_ID/gi;
+		$selectQuery.= " AND SIERRA_VIEW.BIB_RECORD.ID > $offset AND SIERRA_VIEW.BIB_RECORD.ID <= $increment";
 		#print "Thread got this query\n\n$selectQuery\n\n";
 		$pidWriter->truncFile("0");	
 		#print "Thread started\n offset: $offset\n increment: $increment\n pidfile: $pid\n limit: $limit";
 		my $sierraScraper;
 		local $@;
 		#print "Scraping:\n$dbHandler,$log,$selectQuery,$type,".$conf{"school"}.",$pathtothis,$configFile";
-		eval{$sierraScraper = new sierraScraper($dbHandler,$log,$selectQuery,$type,$conf{"school"},$pathtothis,$configFile);};
+		eval{$sierraScraper = new sierraScraper($dbHandler,$log,$selectQuery,0,$type,$conf{"school"},$pathtothis,$configFile);};
 		if($@)
 		{
 			#print "******************* I DIED SCRAPER ********************** $pid\n";
 			$pidWriter->truncFile("none\nnone\nnone\nnone\nnone\nnone\n$dbuser\nnone\n1\n$offset\n$increment");
+            print "Died with query:\n";
+            print $sierraScraper->getLastQuery() ."\n";
 			$rangeWriter->addLine("$offset $increment DEFUNCT");
 			exit;
 		}
+        my $secondsElapsed = $sierraScraper->calcTimeDiff($previousTime);
+        # print "Time to gather: $secondsElapsed\n";
+        # print "Done querying DB: $secondsElapsed\n";
 		my @diskDump = @{$sierraScraper->getDiskDump()};
 		my $disk =@diskDump[0];
 		my @marc =();
@@ -568,7 +573,14 @@
 			
 			if($@ && $finishedprocessing==0)
 			{
-			print "fail\n";
+                print "fail\n";
+                print $check->getFileName();
+                print "\n";
+                # print "Died with query:\n";
+                # foreach(@{$sierraScraper->getQueryLog()})
+                # {
+                    # print $_ ."\n";
+                # }
 				$check->deleteFile();
 				$pidWriter->truncFile("none\nnone\nnone\nnone\nnone\nnone\n$dbuser\nnone\n1\n$offset\n$increment");
 				$rangeWriter->addLine("$offset $increment BAD OUTPUT".$check->getFileName()."\t".$@);
@@ -583,7 +595,9 @@
 		my @diskDump = @{$sierraScraper->getDiskDump()};
 		my $disk =@diskDump[0];
 		my $queryTime = $sierraScraper->getSpeed();
-		my $secondsElapsed = $sierraScraper->calcTimeDiff($previousTime);
+        print "Time to gather: $secondsElapsed";
+		$secondsElapsed = $sierraScraper->calcTimeDiff($previousTime);
+        print "\t\tfinished: $secondsElapsed\n";
 		#print "Writing to thread File:\n$disk\n$recordCount\n$extraInformationOutput\n$couldNotBeCut\n$queryTime\n$limit\n$dbuser\n$secondsElapsed\n";
 		my $writeSuccess=0;
 		my $trys=0;
