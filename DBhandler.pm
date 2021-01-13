@@ -29,6 +29,7 @@
 
 package DBhandler;
  use DBD::Pg;
+ #use DBD::Firebird;
  use Loghandler;
  use strict; 
  #use Unicode::Normalize;
@@ -49,6 +50,7 @@ package DBhandler;
 		login => shift,
 		password => shift,
 		port => shift,
+		firebird => shift,
 		conn => ""
 	};
 	setupConnection($self);
@@ -65,7 +67,15 @@ package DBhandler;
 	my $login = $self->{login};
 	my $pass = $self->{password};
 	my $port = $self->{port};
-	$conn =  DBI->connect("DBI:Pg:dbname=$dbname;host=$host;port=$port", $login, $pass, {AutoCommit => 1,post_connect_sql => "SET CLIENT_ENCODING TO 'UTF8'",pg_utf8_strings => 1}); #'RaiseError' => 1
+	my $firebird = $self->{firebird};
+	if(!$firebird)
+	{
+		$conn =  DBI->connect("DBI:Pg:dbname=$dbname;host=$host;port=$port", $login, $pass, { AutoCommit => 1}); #'RaiseError' => 1,post_connect_sql => "SET CLIENT_ENCODING TO 'UTF8'", pg_utf8_strings => 1
+	}
+	else
+	{
+		$conn =  DBI->connect("DBI:Firebird:db=$dbname;host=$host/$port", $login, $pass, { AutoCommit => 1, LongReadLen => 10000000});
+	}
 	
 	$self->{conn} = $conn;
  }
@@ -116,20 +126,7 @@ package DBhandler;
 
 	while (my $row = $query->fetchrow_arrayref())
 	{	
-		my @pusher;
-		foreach(@$row)
-		{
-			# my $utf8 = String::Multibyte->new('UTF8');
-			#print "Raw = $_\n";
-			#my $teststring = "ṭṭār";
-			#print "testing $teststring\n";
-			#Encode::_set_utf8_on($_);
-			my $conv = decode_utf8($_);
-			push(@pusher, $conv);
-			#print "done testing $teststring\n";
-		}
-		push(@ret,[@pusher]);  #@$row   @pusher
-			
+		push(@ret,[@$row]);
 	}
 	undef($querystring);
 	return \@ret;
