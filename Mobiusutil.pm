@@ -331,17 +331,18 @@ sub padLeft  #line, width, fill char
 
 sub findQuery		#self, DBhandler(object), school(string), platform(string), addsorcancels(string), queries
 {
-	if($#_+1 !=6)
-	{
-		return 0;
-	}
 	my $dbHandler = @_[1];
 	my $school = @_[2];
 	my $platform = @_[3];
 	my $addsOrCancels = @_[4];
 	my %queries = %{$_[5]};
+    my $dbFromDate = @_[6];
+
 	my $key = $platform."_".$school."_".$addsOrCancels;
-	#print "Key = $key\n";
+	if(!$queries{$key})
+	{
+		return "-1";
+	}
 	my $dt = DateTime->now;   # Stores current date and time as datetime object
 	my $ndt = DateTime->now;
 	my $yesterday = $dt->subtract(days=>1);
@@ -354,28 +355,22 @@ sub findQuery		#self, DBhandler(object), school(string), platform(string), addso
 #
 # Now create the time string for the SQL query
 #
+    
 	my $fdate = $yesterday->ymd;   # Retrieves date as a string in 'yyyy-mm-dd' format
 	my $ftime = $yesterday->hms;   # Retrieves time as a string in 'hh:mm:ss' format
 	my $todate = $ndt;
 	my $tdate = $todate->ymd;
 	my $ttime = $yesterday->hms;
-	my $dbFromDate = "$fdate $ftime";  # "2013-02-16 05:00:00";
+
+    # $dbFromDate = "2013-02-16 05:00:00";
+
+    $dbFromDate = "$fdate $ftime" if(!$dbFromDate);
+	
 	my $dbToDate = "$tdate $ttime";
-	my $query;
-	
-	if(!$queries{$key})
-	{
-		return "-1";
-	}
-	else
-	{
-		$query = $queries{$key};
-		$query =~s/\$dbFromDate/$dbFromDate/g;
-		$query =~s/\$dbToDate/$dbToDate/g;
-	}
-	
-	#print "$query\n";
-	
+	my $query = $queries{$key};
+    $query =~s/\$dbFromDate/$dbFromDate/g;
+    $query =~s/\$dbToDate/$dbToDate/g;
+
 	return $query;
 	
 }

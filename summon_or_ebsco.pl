@@ -195,8 +195,8 @@
 							my $marcOutFile = $outputMarcFile;
 							my $sierraScraper;
 							$valid=1;
-							my $selectQuery = $mobUtil->findQuery($dbHandler,$school,$platform,$type,$queries);
-							
+							my $selectQuery = $mobUtil->findQuery($dbHandler,$school,$platform,$type,$queries,@ARGV[2]);
+
 							#print "Path: $pathtothis\n";
 							my $gatherTime = DateTime->now();
 							local $@;
