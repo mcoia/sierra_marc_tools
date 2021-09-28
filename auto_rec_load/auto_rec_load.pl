@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 
 
-use lib qw(../); 
+use lib qw(./); 
 use Loghandler;
 use Data::Dumper;
 use File::Path qw(make_path remove_tree);
@@ -19,11 +19,12 @@ use Selenium::Remote::WebElement;
 use pQuery;
 use Getopt::Long;
 use Cwd;
+use email;
 
-use website;
-use innreachServer;
+use dataHandler;
+use dataHandlerProquest;
 
-our $stagingTablePrefix = "auto_rec_load";
+our $stagingTablePrefix = "auto";
 our $pidfile = "/tmp/auto_rec_load.pl.pid";
 
 
@@ -35,20 +36,20 @@ our $debug = 0;
 our $recreateDB = 0;
 our $dbSeed;
 our $specificSource;
+our $specificClient;
 our $configFile;
 our $jobid = -1;
 our $vendor = "";
 
 GetOptions (
-"log=s" => \$log,
 "config=s" => \$configFile,
 "debug" => \$debug,
 "recreateDB" => \$recreateDB,
 "dbSeed=s" => \$dbSeed,
 "specificSource=s" => \$specificSource,
+"specificClient=s" => \$specificClient,
 )
 or die("Error in command line arguments\nYou can specify
---log path_to_log_output.log                  [Path to the log output file - required]
 --config                                      [Path to the config file]
 --debug                                       [Cause more log output]
 --recreateDB                                  [Deletes the tables and recreates them]
@@ -80,8 +81,6 @@ if($conf)
 
         createDatabase();
 
-        initializeBrowser();
-
         my $writePid = new Loghandler($pidfile);
         $writePid->truncFile("running");
 
@@ -91,26 +90,61 @@ if($conf)
 
         my %all = %{getSources()};
         while ( (my $key, my $value) = each(%all) )
-        {
+        {   
+            my $folder = setupDownloadFolder($key);
+            initializeBrowser($folder);
             my %details = %{$value};
             if(!(-d $details{"outputfolder"}))
             {
                 print "Scheduler Output folder: '".$details{"outputfolder"}."' doesn't exist\n";
-                exit;
-            }
-            print "Working on: '$key'\n";
-
-            my $source;
-            if($clusters{$_} =~ m/sierra/)  ## Right now, there are two typs: sierra and innreach
-            {
-                $cluster = new sierraCluster($_,$dbHandler,$stagingTablePrefix,$driver,$cwd,$monthsBack,$blindDate,$log,$debug,$specificMonth);
+                alertErrorEmail("Scheduler Output folder: '".$details{"outputfolder"}."' doesn't exist");
             }
             else
             {
-                $cluster = new innreachServer($_,$dbHandler,$stagingTablePrefix,$driver,$cwd,$monthsBack,$blindDate,$log,$debug,$specificMonth);
+                $vendor = $details{"sourcename"} . '_' . $details{"clientname"};
+                print "Working on: '$vendor'\n";
+                my $json = decode_json( $details{"json"} );
+                my $source;
+                my $perl = '$source = new '. $details{"perl_mod"} .'($key, "' . $vendor . '"' .
+                           ', $dbHandler, $stagingTablePrefix, $driver, $cwd, $log, $debug, $folder, $json);';
+                print $perl ."\n";
+                {
+                    local $@;
+                    eval
+                    {
+                        eval $perl;
+                        die if $source->getError();
+                        1;  # ok
+                    } or do
+                    {
+                        my $evalError = $@ || "error";
+                        alertErrorEmail("Could not instanciate " .$details{"perl_mod"} . "\r\n\r\n$perl\r\n\r\nerror:\r\n\r\n$evalError") if!$debug;
+                        next;
+                    };
+                }
+                {
+                    local $@;
+                    eval
+                    {
+                        print "Scraping\n" if $debug;
+                        $source->scrape();
+                        die if $source->getError();
+                        1;  # ok
+                    } or do
+                    {
+                        my $evalError = $@ || "error";
+                        my @trace = @{$source->getTrace()};
+                        foreach(@trace)
+                        {
+                            $evalError .= "\r\n$_";
+                        }
+                        $evalError .= "\r\n" . $source->getError();
+                        print $evalError if $debug;
+                        alertErrorEmail($evalError) if!$debug;
+                        next;
+                    };
+                }
             }
-            $cluster->scrape();
-
         }
 
         undef $writePid;
@@ -135,68 +169,104 @@ sub getSources
     my @order = ();
     my $query = "
     SELECT
-    client.name,source.name,source.type,source.scheduler_folder,source.json_connection_detail
+    source.id,client.name,source.name,source.type,source.scheduler_folder,source.perl_mod,source.json_connection_detail
     FROM
     $stagingTablePrefix"."_client client
     join $stagingTablePrefix"."_source source on (source.client=client.id)
     where
     client.id=client.id
-    ___specific___
+    ___specificSource___
+    ___specificClient___
     order by 2 desc,1
     ";
 
     # defang
     undef $specificSource if($specificSource =~ m/[&'%\\\/]/);
+    $specificSource = lc $specificSource if $specificSource;
 
-    $query =~ s/___specific___/AND LOWER(source.name) = '$specificSource'/g if $specificSource;
-    $query =~ s/___specific___//g if !$specificSource;
+    undef $specificClient if($specificClient =~ m/[&'%\\\/]/);
+    $specificClient = lc $specificClient if $specificClient;
+
+    $query =~ s/___specificSource___/AND LOWER(source.name) = '$specificSource'/g if $specificSource;
+    $query =~ s/___specificSource___//g if !$specificSource;
+
+    $query =~ s/___specificClient___/AND LOWER(client.name) = '$specificClient'/g if $specificClient;
+    $query =~ s/___specificClient___//g if !$specificClient;
+
     $log->addLogLine($query);
     my @results = @{$dbHandler->query($query)};
     foreach(@results)
     {
         my @row = @{$_};
         my %hash = ();
-        $hash{"sourcename"} = @row[1];
-        $hash{"type"} = @row[2];
-        $hash{"outputfolder"} = @row[3];
-        $hash{"json"} = @row[4];
+        $hash{"clientname"} = @row[1];
+        $hash{"sourcename"} = @row[2];
+        $hash{"type"} = @row[3];
+        $hash{"outputfolder"} = @row[4];
+        $hash{"perl_mod"} = @row[5];
+        $hash{"json"} = @row[6];
         $sources{@row[0]} = \%hash;
     }
+    print Dumper(%sources);
     return \%sources;
 }
 
 sub escapeData
 {
     my $d = shift;
-    $d =~ s/'/\\'/g;
-    return $d;
-}
-
-sub unEscapeData
-{
-    my $d = shift;
-    $d =~ s/\\'/'/g;
+    $d =~ s/'/\\'/g;   # ' => \'
+    $d =~ s/\\/\\\\/g; # \ => \\
     return $d;
 }
 
 sub initializeBrowser
 {
-    $Selenium::Remote::Driver::FORCE_WD3=1;
+    my $downloadFolder = shift;
 
-    # my $driver = Selenium::Firefox->new();
+    closeBrowser();
+    undef $driver;
+
+    $Selenium::Remote::Driver::FORCE_WD3=1;
+    my $profile = Selenium::Firefox::Profile->new;
+    $profile->set_preference('browser.download.folderList' => '2');
+    $profile->set_preference('browser.download.dir' => $downloadFolder);
+    # $profile->set_preference('browser.helperApps.neverAsk.saveToDisk' => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;application/pdf;text/plain;application/text;text/xml;application/xml;application/xls;text/csv;application/xlsx");
+    $profile->set_preference('browser.helperApps.neverAsk.saveToDisk' => "application/vnd.ms-excel; charset=UTF-16LE; application/zip");
+    # $profile->set_preference('browser.helperApps.neverAsk.saveToDisk' => "");
+    $profile->set_preference("browser.helperApps.neverAsk.openFile" =>"application/vnd.ms-excel; charset=UTF-16LE; application/zip");
+    $profile->set_boolean_preference('browser.download.manager.showWhenStarting' => 0);
+    $profile->set_boolean_preference('pdfjs.disabled' => 1);
+    $profile->set_boolean_preference('browser.helperApps.alwaysAsk.force' => 0);
+    $profile->set_boolean_preference('browser.download.manager.useWindow' => 0);
+    $profile->set_boolean_preference("browser.download.manager.focusWhenStarting" => 0);
+    $profile->set_boolean_preference("browser.download.manager.showAlertOnComplete" => 0);
+    $profile->set_boolean_preference("browser.download.manager.closeWhenDone" => 1);
+    $profile->set_boolean_preference("browser.download.manager.alertOnEXEOpen" => 0);
+
     $driver = Selenium::Remote::Driver->new
-        (
-            binary => '/usr/bin/geckodriver',
-            browser_name  => 'firefox',
-        );
-    $driver->set_window_size(1200,3500); # Need it wide to capture more of the header on those large HTML tables
+    (
+        binary => '/usr/bin/geckodriver',
+        browser_name  => 'firefox',
+        firefox_profile => $profile
+    );
+    $driver->set_window_size(1200,1500);
 }
 
 sub closeBrowser
 {
-    $driver->quit;
+    $driver->quit if $driver;
+}
 
-    # $driver->shutdown_binary;
+sub setupDownloadFolder
+{
+    my $subFolder = shift;
+    my $folder = $conf{"tmpspace"}."/$subFolder";
+    print "Folder: $folder\n";
+    remove_tree($folder) if(-d $folder); #reset folder
+    make_path($folder, {
+        chmod => 0777,
+    });
+    return $folder;
 }
 
 sub setupDB
@@ -228,6 +298,9 @@ sub createDatabase
         my $query = "DROP TABLE $stagingTablePrefix"."_client ";
         $log->addLine($query);
         $dbHandler->update($query);
+        my $query = "DROP TABLE $stagingTablePrefix"."_cluster ";
+        $log->addLine($query);
+        $dbHandler->update($query);
         my $query = "DROP TABLE $stagingTablePrefix"."_job ";
         $log->addLine($query);
         $dbHandler->update($query);
@@ -253,11 +326,29 @@ sub createDatabase
         $log->addLine($query) if $debug;
         $dbHandler->update($query);
 
+        $query = "CREATE TABLE $stagingTablePrefix"."_cluster (
+        id int not null auto_increment,
+        name varchar(100),
+        type varchar(100),
+        postgres_host varchar(100),
+        postgres_db varchar(100),
+        postgres_port varchar(100),
+        postgres_username varchar(100),
+        postgres_password varchar(100),
+        PRIMARY KEY (id),
+        INDEX (name)
+        )
+        ";
+        $log->addLine($query) if $debug;
+        $dbHandler->update($query);
+
         $query = "CREATE TABLE $stagingTablePrefix"."_client (
         id int not null auto_increment,
         name varchar(100),
+        cluster int,
         PRIMARY KEY (id),
-        UNIQUE INDEX (name)
+        UNIQUE INDEX (name),
+        FOREIGN KEY (cluster) REFERENCES $stagingTablePrefix"."_cluster(id) ON DELETE CASCADE
         )
         ";
         $log->addLine($query) if $debug;
@@ -269,6 +360,7 @@ sub createDatabase
         type varchar(100),
         client int,
         scheduler_folder varchar(500),
+        perl_mod varchar(50),
         json_connection_detail varchar(5000),
         PRIMARY KEY (id),
         FOREIGN KEY (client) REFERENCES $stagingTablePrefix"."_client(id) ON DELETE CASCADE
@@ -430,23 +522,23 @@ sub getForignKey
     my $colPos = shift;
     my $value = shift;
     my %convert_map = (
-    "import_status_0" => ("table" => "file_track", "colname" => "name"),
-    "file_track_1" => ("table" => "client", "colname" => "name"),
-    "file_track_2" => ("table" => "source", "colname" => "name"),
-    "source_2" => ("table" => "client", "colname" => "name"),
+    "import_status_0" => {"table" => "file_track", "colname" => "name"},
+    "file_track_1" => {"table" => "client", "colname" => "name"},
+    "file_track_2" => {"table" => "source", "colname" => "name"},
+    "source_2" => {"table" => "client", "colname" => "name"},
+    "client_1" => {"table" => "cluster", "colname" => "name"},
     );
     my $key = $table."_".$colPos;
     if($convert_map{$key})
     {
         print "value \"$value\"";
         $value = escapeData($value); #excape ticks
-        print " converted to: \"$value\"\n";
-        exit;
         my $query = "SELECT id FROM $stagingTablePrefix"."_".$convert_map{$key}{"table"}." WHERE ".$convert_map{$key}{"colname"}." = '$value'";
-        my @results = @{$dbHandler->query($query)}
-        if(!$#results[0])
+        $log->addLine($query) if $debug;
+        my @results = @{$dbHandler->query($query)};
+        if(!@results[0])
         {
-            print "Error in seed data mapping\n";
+            print "Error in seed data mapping on table: '$table' and column '$colPos' with value: '$value'\n";
             exit;
         }
         my @row = @{$results[0]};
@@ -545,19 +637,25 @@ sub figurePIDFileStuff
     }
 }
 
-
 sub alertErrorEmail
 {
     my $error = shift;
     my @tolist = ($conf{"alwaysemail"});
     my $email = new email($conf{"fromemail"},\@tolist,1,0,\%conf);
-    $email->send("Automatic Record Load Utility - $vendor Import Report Job # $jobid - ERROR","$error\r\n\r\n-Friendly MOBIUS Server-");
-}
+    print "Sending an Error email:
+    Automatic Record Load Utility - $vendor Import Report Job # $jobid - ERROR
+    $error
+    
+    -Friendly MOBIUS Server-
+    ";
 
+    # $email->send("Automatic Record Load Utility - $vendor Import Report Job # $jobid - ERROR","$error\r\n\r\n-Friendly MOBIUS Server-");
+}
 
 sub DESTROY
 {
     print "I'm dying, deleting PID file $pidFile\n";
+    closeBrowser();
     unlink $pidFile;
 }
 
