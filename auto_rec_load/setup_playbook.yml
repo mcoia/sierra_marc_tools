@@ -1,0 +1,161 @@
+---
+
+- hosts: localhost
+  connection: local
+  remote_user: ma
+  become_method: sudo
+  vars_files:
+    - vars.yml
+  tasks:
+  - name: Making sure mysql client is installed
+    package:
+      name: libmysqlclient-dev
+      state: present
+  - name: Making sure yaz is installed
+    package:
+      name: yaz
+      state: present
+  - name: Making sure devel-yaz is installed
+    package:
+      name: libyaz-dev
+      state: present
+  - name: Making sure libpq-dev client is installed
+    package:
+      name: libpq-dev
+      state: present
+  - name: Making sure libpq-dev client is installed
+    package:
+      name: libxml-opml-simplegen-perl
+      state: present
+  - name: Installing CPAN packages File::Path
+    become: true
+    ignore_errors: yes
+    shell: export PERL_MM_USE_DEFAULT=1 && perl -MCPAN -e 'install "File::Path"'
+  - name: Installing CPAN packages File::Copy
+    become: true
+    ignore_errors: yes
+    shell: export PERL_MM_USE_DEFAULT=1 && perl -MCPAN -e 'install "File::Copy"'
+  - name: Installing CPAN packages Encode
+    become: true
+    ignore_errors: yes
+    shell: export PERL_MM_USE_DEFAULT=1 && perl -MCPAN -e 'install "Encode"'
+  - name: Installing CPAN packages Text::CSV
+    become: true
+    ignore_errors: yes
+    shell: export PERL_MM_USE_DEFAULT=1 && perl -MCPAN -e 'install "Text::CSV"'
+  - name: Installing CPAN packages DateTime
+    become: true
+    ignore_errors: yes
+    shell: export PERL_MM_USE_DEFAULT=1 && perl -MCPAN -e 'install "DateTime"'
+  - name: Installing CPAN packages DateTime::Format::Duration
+    become: true
+    ignore_errors: yes
+    shell: export PERL_MM_USE_DEFAULT=1 && perl -MCPAN -e 'install "DateTime::Format::Duration"'
+  - name: Installing CPAN packages DateTime::Span
+    become: true
+    ignore_errors: yes
+    shell: export PERL_MM_USE_DEFAULT=1 && perl -MCPAN -e 'install "DateTime::Span"'
+  - name: Installing CPAN packages utf8
+    become: true
+    ignore_errors: yes
+    shell: export PERL_MM_USE_DEFAULT=1 && perl -MCPAN -e 'install "utf8"'
+  - name: Installing CPAN packages DBD::mysql
+    become: true
+    ignore_errors: yes
+    shell: export PERL_MM_USE_DEFAULT=1 && perl -MCPAN -e 'install "DBD::mysql"'
+  - name: Installing CPAN packages DBD::Pg
+    become: true
+    ignore_errors: yes
+    shell: export PERL_MM_USE_DEFAULT=1 && perl -MCPAN -e 'install "DBD::Pg"'
+  - name: Installing CPAN packages pQuery
+    become: true
+    ignore_errors: yes
+    shell: export PERL_MM_USE_DEFAULT=1 && perl -MCPAN -e 'install "pQuery"'
+  - name: Installing CPAN packages MARC::Record
+    become: true
+    ignore_errors: yes
+    shell: export PERL_MM_USE_DEFAULT=1 && perl -MCPAN -e 'install "MARC::Record"'
+  - name: Installing CPAN packages MARC::Charset
+    become: true
+    ignore_errors: yes
+    shell: export PERL_MM_USE_DEFAULT=1 && perl -MCPAN -e 'install "MARC::Charset"'
+  - name: Installing CPAN packages YAML
+    become: true
+    ignore_errors: yes
+    shell: export PERL_MM_USE_DEFAULT=1 && perl -MCPAN -e 'install "YAML"'
+  - name: Installing CPAN packages ZOOM
+    become: true
+    ignore_errors: yes
+    shell: export PERL_MM_USE_DEFAULT=1 && perl -MCPAN -e 'install "ZOOM"'
+  - name: Installing CPAN packages String::Multibyte
+    become: true
+    ignore_errors: yes
+    shell: export PERL_MM_USE_DEFAULT=1 && perl -MCPAN -e 'install "String::Multibyte"'
+  - name: Installing CPAN packages Selenium::Firefox
+    become: true
+    ignore_errors: yes
+    shell: export PERL_MM_USE_DEFAULT=1 && perl -MCPAN -e 'install "Selenium::Firefox"'
+  - name: Installing CPAN packages Selenium::Remote::Driver
+    become: true
+    ignore_errors: yes
+    shell: export PERL_MM_USE_DEFAULT=1 && perl -MCPAN -e 'install "Selenium::Remote::Driver"'
+  - name: Installing CPAN packages Selenium::Remote::WebElement
+    become: true    
+    ignore_errors: yes
+    shell: export PERL_MM_USE_DEFAULT=1 && perl -MCPAN -e 'install "Selenium::Remote::WebElement"'
+  - name: Installing JDK
+    become: true
+    package:
+      name: default-jdk
+      state: present
+  - name: Installing xvfb-run
+    become: true
+    apt:
+      name: xvfb
+      state: present
+  - name: Installing Firefox
+    become: true
+    package:
+      name: firefox
+      state: present
+  - stat: path={{geckodriverdestination}}
+    register: geckodriverexists
+  - stat: path={{selenium_folder}}
+    register: seleniumexists
+  - name: download and expand Gecko driver
+    shell: wget {{geckodriver}} && tar xvzf {{geckofile}} && mv geckodriver {{geckodriverdestination}}
+    when: geckodriverexists.stat.isfile is not defined
+  - name: Make selenium folder
+    become: true
+    when: seleniumexists.stat.isdir is not defined
+    file:
+      path: "{{selenium_folder}}"
+      state: directory
+      owner: ma
+  - name: Download Selenium
+    become: true
+    when: seleniumexists.stat.isdir is not defined
+    shell: wget {{selenium_download}} -O {{selenium_folder}}/selenium.jar
+  - stat: path={{selenium_folder}}/start_selenium
+    register: start_selenium_exists
+  - name: make the selenium start script
+    when: start_selenium_exists.stat.isfile is not defined
+    file:
+      path: "{{selenium_folder}}/start_selenium"
+      state: touch
+      owner: root
+      group: root
+      mode: '0755'
+  - name: Building {{selenium_folder}}/start_selenium
+    become: true
+    lineinfile: 'dest={{selenium_folder}}/start_selenium state=present regexp="#!/bin/bas" line="#!/bin/bash"'
+  - name: Building {{selenium_folder}}/start_selenium
+    become: true
+    lineinfile: 'dest={{selenium_folder}}/start_selenium state=present regexp="cd \/" line="cd {{selenium_folder}}"'
+  - name: Building {{selenium_folder}}/start_selenium
+    become: true
+    lineinfile: 'dest={{selenium_folder}}/start_selenium state=present regexp="DISPL" line="DISPLAY=:1 xvfb-run java -jar selenium.jar &"'
+  - name: Starting Selenium
+    shell: cd "{{selenium_folder}}" && ./start_selenium
+
+...

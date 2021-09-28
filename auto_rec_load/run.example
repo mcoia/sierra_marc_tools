@@ -1,0 +1,32 @@
+#!/bin/bash
+
+# Make sure all the leftover stuff isn't running
+ps -ef | grep firefox | grep -v grep | awk '{print $2}' | xargs sudo kill -9
+ps -ef | grep Xvfb | grep -v grep | awk '{print $2}' | xargs sudo kill -9
+ps -ef | grep selenium | grep -v grep | awk '{print $2}' | xargs sudo kill -9
+
+sleep 5
+
+ps -ef | grep firefox | grep -v grep | awk '{print $2}' | xargs sudo kill -9
+ps -ef | grep Xvfb | grep -v grep | awk '{print $2}' | xargs sudo kill -9
+ps -ef | grep selenium | grep -v grep | awk '{print $2}' | xargs sudo kill -9
+
+sleep 5
+
+rm -f /tmp/.X99-lock
+
+# run the selenium stuff
+selenium/start_selenium &
+
+sleep 10
+
+# Wipe out the screenshots from last time
+rm screenshots/*
+
+./auto_rec_load.pl --config auto_rec_load.conf --dbSeed db_seed.db --recreateDB --debug
+
+# Make sure all the leftover stuff isn't running
+# ps -ef | grep firefox | grep -v grep | awk '{print $2}' | xargs sudo kill -9
+# ps -ef | grep Xvfb | grep -v grep | awk '{print $2}' | xargs sudo kill -9
+# ps -ef | grep selenium | grep -v grep | awk '{print $2}' | xargs sudo kill -9
+

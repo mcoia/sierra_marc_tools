@@ -1,0 +1,15 @@
+[cluster]
+cluster1	''	1.2.3.4	iii	1032	db_username1	db_password1
+cluster2	''	1.2.3.5	iii	1032	db_username1	db_password1
+
+
+[client]
+client1	clsuter1
+client2	cluster1
+client3	cluster2
+
+[source]
+ebook_central	web	client1	/path/to/marc/output	dataHandlerProquest	{"URL": "https://ebookcentral.proquest.com/libcentral/Login.aspx", "webuser": "loginaccount", "webpass":"password"}
+
+
+

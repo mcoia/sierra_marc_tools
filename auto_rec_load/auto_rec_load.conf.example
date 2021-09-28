@@ -1,0 +1,17 @@
+logfile = /mnt/evergreen/tmp/auto_rec_load/autoload.log
+
+dbhost = ip_or_hostname
+db = mysql_db
+dbuser = mysql_db_user
+dbpass = mysql_db_pass
+port = 3306
+
+tmpspace = /path/to/tmp/space
+
+
+erroremaillist = email@example.com
+successemaillist = email@example.com
+
+# only 1 email address for alwaysemail
+alwaysemail = email@example.com
+fromemail = no-reply@example.com
