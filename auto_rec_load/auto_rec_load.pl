@@ -106,8 +106,9 @@ if($conf)
                 my $json = decode_json( $details{"json"} );
                 my $source;
                 my $perl = '$source = new '. $details{"perl_mod"} .'($key, "' . $vendor . '"' .
-                           ', $dbHandler, $stagingTablePrefix, $driver, $cwd, $log, $debug, $folder, $json);';
+                           ', $dbHandler, $stagingTablePrefix, $driver, $cwd, $log, $debug, $folder, $json, '. $details{"clientid"} .');';
                 print $perl ."\n";
+                # Instanciate the perl Module
                 {
                     local $@;
                     eval
@@ -122,6 +123,30 @@ if($conf)
                         next;
                     };
                 }
+                # Run the scrape function
+                {
+                    local $@;
+                    eval
+                    {
+                        print "Scraping\n" if $debug;
+                        $source->scrape();
+                        die if $source->getError();
+                        1;  # ok
+                    } or do
+                    {
+                        my $evalError = $@ || "error";
+                        my @trace = @{$source->getTrace()};
+                        foreach(@trace)
+                        {
+                            $evalError .= "\r\n$_";
+                        }
+                        $evalError .= "\r\n" . $source->getError();
+                        print $evalError if $debug;
+                        alertErrorEmail($evalError) if!$debug;
+                        next;
+                    };
+                }
+                # Run deal with any data files that were produced
                 {
                     local $@;
                     eval
@@ -169,7 +194,7 @@ sub getSources
     my @order = ();
     my $query = "
     SELECT
-    source.id,client.name,source.name,source.type,source.scheduler_folder,source.perl_mod,source.json_connection_detail
+    source.id,client.name,source.name,source.type,source.scheduler_folder,source.perl_mod,source.json_connection_detail,client.id
     FROM
     $stagingTablePrefix"."_client client
     join $stagingTablePrefix"."_source source on (source.client=client.id)
@@ -205,6 +230,7 @@ sub getSources
         $hash{"outputfolder"} = @row[4];
         $hash{"perl_mod"} = @row[5];
         $hash{"json"} = @row[6];
+        $hash{"clientid"} = @row[7];
         $sources{@row[0]} = \%hash;
     }
     print Dumper(%sources);
@@ -371,7 +397,8 @@ sub createDatabase
 
         $query = "CREATE TABLE $stagingTablePrefix"."_file_track (
         id int not null auto_increment,
-        name varchar(1000),
+        key varchar(1000),
+        filename varchar(1000),
         client int,
         source int,
         size int,

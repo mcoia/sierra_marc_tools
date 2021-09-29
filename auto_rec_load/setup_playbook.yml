@@ -91,6 +91,10 @@
     become: true
     ignore_errors: yes
     shell: export PERL_MM_USE_DEFAULT=1 && perl -MCPAN -e 'install "String::Multibyte"'
+  - name: Installing CPAN packages Archive::Zip
+    become: true
+    ignore_errors: yes
+    shell: export PERL_MM_USE_DEFAULT=1 && perl -MCPAN -e 'install "Archive::Zip"'
   - name: Installing CPAN packages Selenium::Firefox
     become: true
     ignore_errors: yes

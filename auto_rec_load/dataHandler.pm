@@ -7,6 +7,7 @@ use Try::Tiny;
 use Data::Dumper;
 use lib qw(./); 
 
+our %filesOnDisk = ();
 sub new
 {
     my ($class, @args) = @_;
@@ -19,6 +20,7 @@ sub _init
 {
     my $self = shift;
     my @trace = ();
+    my %files = ();
     $self =
     {
         sourceID => shift,
@@ -31,6 +33,7 @@ sub _init
         debug => shift,
         downloadDIR => shift,
         json => shift,
+        clientID => shift,
         URL => '',
         webuser => '',
         webpass => '',
@@ -43,7 +46,8 @@ sub _init
         error => 0,
         trace => \@trace,
         postgresConnector => undef,
-        screenShotStep => 0
+        screenShotStep => 0,
+        downloadedFiles => \%files
     };
     if($self->{sourceID} && $self->{dbHandler} && $self->{prefix} && $self->{driver} && $self->{log})
     {
@@ -286,15 +290,26 @@ sub handleAnchorClick
     my $self = shift;
     my $anchorString = shift;
     my $correctPageString = shift;
-    print "in handleAnchorClick\n";
+    my $hrefMatch = shift || 0;
+    my $propVal = $hrefMatch ? 'getAttribute("href")' : 'textContent';
+
     addTrace($self, "handleAnchorClick", $anchorString);
+    # get the string ready for js regex
+    $anchorString =~ s/\?/\\?/g;
+    $anchorString =~ s/\//\\\//g;
+    $anchorString =~ s/\./\\\./g;
+    $anchorString =~ s/\[/\\\[/g;
+    $anchorString =~ s/\]/\\\]/g;
+    $anchorString =~ s/\(/\\\(/g;
+    $anchorString =~ s/\)/\\\)/g;
+
     my $js = "
         var doms = document.getElementsByTagName('a');
         
         for(var i=0;i<doms.length;i++)
         {
-            var thisaction = doms[i].textContent;
-            if(thisaction.match(/" .$anchorString. "/gi))
+            var thisaction = doms[i]." . $propVal . ";
+            if(thisaction !== null && thisaction.match(/" . $anchorString . "/gi))
             {
                 doms[i].click();
                 return 1;
@@ -306,14 +321,16 @@ sub handleAnchorClick
     my $worked = $self->{driver}->execute_script($js);
     waitForPageLoad($self);
     takeScreenShot($self, "handleAnchorClick_$anchorString");
-    $worked = checkIfCorrectPage($self, $correctPageString);
-    if(!$worked)
+    if($correctPageString)
     {
-        my $error = flattenArray($self, $correctPageString, 'string');
-        setError($self, "Clicked anchor but didn't find string(s): $error");
-        takeScreenShot($self, "handleAnchorClick_$anchorString"."_string_not_found");
+        $worked = checkIfCorrectPage($self, $correctPageString);
+        if(!$worked)
+        {
+            my $error = flattenArray($self, $correctPageString, 'string');
+            setError($self, "Clicked anchor but didn't find string(s): $error");
+            takeScreenShot($self, "handleAnchorClick_$anchorString"."_string_not_found");
+        }
     }
-
     return $worked;
 }
 
@@ -440,7 +457,6 @@ sub stringMatch
 
     $string =~ trim($self, $string);
     $string2 =~ trim($self, $string2);
-print "Comparing: \n'$string'\nto\n'$string2'\n";
     my $ret = 0;
     if($caseSensitive)
     {
@@ -462,9 +478,7 @@ print "Comparing: \n'$string'\nto\n'$string2'\n";
 sub getCorrectTableHTML
 {
     my $self = shift;
-    our $searchString = shift;
-    print "Looking for $searchString\n";
-    sleep 5;
+    my $searchString = shift;
     my $body = getHTMLBody($self);
     my $ret;
     pQuery("table",$body)->each(sub {
@@ -474,26 +488,117 @@ sub getCorrectTableHTML
             my $thisTable = pQuery($_)->toHtml();
             pQuery("thead > tr > th", $_)->each( sub {
                 shift;
-                $ret = $thisTable if(stringMatch(pQuery($_)->text(), $searchString));
+                if(!$ret) # save some cycles
+                {
+                    $ret = $thisTable if(stringMatch($self, pQuery($_)->text(), $searchString));
+                }
             });
             if(!$ret) ## maybe the table doesn't have "thead", let's travers tr > th instead
             {
                 pQuery("tr > th", $_)->each( sub {
                     shift;
-                    $ret = $thisTable if(stringMatch(pQuery($_)->text(), $searchString));
+                    if(!$ret) # save some cycles
+                    {
+                        $ret = $thisTable if(stringMatch($self, pQuery($_)->text(), $searchString));
+                    }
                 });
             }
             if(!$ret) ## maybe the table doesn't have "th", let's travers tr > td instead
             {
                 pQuery("tr > td", $_)->each( sub {
                     shift;
-                    $ret = $thisTable if(stringMatch(pQuery($_)->text(), $searchString));
+                    if(!$ret) # save some cycles
+                    {
+                        $ret = $thisTable if(stringMatch($self, pQuery($_)->text(), $searchString));
+                    }
                 });
             }
         }
     });
-    print "getCorrectTableHTML:\nFound: $ret\n";
+    $self->{log}->addLine("Detected table for '$searchString'\n$ret") if $self->{debug};
     return $ret;
+}
+
+sub getHrefFromAnchorHTML
+{
+    my $self = shift;
+    my $html = shift;
+
+    $self->{log}->addLine("Getting href from anchor: '$html'") if $self->{debug};
+    $html =~ s/^.*?<[aA]\s*.*?href.*?['"]([^'^"]*)['"].*/\1/;
+    $self->{log}->addLine("Found: '$html'") if $self->{debug};
+    return $html;
+}
+
+sub seeIfNewFile
+{
+    my ($self) = shift;
+    my @files = @{readSaveFolder($self)};
+    foreach(@files)
+    {
+        if(!$filesOnDisk{$_})
+        {
+            # print "Detected new file: $_\n";
+            checkFileReady($self, $self->{downloadDIR} ."/".$_);
+            return $self->{saveFolder} . "/" . $_;
+        }
+    }
+    return 0;
+}
+
+sub readSaveFolder
+{
+    my ($self) = shift;
+    my $init = shift || 0;
+
+    %filesOnDisk = () if $init;
+    my $pwd = $self->{downloadDIR};
+    # print "Opening '".$self->{saveFolder}."'\n";
+    opendir(DIR,$pwd) or die "Cannot open $pwd\n";
+    my @thisdir = readdir(DIR);
+    closedir(DIR);
+    foreach my $file (@thisdir) 
+    {
+        # print "Checking: $file\n";
+        if( ($file ne ".") && ($file ne "..") && !($file =~ /\.part/g))  # ignore firefox "part files"
+        {
+            # print "Checking: $file\n";
+            if (-f "$pwd/$file")
+            {
+                @stat = stat "$pwd/$file";
+                my $size = $stat[7];
+                if($size ne '0')
+                {
+                    push(@files, "$file");
+                    if($init)
+                    {
+                        $filesOnDisk{$file} = 1;
+                    }
+                }
+            }
+        }
+    }
+    return \@files;
+}
+
+sub checkFileReady
+{
+    my ($self) = shift;
+    my $file = shift;
+    my @stat = stat $file;
+    my $baseline = $stat[7];
+    $baseline+=0;
+    my $now = -1;
+    while($now != $baseline)
+    {
+        @stat = stat $file;
+        $now = $stat[7];
+        sleep 1;
+        @stat = stat $file;
+        $baseline = $stat[7];
+        $baseline += 0;
+        $now += 0;
+    }
 }
 
 sub getHTMLBody
@@ -506,6 +611,7 @@ sub getHTMLBody
 
 sub escapeData
 {
+    my $self = shift;
     my $d = shift;
     $d =~ s/'/\\'/g;   # ' => \'
     $d =~ s/\\/\\\\/g; # \ => \\
