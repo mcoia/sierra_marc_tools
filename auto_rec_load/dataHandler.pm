@@ -6,6 +6,7 @@ use pQuery;
 use Try::Tiny;
 use Data::Dumper;
 use lib qw(./); 
+use Archive::Zip;
 
 our %filesOnDisk = ();
 sub new
@@ -20,7 +21,6 @@ sub _init
 {
     my $self = shift;
     my @trace = ();
-    my %files = ();
     $self =
     {
         sourceID => shift,
@@ -46,8 +46,7 @@ sub _init
         error => 0,
         trace => \@trace,
         postgresConnector => undef,
-        screenShotStep => 0,
-        downloadedFiles => \%files
+        screenShotStep => 0
     };
     if($self->{sourceID} && $self->{dbHandler} && $self->{prefix} && $self->{driver} && $self->{log})
     {
@@ -532,7 +531,7 @@ sub getHrefFromAnchorHTML
 
 sub seeIfNewFile
 {
-    my ($self) = shift;
+    my $self = shift;
     my @files = @{readSaveFolder($self)};
     foreach(@files)
     {
@@ -548,7 +547,7 @@ sub seeIfNewFile
 
 sub readSaveFolder
 {
-    my ($self) = shift;
+    my $self = shift;
     my $init = shift || 0;
 
     %filesOnDisk = () if $init;
@@ -583,7 +582,7 @@ sub readSaveFolder
 
 sub checkFileReady
 {
-    my ($self) = shift;
+    my $self = shift;
     my $file = shift;
     my @stat = stat $file;
     my $baseline = $stat[7];
@@ -601,9 +600,343 @@ sub checkFileReady
     }
 }
 
+sub extractCompressedFile
+{
+    my $self = shift;
+    my $file = shift;
+    my @ret;
+    my @extensionExtracts = @{@_[0]};
+
+    # lowercase all of the extensions
+    for my $b(0..$#extensionExtracts)
+    {
+        @extensionExtracts[$b] = lc @extensionExtracts[$b];
+    }
+
+    print "Full file: $file \n";
+    my $extension = getFileExt($self, $file);
+    print "Read Extension: $extension\n";
+    print "Read folder: $folder\n";
+    my $extractFolder = $self->{downloadDIR} . '/extract';
+    ensureFolderExists($self, $extractFolder);
+    cleanFolder($self, $extractFolder);
+    if(lc $extension =~ m/zip/g)
+    {
+        # Read a Zip file
+        my $zip = Archive::Zip->new();
+        unless ( $zip->read( $self->{downloadDIR} . $file ) == AZ_OK )
+        {
+            setError($self, "Could not open $file");
+            addTrace($self, "Could not open $file");
+            return 'error reading zip';
+        }
+        my @list = $zip->memberNames();
+        foreach(@list)
+        {
+            my $thisMember = $_;
+            my $extract = 0;
+            if(@extensionExtracts)
+            {
+                foreach(@extensionExtracts)
+                {
+                    @splitdots = split(/\./, $thisMember);
+                    my $thisExt = getFileExt($self, $thisMember);
+                    $extract = 1 if(lc $thisExt =~ m/$_/g);
+                }
+            }
+            else
+            {
+                $extract = 1;
+            }
+            if($extract)
+            {
+                $zip->extractMember($thisMember, $extractFolder . "/$thisMember");
+                push (@ret, $extractFolder . "/$thisMember");
+            }
+        }
+    }
+}
+
+sub readMARCFile
+{
+    my $self = shift;
+    my $marcFile = shift;
+    my $fExtension = getFileExt($self, $marcFile);
+    my $file;
+    $file = MARC::File::USMARC->in($marcFile) if $fExtension !=~ m/xml/;
+    $file = MARC::File::XML->in($marcFile) if $fExtension =~ m/xml/;
+    my @ret;
+    local $@;
+    eval
+    {
+        while ( my $marc = $file->next() )
+        {
+            push (@ret, $marc);
+        }
+        1;  # ok
+    }
+
+    $file->close();
+    undef $file;
+    return \@ret;
+}
+
+sub getFileExt
+{
+    my $self = shift;
+    my $filename = shift;
+    my @fsp = split(/\./,$filename);
+    my $ret = pop @fsp;
+    return $ret;
+}
+
+sub getFileNameWithoutPath
+{
+    my $self = shift;
+    my $filename = shift;
+    my @fsp = split(/\//, $filename);
+    my $ret = pop @fsp;
+    return $ret;
+}
+
+sub getsubfield
+{
+    my $shift = shift;
+    my $marc = shift;
+    my $tag = shift;
+    my $subtag = shift;
+    my $ret;
+    #print "Extracting $tag $subtag\n";
+    if($marc->field($tag))
+    {
+        if($tag<10)
+        {
+            #print "It was less than 10 so getting data\n";
+            $ret = $marc->field($tag)->data();
+        }
+        elsif($marc->field($tag)->subfield($subtag))
+        {
+            $ret = $marc->field($tag)->subfield($subtag);
+        }
+    }
+    #print "got $ret\n";
+    $ret = utf8::is_utf8($ret) ? Encode::encode_utf8($ret) : $ret;
+    return $ret;
+}
+
+sub convertMARCtoXML
+{
+    my $self = shift;
+    my $marc = shift;
+    my $thisXML =  $marc->as_xml(); #decode_utf8();
+
+    $thisXML =~ s/\n//sog;
+    $thisXML =~ s/^<\?xml.+\?\s*>//go;
+    $thisXML =~ s/>\s+</></go;
+    $thisXML =~ s/\p{Cc}//go;
+    $thisXML = entityize($self, $thisXML);
+    $thisXML =~ s/[\x00-\x1f]//go;
+    $thisXML =~ s/^\s+//;
+    $thisXML =~ s/\s+$//;
+    $thisXML =~ s/<record><leader>/<leader>/;
+    $thisXML =~ s/<collection/<record/;
+    $thisXML =~ s/<\/record><\/collection>/<\/record>/;
+
+    return $thisXML;
+}
+
+sub entityize { 
+    my($self, $string, $form) = @_;
+    $form ||= "";
+
+    if ($form eq 'D')
+    {
+        $string = NFD($string);
+    }
+    else
+    {
+        $string = NFC($string);
+    }
+
+    # Convert raw ampersands to entities
+    $string =~ s/&(?!\S+;)/&amp;/gso;
+
+    # Convert Unicode characters to entities
+    $string =~ s/([\x{0080}-\x{fffd}])/sprintf('&#x%X;',ord($1))/sgoe;
+
+    return $string;
+}
+
+sub createFileEntry
+{
+    my $self = shift;
+    my $file = shift;
+    my $key = shift;
+    $key = escapeData($self, $key);
+    my $query = "INSERT INTO 
+    $self->{prefix}"."_file_track (fkey, filename, source, client)
+    VALUES(?, ?, ?, ?)";
+    my @vals = ($key, $file, $self->{sourceID}, $self->{clientID});
+    $self->{dbHandler}->updateWithParameters($query, \@vals);
+    return getFileID($self, $key, $file);
+}
+
+sub getFileID
+{
+    my $self = shift;
+    my $key = shift;
+    my $file = shift;
+
+    my $ret = 0;
+    my $query = "select max(id) from $self->{prefix}"."_file_track file
+    where
+    and source = " .$self->{sourceID}. " 
+    and client = " .$self->{clientID};
+    if($file)
+    {
+        $file = escapeData($self, $file);
+        $query .= " and file = '$file'";
+    }
+    if($key)
+    {
+        $key = escapeData($self, $key);
+        $query .= " and fkey = '$key'";
+    }
+    $self->{log}->addLine($query);
+    my @results = @{$self->{dbHandler}->query($query)};
+    foreach(@results)
+    {
+        my @row = @{$_};
+        $ret = @row[0];
+    }
+    return $ret;
+}
+
+sub createImportStatusFromRecordArray
+{
+    my $self = shift;
+    my $fileID = shift;
+    my $jobID = shift;
+    my $rec = shift;
+    my $tag = makeTag($self, $fileID);
+    my @records = @{$rec};
+    my $queryStart = "INSERT INTO 
+    $self->{prefix}"."_import_status (file, record_raw, tag, z001, job)\n";
+    my @val = ();
+    foreach(@records)
+    {
+        my $record = convertMARCtoXML($self, $_);
+        my $z01 = getsubfield($self, $_, '001');
+        push (@val, $fileID);
+        push (@val, record);
+        
+    }
+    
+}
+
+
+
+sub createImportStatus
+{
+    my $self = shift;
+    my $query = shift;
+    my $v = shift;
+    my @vals = @{$v};
+    
+}
+
+sub makeTag
+{
+    my $self = shift;
+    my $fileID = shift;
+    my $ret = 0;
+    my $query = "SELECT date(grab_time)||'_'||c.name||'_'||s.name as tag from 
+    $self->{prefix}"."_file_track f,
+    $self->{prefix}"."_client c,
+    $self->{prefix}"."_source s
+    where
+    c.id=f.client and
+    s.id=f.source and
+    f.id= $fileID";
+    $self->addTrace($self, "makeTag","Making Tag");
+    $self->{log}->addLine($query);
+    my @results = @{$self->{dbHandler}->query($query)};
+    foreach(@results)
+    {
+        my @row = @{$_};
+        $ret = @row[0];
+    }
+    return $ret;
+}
+
+sub getImportStatus
+{
+    my $self = shift;
+    my $fileID = shift;
+    
+}
+
+sub createJob
+{
+    my $self = shift;
+    my $query = "INSERT INTO 
+    $self->{prefix}"."_job (current_action)
+    VALUES(null)";
+    my @vals = ();
+    $self->{dbHandler}->updateWithParameters($query, \@vals);
+    return getJobID($self);
+}
+
+sub getJobID
+{
+    my $self = shift;
+
+    my $ret = 0;
+    my $query = "select max(id) from $self->{prefix}"."_job job
+    where
+    status = 'new'";
+    $self->{log}->addLine($query);
+    my @results = @{$self->{dbHandler}->query($query)};
+    foreach(@results)
+    {
+        my @row = @{$_};
+        $ret = @row[0];
+    }
+    return $ret;
+}
+
+sub ensureFolderExists
+{
+    my $self = shift;
+    my $path = shift;
+    if ( !(-d $path) )
+    {
+        make_path($path, {
+        verbose => 1,
+        mode => 0711,
+        });
+    }
+}
+
+sub cleanFolder
+{
+    my $self = shift;
+    my $folder = shift;
+    if(-d $folder)
+    {
+        my @files = ();
+        @files = @{dirtrav(\@files,$folder)};
+        foreach(@files)
+        {
+            print "Deleting: $_\n";
+            unlink $_;
+        }
+    }
+}
+
 sub getHTMLBody
 {
-    my ($self) = shift;
+    my $self = shift;
     my $body = $self->{driver}->execute_script("return document.getElementsByTagName('html')[0].innerHTML");
     $body =~ s/[\r\n]//g;
     return $body;
@@ -639,6 +972,31 @@ sub trim
 	$string =~ s/^[\t\s]+//;
 	$string =~ s/[\t\s]+$//;
 	return $string;
+}
+
+sub dirtrav
+{
+    my @files = @{@_[0]};
+    my $pwd = @_[1];
+    opendir(DIR,"$pwd") or die "Cannot open $pwd\n";
+    my @thisdir = readdir(DIR);
+    closedir(DIR);
+    foreach my $file (@thisdir) 
+    {
+        if(($file ne ".") and ($file ne ".."))
+        {
+            if (-d "$pwd/$file")
+            {
+                push(@files, "$pwd/$file");
+                @files = @{dirtrav(\@files,"$pwd/$file")};
+            }
+            elsif (-f "$pwd/$file")
+            {            
+                push(@files, "$pwd/$file");            
+            }
+        }
+    }
+    return \@files;
 }
 
 sub getError

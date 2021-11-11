@@ -9,7 +9,6 @@ use pQuery;
 use Try::Tiny;
 use Data::Dumper;
 use parent dataHandler;
-use Archive::Zip;
 
 sub scrape
 {
@@ -44,8 +43,9 @@ sub scrape
             my %downloaded = ();
             while ( (my $key, my $value) = each(%downloads) )
             {
-                if(decideDownload($key))
+                if(decideDownload($self, $key))
                 {
+                    print "Decided to download\n";
                     $self->readSaveFolder(1); # read the contents of the download folder to get a baseline
                     $self->handleAnchorClick($value, 0, 1);
                     my $newFile = 0;
@@ -123,7 +123,6 @@ sub createKeyString
         shift;
         my $thisCell = pQuery($_)->text();
         my $thisCellHTML = pQuery($_)->toHtml();
-        $self->addTrace("createKeyString","$thisCell");
         if($thisCellHTML =~ m/<a/gi) # This cell contains the link (or at least something that looks like an anchor tag
         {
             @ret[1] = $self->getHrefFromAnchorHTML($thisCellHTML);
@@ -132,8 +131,8 @@ sub createKeyString
         $cellCount++;
         undef $thisCell;
     });
-
     @ret[0] = substr(@ret[0],0,-1) if( (length(@ret[0]) > 0) && (@ret[0] =~ m/_$/ ) ); # remove the trailing underscore
+    $self->addTrace("createKeyString",@ret[0]);
     if($cellCount != $expectedCellCount)
     {
         print "Cell count didn't match what we wanted, Check log for details\n";
@@ -148,67 +147,36 @@ sub decideDownload
 {
     my $self = shift;
     my $keyString = shift;
-    $keyString = $self->escapeData($keyString);
-
-    my $query = "select id from $self->{prefix}"."_file_track file
-    where key = '$keyString' 
-    and source = " .$self->{sourceID}. " 
-    and client = " .$self->{clientID};
-    my @results = @{$self->{dbHandler}->query($query)};
-    if($#results == -1)
-    {
-        return 1;
-    }
-    return 0;
+    return $self->getFileID($keyString);
 }
 
-sub readDataDownloadTable
+sub processDownloadedFile
 {
     my $self = shift;
-    my $body = $self->getHTMLBody();
-    
-    my $rowNum = 0;
-    my $correctTable = 0;
-    pQuery("tr",$body)->each(sub {
-        
-        print pQuery($_)->text();
-        exit;
-        # my $i = shift;
-        # my $row = $_;
-        # my $colNum = 0;
-        # my $owningLib = '';
-        # pQuery("td",$row)->each(sub {
-            # shift;
-            # if($rowNum == 1) # Header row - need to collect the borrowing headers
-            # {
-                # push @borrowingLibs, pQuery($_)->text();
-            # }
-            # else
-            # {
-                # if($colNum == 0) # Owning Library
-                # {
-                    # $owningLib = pQuery($_)->text();
-                # }
-                # elsif ( length(@borrowingLibs[$colNum]) > 0  && (pQuery($_)->text() ne '0') )
-                # {
-                    # if(!$borrowingMap{$owningLib})
-                    # {   
-                        # my %newmap = ();
-                        # $borrowingMap{$owningLib} = \%newmap;
-                    # }
-                    # my %thisMap = %{$borrowingMap{$owningLib}};
-                    # $thisMap{@borrowingLibs[$colNum]} = pQuery($_)->text();
-                    # $borrowingMap{$owningLib} = \%thisMap;
-                # }
-            # }
-            # $colNum++;
-        # });
-         
-        $rowNum++;
-    });
-
+    my $key = shift;
+    my $file = shift;
+    my @fileTypes = ("mrc", "xml");
+    $self->addTrace("processDownloadedFile","$key -> $file");
+    my @files = @{$self->extractCompressedFile($file,\@fileTypes)};
+    my $job;
+    if($#files > -1)
+    {
+        $job = $self->createJob();
+    }
+    foreach(@files)
+    {
+        my $thisFile = $_;
+        my $fileID = $self->createFileEntry($self->getFileNameWithoutPath($thisFile), $key);
+        if($fileID)
+        {
+            my @records = @{$self->readMARCFile($thisFile)};
+            $self->createImportStatusFromRecordArray($fileID, $job, \@records);
+        }
+        else
+        {
+            $self->setError("Couldn't create a DB entry for $file");
+        }
+    }
 }
-
-
 
 1;

@@ -91,7 +91,7 @@ if($conf)
         my %all = %{getSources()};
         while ( (my $key, my $value) = each(%all) )
         {   
-            my $folder = setupDownloadFolder($key);
+            my $folder = "/mnt/evergreen/tmp/auto_rec_load/tmp/1"; # setupDownloadFolder($key);
             initializeBrowser($folder);
             my %details = %{$value};
             if(!(-d $details{"outputfolder"}))
@@ -105,9 +105,9 @@ if($conf)
                 print "Working on: '$vendor'\n";
                 my $json = decode_json( $details{"json"} );
                 my $source;
-                my $perl = '$source = new '. $details{"perl_mod"} .'($key, "' . $vendor . '"' .
-                           ', $dbHandler, $stagingTablePrefix, $driver, $cwd, $log, $debug, $folder, $json, '. $details{"clientid"} .');';
-                print $perl ."\n";
+                my $perl = '$source = new ' . $details{"perl_mod"} .'($key, "' . $vendor . '"' .
+                           ', $dbHandler, $stagingTablePrefix, $driver, $cwd, $log, $debug, $folder, $json, ' . $details{"clientid"} .');';
+                print $perl . "\n";
                 # Instanciate the perl Module
                 {
                     local $@;
@@ -118,7 +118,7 @@ if($conf)
                         1;  # ok
                     } or do
                     {
-                        my $evalError = $@ || "error";
+                        my $evalError = concatTrace( $@ || "error", $source->getTrace(), $source->getError());
                         alertErrorEmail("Could not instanciate " .$details{"perl_mod"} . "\r\n\r\n$perl\r\n\r\nerror:\r\n\r\n$evalError") if!$debug;
                         next;
                     };
@@ -128,47 +128,48 @@ if($conf)
                     local $@;
                     eval
                     {
-                        print "Scraping\n" if $debug;
-                        $source->scrape();
-                        die if $source->getError();
+                        print "Executing special file parsing\n$folder\n";
+# processDownloadedFile / 2021-09-28_0_1 -> /20210928_332503_missouriwestern_export.zip
+# processDownloadedFile / 2020-12-28_26_4 -> /20201228_261094_missouriwestern_export.zip
+# processDownloadedFile / 2021-02-28_1_0 -> /20210228_277428_missouriwestern_export.zip
+# processDownloadedFile / 2021-06-28_22_9 -> /20210628_307429_missouriwestern_export.zip
+
+                        $source->processDownloadedFile("2021-09-28_0_1","/20210628_307429_missouriwestern_export.zip");
+                        # print "Scraping\n" if $debug;
+                        # $source->scrape();
+                        # die if $source->getError();
                         1;  # ok
                     } or do
                     {
-                        my $evalError = $@ || "error";
-                        my @trace = @{$source->getTrace()};
-                        foreach(@trace)
-                        {
-                            $evalError .= "\r\n$_";
-                        }
-                        $evalError .= "\r\n" . $source->getError();
-                        print $evalError if $debug;
+                        my $evalError = concatTrace( $@ || "error", $source->getTrace(), $source->getError());
                         alertErrorEmail($evalError) if!$debug;
                         next;
                     };
                 }
+                concatTrace('', $source->getTrace(), '');
                 # Run deal with any data files that were produced
-                {
-                    local $@;
-                    eval
-                    {
-                        print "Scraping\n" if $debug;
-                        $source->scrape();
-                        die if $source->getError();
-                        1;  # ok
-                    } or do
-                    {
-                        my $evalError = $@ || "error";
-                        my @trace = @{$source->getTrace()};
-                        foreach(@trace)
-                        {
-                            $evalError .= "\r\n$_";
-                        }
-                        $evalError .= "\r\n" . $source->getError();
-                        print $evalError if $debug;
-                        alertErrorEmail($evalError) if!$debug;
-                        next;
-                    };
-                }
+                # {
+                    # local $@;
+                    # eval
+                    # {
+                        # print "Scraping\n" if $debug;
+                        # $source->scrape();
+                        # die if $source->getError();
+                        # 1;  # ok
+                    # } or do
+                    # {
+                        # my $evalError = $@ || "error";
+                        # my @trace = @{$source->getTrace()};
+                        # foreach(@trace)
+                        # {
+                            # $evalError .= "\r\n$_";
+                        # }
+                        # $evalError .= "\r\n" . $source->getError();
+                        # print $evalError if $debug;
+                        # alertErrorEmail($evalError) if!$debug;
+                        # next;
+                    # };
+                # }
             }
         }
 
@@ -185,6 +186,24 @@ else
 {
     print "Something went wrong with the config\n";
     exit;
+}
+
+sub concatTrace
+{
+    my $startingString = shift;
+    my $traceArray = shift;
+    my $endingString = shift;
+    my $ret = $startingString;
+    my @trace = @{$traceArray};
+
+    foreach(@trace)
+    {
+        $ret .= "\r\n$_";
+    }
+    $ret .= "\r\n" . $endingString;
+    $log->addLine($ret) if $debug;
+    print $ret if $debug;
+    return $ret;
 }
 
 sub getSources
@@ -312,6 +331,9 @@ sub createDatabase
 
     if($recreateDB)
     {
+        my $query = "DROP TABLE $stagingTablePrefix"."_output_file_track ";
+        $log->addLine($query);
+        $dbHandler->update($query);
         my $query = "DROP TABLE $stagingTablePrefix"."_import_status ";
         $log->addLine($query);
         $dbHandler->update($query);
@@ -344,7 +366,7 @@ sub createDatabase
         start_time datetime DEFAULT CURRENT_TIMESTAMP,
         last_update_time datetime DEFAULT CURRENT_TIMESTAMP,
         current_action varchar(1000),
-        status varchar(100) default 'initializing',
+        status varchar(100) default 'new',
         current_action_num int DEFAULT 0,
         PRIMARY KEY (id)
         )
@@ -397,14 +419,14 @@ sub createDatabase
 
         $query = "CREATE TABLE $stagingTablePrefix"."_file_track (
         id int not null auto_increment,
-        key varchar(1000),
+        fkey varchar(1000),
         filename varchar(1000),
         client int,
         source int,
         size int,
         grab_time datetime DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
-        INDEX (name),
+        INDEX (fkey),
         FOREIGN KEY (client) REFERENCES $stagingTablePrefix"."_client(id) ON DELETE CASCADE,
         FOREIGN KEY (source) REFERENCES $stagingTablePrefix"."_source(id) ON DELETE CASCADE
         )
@@ -415,16 +437,34 @@ sub createDatabase
         $query = "CREATE TABLE $stagingTablePrefix"."_import_status (
         id int not null auto_increment,
         file int,
-        status varchar(100),
+        status varchar(100) DEFAULT 'new',
         record_raw mediumtext,
         record_tweaked mediumtext,
+        tag varchar(100),
+        z001 varchar(100),
+        loaded BOOLEAN DEFAULT FALSE,
+        ils_id varchar(100),
         insert_time datetime DEFAULT CURRENT_TIMESTAMP,
+        job int,
         PRIMARY KEY (id),
-        FOREIGN KEY (file) REFERENCES $stagingTablePrefix"."_file_track(id) ON DELETE CASCADE
+        FOREIGN KEY (file) REFERENCES $stagingTablePrefix"."_file_track(id) ON DELETE CASCADE,
+        FOREIGN KEY (job) REFERENCES $stagingTablePrefix"."_job(id) ON DELETE CASCADE
         )
         ";
         $log->addLine($query) if $debug;
         $dbHandler->update($query);
+
+        $query = "CREATE TABLE $stagingTablePrefix"."_output_file_track (
+        id int not null auto_increment,
+        filename varchar(1000),
+        import_id int
+        PRIMARY KEY (id),
+        FOREIGN KEY (import_id) REFERENCES $stagingTablePrefix"."_import_status(id) ON DELETE CASCADE
+        )
+        ";
+        $log->addLine($query) if $debug;
+        $dbHandler->update($query);
+        
 
         seedDB($dbSeed) if $dbSeed;
 
