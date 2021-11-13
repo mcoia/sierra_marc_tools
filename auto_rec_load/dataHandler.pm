@@ -7,6 +7,11 @@ use Try::Tiny;
 use Data::Dumper;
 use lib qw(./); 
 use Archive::Zip;
+use MARC::Record;
+use MARC::File;
+use MARC::File::XML (BinaryEncoding => 'utf8');
+use MARC::File::USMARC;
+use Unicode::Normalize;
 
 our %filesOnDisk = ();
 sub new
@@ -108,12 +113,24 @@ sub parseJSON
     {
         while ( (my $key, my $value) = each( %{$self->{json}} ) )
         {
-            $self->{$key} = $value;
+            if(ref $value eq 'HASH')
+            {
+                my %h = %{$value};
+                $self->{$key} = \%h;
+            }
+            elsif (ref $value eq 'ARRAY')
+            {
+                my @a = @{$value};
+                $self->{$key} = \@a;
+            }
+            else
+            {
+                $self->{$key} = $value;
+            }
         }
     }
     return $self;
 }
-
 
 sub setSpecificDate
 {
@@ -129,15 +146,6 @@ sub setSpecificDate
     }
 }
 
-sub injectMARCToDB
-{
-    my ($self) = shift;
-    my $marcFile = shift;
-
-    # doUpdateQuery($self,$query,"Cleaning Staging $self->{prefix}"."_bnl_stage",\@vals);
-
-}
-
 sub doUpdateQuery
 {
     my $self = shift;
@@ -147,9 +155,9 @@ sub doUpdateQuery
 
     $self->{log}->addLine($query);
     $self->{log}->addLine(Dumper($dbvars)) if $self->{debug};
-    print "$stdout\n";
+    print "$stdout\n" if $stdout;
 
-    $self->{dbHandler}->updateWithParameters($query, $dbvars);
+    return $self->{dbHandler}->updateWithParameters($query, $dbvars);
 }
 
 sub waitForPageLoad
@@ -616,7 +624,6 @@ sub extractCompressedFile
     print "Full file: $file \n";
     my $extension = getFileExt($self, $file);
     print "Read Extension: $extension\n";
-    print "Read folder: $folder\n";
     my $extractFolder = $self->{downloadDIR} . '/extract';
     ensureFolderExists($self, $extractFolder);
     cleanFolder($self, $extractFolder);
@@ -655,6 +662,11 @@ sub extractCompressedFile
             }
         }
     }
+    else
+    {
+        push (@ret, $self->{downloadDIR} . $file);
+    }
+    return \@ret;
 }
 
 sub readMARCFile
@@ -663,6 +675,7 @@ sub readMARCFile
     my $marcFile = shift;
     my $fExtension = getFileExt($self, $marcFile);
     my $file;
+    $self->{log}->addLine("Reading $marcFile");
     $file = MARC::File::USMARC->in($marcFile) if $fExtension !=~ m/xml/;
     $file = MARC::File::XML->in($marcFile) if $fExtension =~ m/xml/;
     my @ret;
@@ -674,7 +687,7 @@ sub readMARCFile
             push (@ret, $marc);
         }
         1;  # ok
-    }
+    };
 
     $file->close();
     undef $file;
@@ -777,7 +790,7 @@ sub createFileEntry
     $self->{prefix}"."_file_track (fkey, filename, source, client)
     VALUES(?, ?, ?, ?)";
     my @vals = ($key, $file, $self->{sourceID}, $self->{clientID});
-    $self->{dbHandler}->updateWithParameters($query, \@vals);
+    doUpdateQuery($self, $query, undef, \@vals);
     return getFileID($self, $key, $file);
 }
 
@@ -790,12 +803,12 @@ sub getFileID
     my $ret = 0;
     my $query = "select max(id) from $self->{prefix}"."_file_track file
     where
-    and source = " .$self->{sourceID}. " 
+    source = " .$self->{sourceID}. " 
     and client = " .$self->{clientID};
     if($file)
     {
         $file = escapeData($self, $file);
-        $query .= " and file = '$file'";
+        $query .= " and filename = '$file'";
     }
     if($key)
     {
@@ -821,20 +834,42 @@ sub createImportStatusFromRecordArray
     my $tag = makeTag($self, $fileID);
     my @records = @{$rec};
     my $queryStart = "INSERT INTO 
-    $self->{prefix}"."_import_status (file, record_raw, tag, z001, job)\n";
-    my @val = ();
+    $self->{prefix}"."_import_status (file, record_raw, tag, z001, job)\nVALUES\n";
+    my @vals = ();
+    my $query = $queryStart;
+    my $loops = 0;
     foreach(@records)
     {
+        $loops++;
         my $record = convertMARCtoXML($self, $_);
         my $z01 = getsubfield($self, $_, '001');
-        push (@val, $fileID);
-        push (@val, record);
-        
+        push (@vals, $fileID);
+        push (@vals, $record);
+        push (@vals, $tag);
+        push (@vals, $z01);
+        push (@vals, $job);
+        $query .= "(?, ?, ?, ?, ?),";
+        # chunking
+        if($loops % 100 == 0)
+        {
+            $query = substr($query,0,-1); # remove the last comma
+            createImportStatus($self, $query, \@vals);
+            @vals = ();
+            $query = $queryStart;
+            $loops=0;
+        }
     }
-    
+    if($loops > 0) # in case there was exactly % 100 records, we check that there is more than 0
+    {
+        $query = substr($query,0,-1); # remove the last comma
+        createImportStatus($self, $query, \@vals);
+        @vals = ();
+        $query = $queryStart;
+        $loops=0;
+    }
+    undef @vals;
+    undef $loops;
 }
-
-
 
 sub createImportStatus
 {
@@ -842,7 +877,8 @@ sub createImportStatus
     my $query = shift;
     my $v = shift;
     my @vals = @{$v};
-    
+    my $worked = doUpdateQuery($self, $query, undef, \@vals);
+    return $worked;
 }
 
 sub makeTag
@@ -850,7 +886,7 @@ sub makeTag
     my $self = shift;
     my $fileID = shift;
     my $ret = 0;
-    my $query = "SELECT date(grab_time)||'_'||c.name||'_'||s.name as tag from 
+    my $query = "SELECT concat(cast(date(grab_time) as char),'_',c.name,'_',s.name) as tag from 
     $self->{prefix}"."_file_track f,
     $self->{prefix}"."_client c,
     $self->{prefix}"."_source s
@@ -903,6 +939,42 @@ sub getJobID
         $ret = @row[0];
     }
     return $ret;
+}
+
+sub readyJob
+{
+    my $self = shift;
+    my $jobID = shift || $self->{job};
+    my $query = "UPDATE $self->{prefix}"."_job SET status = 'ready' where id = $jobID";
+    my @vars = ();
+    doUpdateQuery($self, $query, undef, \@vars);
+    undef @vars;
+}
+
+sub updateJob
+{
+    my $self = shift;
+    my $jobID = shift;
+    
+}
+
+sub calcCheckDigit
+{
+    my $self = shift;
+    my $seed = shift;
+    $seed = reverse( $seed );
+    my @chars = split("", $seed);
+    my $checkDigit = 0;
+    for my $i (0.. $#chars)
+    {
+        $checkDigit += @chars[$i] * ($i+2);
+    }
+    $checkDigit = $checkDigit % 11;
+    if( $checkDigit > 9 )
+    {
+        $checkDigit = 'x';
+    }
+    return $checkDigit;
 }
 
 sub ensureFolderExists

@@ -40,9 +40,9 @@ sub scrape
             $self->handleAnchorClick($_, "Last Download", 1); #click Anchor tag based upon matching href
             $self->waitForPageLoad();
             my %downloads = %{parseFinalDownloadGrid($self)};
-            my %downloaded = ();
             while ( (my $key, my $value) = each(%downloads) )
             {
+                print "looping $key\n";
                 if(decideDownload($self, $key))
                 {
                     print "Decided to download\n";
@@ -147,6 +147,7 @@ sub decideDownload
 {
     my $self = shift;
     my $keyString = shift;
+    print "Deciding\n";
     return $self->getFileID($keyString);
 }
 
@@ -162,20 +163,24 @@ sub processDownloadedFile
     if($#files > -1)
     {
         $job = $self->createJob();
-    }
-    foreach(@files)
-    {
-        my $thisFile = $_;
-        my $fileID = $self->createFileEntry($self->getFileNameWithoutPath($thisFile), $key);
-        if($fileID)
+        $self->{job} = $job;
+
+        foreach(@files)
         {
-            my @records = @{$self->readMARCFile($thisFile)};
-            $self->createImportStatusFromRecordArray($fileID, $job, \@records);
+            my $thisFile = $_;
+            my $fileID = $self->createFileEntry($self->getFileNameWithoutPath($thisFile), $key);
+            if($fileID)
+            {
+                my @records = @{$self->readMARCFile($thisFile)};
+                $self->{log}->addLine("Read: " . $#records . " MARC records");
+                $self->createImportStatusFromRecordArray($fileID, $job, \@records);
+            }
+            else
+            {
+                $self->setError("Couldn't create a DB entry for $file");
+            }
         }
-        else
-        {
-            $self->setError("Couldn't create a DB entry for $file");
-        }
+        $self->readyJob($job);
     }
 }
 

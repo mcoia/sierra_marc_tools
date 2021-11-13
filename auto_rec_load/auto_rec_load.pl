@@ -37,9 +37,11 @@ our $recreateDB = 0;
 our $dbSeed;
 our $specificSource;
 our $specificClient;
+our $runAllScrapers = 0;
 our $configFile;
 our $jobid = -1;
 our $vendor = "";
+our $screenShotDIR;
 
 GetOptions (
 "config=s" => \$configFile,
@@ -48,6 +50,7 @@ GetOptions (
 "dbSeed=s" => \$dbSeed,
 "specificSource=s" => \$specificSource,
 "specificClient=s" => \$specificClient,
+"runAllScrapers" => \$runAllScrapers,
 )
 or die("Error in command line arguments\nYou can specify
 --config                                      [Path to the config file]
@@ -85,96 +88,13 @@ if($conf)
         $writePid->truncFile("running");
 
         my $cwd = getcwd();
-        $cwd .= "/screenshots";
-        mkdir $cwd unless -d $cwd;
+        $screenShotDIR = "$cwd/screenshots";
+        mkdir $screenShotDIR unless -d $screenShotDIR;
 
-        my %all = %{getSources()};
-        while ( (my $key, my $value) = each(%all) )
-        {   
-            my $folder = "/mnt/evergreen/tmp/auto_rec_load/tmp/1"; # setupDownloadFolder($key);
-            initializeBrowser($folder);
-            my %details = %{$value};
-            if(!(-d $details{"outputfolder"}))
-            {
-                print "Scheduler Output folder: '".$details{"outputfolder"}."' doesn't exist\n";
-                alertErrorEmail("Scheduler Output folder: '".$details{"outputfolder"}."' doesn't exist");
-            }
-            else
-            {
-                $vendor = $details{"sourcename"} . '_' . $details{"clientname"};
-                print "Working on: '$vendor'\n";
-                my $json = decode_json( $details{"json"} );
-                my $source;
-                my $perl = '$source = new ' . $details{"perl_mod"} .'($key, "' . $vendor . '"' .
-                           ', $dbHandler, $stagingTablePrefix, $driver, $cwd, $log, $debug, $folder, $json, ' . $details{"clientid"} .');';
-                print $perl . "\n";
-                # Instanciate the perl Module
-                {
-                    local $@;
-                    eval
-                    {
-                        eval $perl;
-                        die if $source->getError();
-                        1;  # ok
-                    } or do
-                    {
-                        my $evalError = concatTrace( $@ || "error", $source->getTrace(), $source->getError());
-                        alertErrorEmail("Could not instanciate " .$details{"perl_mod"} . "\r\n\r\n$perl\r\n\r\nerror:\r\n\r\n$evalError") if!$debug;
-                        next;
-                    };
-                }
-                # Run the scrape function
-                {
-                    local $@;
-                    eval
-                    {
-                        print "Executing special file parsing\n$folder\n";
-# processDownloadedFile / 2021-09-28_0_1 -> /20210928_332503_missouriwestern_export.zip
-# processDownloadedFile / 2020-12-28_26_4 -> /20201228_261094_missouriwestern_export.zip
-# processDownloadedFile / 2021-02-28_1_0 -> /20210228_277428_missouriwestern_export.zip
-# processDownloadedFile / 2021-06-28_22_9 -> /20210628_307429_missouriwestern_export.zip
-
-                        $source->processDownloadedFile("2021-09-28_0_1","/20210628_307429_missouriwestern_export.zip");
-                        # print "Scraping\n" if $debug;
-                        # $source->scrape();
-                        # die if $source->getError();
-                        1;  # ok
-                    } or do
-                    {
-                        my $evalError = concatTrace( $@ || "error", $source->getTrace(), $source->getError());
-                        alertErrorEmail($evalError) if!$debug;
-                        next;
-                    };
-                }
-                concatTrace('', $source->getTrace(), '');
-                # Run deal with any data files that were produced
-                # {
-                    # local $@;
-                    # eval
-                    # {
-                        # print "Scraping\n" if $debug;
-                        # $source->scrape();
-                        # die if $source->getError();
-                        # 1;  # ok
-                    # } or do
-                    # {
-                        # my $evalError = $@ || "error";
-                        # my @trace = @{$source->getTrace()};
-                        # foreach(@trace)
-                        # {
-                            # $evalError .= "\r\n$_";
-                        # }
-                        # $evalError .= "\r\n" . $source->getError();
-                        # print $evalError if $debug;
-                        # alertErrorEmail($evalError) if!$debug;
-                        # next;
-                    # };
-                # }
-            }
-        }
+        runScrapers() if($runAllScrapers || ($specificSource && $specificClient));
 
         undef $writePid;
-        closeBrowser();
+        
         $log->addLogLine("****************** Ending ******************");
     }
     else
@@ -187,6 +107,110 @@ else
     print "Something went wrong with the config\n";
     exit;
 }
+
+sub runScrapers
+{
+    my %all = %{getSources()};
+    while ( (my $key, my $value) = each(%all) )
+    {
+        # my $folder = "/mnt/evergreen/tmp/auto_rec_load/tmp/1"; # setupDownloadFolder($key);
+        my $folder = setupDownloadFolder($key);
+        initializeBrowser($folder);
+        my %details = %{$value};
+        if( checkFolders(\%details) ) # make sure that the output folders are pre-created. We expect that these are special and have external mechanism for them.
+        {
+            $vendor = $details{"sourcename"} . '_' . $details{"clientname"};
+            print "Working on: '$vendor'\n";
+            my $json = decode_json( $details{"json"} );
+            my $source;
+            my $perl = '$source = new ' . $details{"perl_mod"} .'($key, "' . $vendor . '"' .
+                       ', $dbHandler, $stagingTablePrefix, $driver, $screenShotDIR, $log, $debug, $folder, $json, ' . $details{"clientid"} .');';
+            print $perl . "\n";
+            # Instantiate the perl Module
+            {
+                local $@;
+                eval
+                {
+                    eval $perl;
+                    die if $source->getError();
+                    1;  # ok
+                } or do
+                {
+                    my $evalError = concatTrace( $@ || "error", $source->getTrace(), $source->getError());
+                    alertErrorEmail("Could not instanciate " .$details{"perl_mod"} . "\r\n\r\n$perl\r\n\r\nerror:\r\n\r\n$evalError") if!$debug;
+                    next;
+                };
+            }
+            # Run the scrape function
+            {
+                local $@;
+                eval
+                {
+                    # print "Executing special file parsing\n$folder\n";
+
+                    # $source->processDownloadedFile("2021-09-28_0_1","/20210628_307429_missouriwestern_export.zip");
+                    print "Scraping\n" if $debug;
+                    $source->scrape();
+                    die if $source->getError();
+                    1;  # ok
+                } or do
+                {
+                    my $evalError = concatTrace( $@ || "error", $source->getTrace(), $source->getError());
+                    alertErrorEmail($evalError) if!$debug;
+                    next;
+                };
+            }
+            concatTrace('', $source->getTrace(), '');
+            # Run deal with any data files that were produced
+            # {
+                # local $@;
+                # eval
+                # {
+                    # print "Scraping\n" if $debug;
+                    # $source->scrape();
+                    # die if $source->getError();
+                    # 1;  # ok
+                # } or do
+                # {
+                    # my $evalError = $@ || "error";
+                    # my @trace = @{$source->getTrace()};
+                    # foreach(@trace)
+                    # {
+                        # $evalError .= "\r\n$_";
+                    # }
+                    # $evalError .= "\r\n" . $source->getError();
+                    # print $evalError if $debug;
+                    # alertErrorEmail($evalError) if!$debug;
+                    # next;
+                # };
+            # }
+        }
+        else
+        {
+            print "Scheduler Output folder: '".$details{"outputfolder"}."' doesn't exist\n";
+            alertErrorEmail("Scheduler Output folder: '".$details{"outputfolder"}."' doesn't exist");
+        }
+    }
+    closeBrowser();
+}
+
+sub checkFolders
+{
+    my $d = shift;
+    my %details = %{$d};
+    my $ret = 1;
+    my $json = decode_json( $details{"json"} );
+    if(ref $json->{"folders"} eq 'HASH')
+    {
+        while ( (my $key, my $folder) = each(%{$json->{"folders"}}) )
+        {
+            print "Checking '$key' = '$folder'\n";
+            $ret = 0 if( !(-d $folder));
+        }
+    }
+    return $ret;
+}
+
 
 sub concatTrace
 {
@@ -213,7 +237,7 @@ sub getSources
     my @order = ();
     my $query = "
     SELECT
-    source.id,client.name,source.name,source.type,source.scheduler_folder,source.perl_mod,source.json_connection_detail,client.id
+    source.id,client.name,source.name,source.type,source.perl_mod,source.json_connection_detail,client.id
     FROM
     $stagingTablePrefix"."_client client
     join $stagingTablePrefix"."_source source on (source.client=client.id)
@@ -246,10 +270,9 @@ sub getSources
         $hash{"clientname"} = @row[1];
         $hash{"sourcename"} = @row[2];
         $hash{"type"} = @row[3];
-        $hash{"outputfolder"} = @row[4];
-        $hash{"perl_mod"} = @row[5];
-        $hash{"json"} = @row[6];
-        $hash{"clientid"} = @row[7];
+        $hash{"perl_mod"} = @row[4];
+        $hash{"json"} = @row[5];
+        $hash{"clientid"} = @row[6];
         $sources{@row[0]} = \%hash;
     }
     print Dumper(%sources);
@@ -407,7 +430,6 @@ sub createDatabase
         name varchar(100),
         type varchar(100),
         client int,
-        scheduler_folder varchar(500),
         perl_mod varchar(50),
         json_connection_detail varchar(5000),
         PRIMARY KEY (id),
@@ -457,7 +479,7 @@ sub createDatabase
         $query = "CREATE TABLE $stagingTablePrefix"."_output_file_track (
         id int not null auto_increment,
         filename varchar(1000),
-        import_id int
+        import_id int,
         PRIMARY KEY (id),
         FOREIGN KEY (import_id) REFERENCES $stagingTablePrefix"."_import_status(id) ON DELETE CASCADE
         )
