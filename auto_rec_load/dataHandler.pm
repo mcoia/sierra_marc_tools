@@ -12,6 +12,7 @@ use MARC::File;
 use MARC::File::XML (BinaryEncoding => 'utf8');
 use MARC::File::USMARC;
 use Unicode::Normalize;
+use File::Path qw(make_path remove_tree);
 
 our %filesOnDisk = ();
 sub new
@@ -847,7 +848,7 @@ sub createImportStatusFromRecordArray
         push (@vals, $record);
         push (@vals, $tag);
         push (@vals, $z01);
-        push (@vals, $job);
+        push (@vals, $jobID);
         $query .= "(?, ?, ?, ?, ?),";
         # chunking
         if($loops % 100 == 0)
@@ -894,7 +895,7 @@ sub makeTag
     c.id=f.client and
     s.id=f.source and
     f.id= $fileID";
-    $self->addTrace($self, "makeTag","Making Tag");
+    addTrace($self,"makeTag","Making Tag");
     $self->{log}->addLine($query);
     my @results = @{$self->{dbHandler}->query($query)};
     foreach(@results)
@@ -919,7 +920,7 @@ sub createJob
     $self->{prefix}"."_job (current_action)
     VALUES(null)";
     my @vals = ();
-    $self->{dbHandler}->updateWithParameters($query, \@vals);
+    doUpdateQuery($self, $query, undef, \@vals);
     return getJobID($self);
 }
 

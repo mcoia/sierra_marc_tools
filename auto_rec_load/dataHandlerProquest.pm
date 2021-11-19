@@ -148,7 +148,7 @@ sub decideDownload
     my $self = shift;
     my $keyString = shift;
     print "Deciding\n";
-    return $self->getFileID($keyString);
+    return !$self->getFileID($keyString);
 }
 
 sub processDownloadedFile

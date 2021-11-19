@@ -23,7 +23,8 @@ sub _init
     my $self = shift;
     $self =
     {
-        log => shift
+        log => shift,
+        debug = shift
     };
     return $self;
 }
@@ -33,11 +34,12 @@ sub manipulateMARC
     my $self = shift;
     my $key = shift;
     my $marc = shift;
+    my $tag = shift;
     my $ret = $marc;
     if ( $map{$key} )
     {
         my $ev = '$ret = ' . $map{$key} .'($self, $marc);';
-        print 
+        $self->{log}->addLine("Running " . $map{$key} ) if($self->{debug});
         eval $ev;
     }
     return $ret;
@@ -54,7 +56,14 @@ sub ebook_central_MWSU
     
 }
 
-
+sub tagMARC
+{
+    my $self = shift;
+    my $marc = shift;
+    my $tag = shift;
+    
+    return $marc;
+}
 
 sub KC_Towers_FOD_Avila
 {
