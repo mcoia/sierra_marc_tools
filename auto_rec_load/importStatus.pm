@@ -3,47 +3,36 @@
 package importStatus;
 
 use lib qw(./);
+use Data::Dumper;
+use parent commonTongue;
 
 sub new
 {
     my ($class, @args) = @_;
-    my $self = _init($class, @args);
-    bless $self, $class;
+    my ($self, $args) = $class->SUPER::new(@args);
+    @args = @{$args};
+    $self = _init($self, @args);
     return $self;
 }
 
 sub _init
 {
     my $self = shift;
-    $self =
-    {
-        log => shift,
-        dbHandler => shift,
-        log => shift,
-        debug => shift,
-        importStatusID => shift,
-        prefix => shift,
-        status => undef,
-        record_raw => undef,
-        record_tweaked => undef,
-        tag => undef,
-        z001 => undef,
-        loaded => undef,
-        ils_id => undef,
-        job => undef,
-        source_name => undef,
-        client_name => undef,
-        error => undef
-    };
-
-    if($self->{importStatusID} && $self->{dbHandler} &&  $self->{log})
+    $self->{importStatusID} = shift;
+ 
+    if($self->{importStatusID} && $self->{dbHandler} && $self->{prefix} && $self->{log})
     {
         $self = fillVars($self);
+        if($self->getError())
+        {
+            $self->addTrace("Error loading import object");
+        }
     }
     else
     {
-        setError($self, "Couldn't initialize");
+        $self->setError("Couldn't initialize importStatus object");
     }
+
     return $self;
 }
 
@@ -59,6 +48,8 @@ sub fillVars
     ais.loaded,
     ais.ils_id,
     ais.job,
+    aus.id,
+    ac.id,
     aus.name,
     ac.name
     from
@@ -77,7 +68,7 @@ sub fillVars
     stat.id = ".$self->{importStatusID};
 
     $self->{log}->addLine($query) if $self->{debug};
-    my @results = @{$self->{dbHandler}->query($query)};
+    my @results = @{$self->{getDataFromDB($query)};
     foreach(@results)
     {
         my @row = @{$_};
@@ -90,11 +81,15 @@ sub fillVars
         $self->{loaded} = @row[5];
         $self->{ils_id} = @row[6];
         $self->{job} = @row[7];
-        $self->{source_name} = @row[8];
-        $self->{client_name} = @row[9];
+        $self->{source} = @row[8];
+        $self->{client} = @row[9];
+        $self->{source_name} = @row[10];
+        $self->{client_name} = @row[11];
+        $self->{marc_editor_name} = $self->{source_name} . '_' . $self->{client_name};
     }
 
     $self->{error} = "Couldn't read import status data ID: ". $self->{importStatusID} if($#results == -1);
+    die if($#results == -1);
 
     return $self;
 }
@@ -102,7 +97,25 @@ sub fillVars
 sub processMARC
 {
     my $self = shift;
-    
+    my $beforeFile = shift;
+    my $afterFile = shift;
+    my $manip = new marcEditor($log, $debug);
+    my $marc = $self->{record_raw};
+    $marc =~ s/(<leader>.........)./${1}a/;
+    my $marcobject = MARC::Record->new_from_xml($marc);
+    $beforeFile->addLine($marcobject->as_formatted()) if($beforeFile);
+
+    $self->{record_tweaked} = $manip->manipulateMARC($self->{marc_editor_name}, $marcobject, $self->{tag});
+    $afterFile->addLine($self->{record_tweaked}->as_formatted()) if($afterFile);
+    $self->{record_tweaked} = $self->convertMARCtoXML($self->{record_tweaked});
+    return $self->{record_tweaked};
+
+}
+
+sub getTag
+{
+    my $self = shift;
+    return $self->{tag};
 }
 
 sub writeDB
@@ -110,20 +123,11 @@ sub writeDB
     
 }
 
-
-sub setError
+sub getSource
 {
     my $self = shift;
-    my $error = shift;
-    $self->{error} = $error;
+    return $self->{source};
 }
-
-sub getError
-{
-    my $self = shift;
-    return $self->{error};
-}
-
 
 sub DESTROY
 {

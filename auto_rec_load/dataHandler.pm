@@ -13,56 +13,50 @@ use MARC::File::XML (BinaryEncoding => 'utf8');
 use MARC::File::USMARC;
 use Unicode::Normalize;
 use File::Path qw(make_path remove_tree);
+use parent commonTongue;
 
 our %filesOnDisk = ();
 sub new
 {
     my ($class, @args) = @_;
-    my $self = _init($class, @args);
-    bless $self, $class;
+    my ($self, $args) = $class->SUPER::new(@args);
+    @args = @{$args};
+    $self = _init($self, @args);
     return $self;
 }
 
 sub _init
 {
     my $self = shift;
-    my @trace = ();
-    $self =
-    {
-        sourceID => shift,
-        name => shift,
-        dbHandler => shift,
-        prefix => shift,
-        driver => shift,
-        screenshotDIR => shift,
-        log => shift,
-        debug => shift,
-        downloadDIR => shift,
-        json => shift,
-        clientID => shift,
-        URL => '',
-        webuser => '',
-        webpass => '',
-        dbhost => '',
-        dbdb => '',
-        dbuser => '',
-        dbpass => '',
-        dbport => '',
-        clusterID => -1,
-        error => 0,
-        trace => \@trace,
-        postgresConnector => undef,
-        screenShotStep => 0
-    };
+    $self->{sourceID} = shift;
+    $self->{name} = shift;
+    $self->{driver} = shift;
+    $self->{screenshotDIR} = shift;
+    $self->{downloadDIR} = shift;
+    $self->{json} = shift;
+    $self->{clientID} = shift;
+    $self->{URL} = '';
+    $self->{webuser} = '';
+    $self->{webpass} = '';
+    $self->{dbhost} = '';
+    $self->{dbdb} = '';
+    $self->{dbuser} = '';
+    $self->{dbpass} = '';
+    $self->{dbport} = '';
+    $self->{clusterID} = -1;
+    $self->{postgresConnector} = undef;
+    $self->{screenShotStep} = -1;
+
     if($self->{sourceID} && $self->{dbHandler} && $self->{prefix} && $self->{driver} && $self->{log})
     {
         $self = fillVars($self);
-        $self = parseJSON($self);
+        $self = $self->parseJSON($self->{json});
     }
     else
     {
-        setError($self, "Couldn't initialize");
+        $self->setError("Couldn't initialize");
     }
+
     return $self;
 }
 
@@ -89,7 +83,7 @@ sub fillVars
     where
     source.id = '".$self->{sourceID}."'";
 
-    my @results = @{$self->{dbHandler}->query($query)};
+    my @results = @{$self->getDataFromDB($query)};
     foreach(@results)
     {
         my @row = @{$_};
@@ -107,32 +101,6 @@ sub fillVars
     return $self;
 }
 
-sub parseJSON
-{
-    my $self = shift;
-    if( ref $self->{"json"} eq 'HASH' )
-    {
-        while ( (my $key, my $value) = each( %{$self->{json}} ) )
-        {
-            if(ref $value eq 'HASH')
-            {
-                my %h = %{$value};
-                $self->{$key} = \%h;
-            }
-            elsif (ref $value eq 'ARRAY')
-            {
-                my @a = @{$value};
-                $self->{$key} = \@a;
-            }
-            else
-            {
-                $self->{$key} = $value;
-            }
-        }
-    }
-    return $self;
-}
-
 sub setSpecificDate
 {
     my ($self) = shift;
@@ -145,20 +113,6 @@ sub setSpecificDate
     {
         $self->{specificMonth} = undef;
     }
-}
-
-sub doUpdateQuery
-{
-    my $self = shift;
-    my $query = shift;
-    my $stdout = shift;
-    my $dbvars = shift;
-
-    $self->{log}->addLine($query);
-    $self->{log}->addLine(Dumper($dbvars)) if $self->{debug};
-    print "$stdout\n" if $stdout;
-
-    return $self->{dbHandler}->updateWithParameters($query, $dbvars);
 }
 
 sub waitForPageLoad
@@ -301,7 +255,7 @@ sub handleAnchorClick
     my $hrefMatch = shift || 0;
     my $propVal = $hrefMatch ? 'getAttribute("href")' : 'textContent';
 
-    addTrace($self, "handleAnchorClick", $anchorString);
+    $self->addTrace( "handleAnchorClick", $anchorString);
     # get the string ready for js regex
     $anchorString =~ s/\?/\\?/g;
     $anchorString =~ s/\//\\\//g;
@@ -334,86 +288,20 @@ sub handleAnchorClick
         $worked = checkIfCorrectPage($self, $correctPageString);
         if(!$worked)
         {
-            my $error = flattenArray($self, $correctPageString, 'string');
-            setError($self, "Clicked anchor but didn't find string(s): $error");
+            my $error = $self->flattenArray($correctPageString, 'string');
+            $self->setError( "Clicked anchor but didn't find string(s): $error");
             takeScreenShot($self, "handleAnchorClick_$anchorString"."_string_not_found");
         }
     }
     return $worked;
 }
 
-sub setError
-{
-    my $self = shift;
-    my $error = shift;
-    $self->{error} = $error;
-}
-
-sub getError
-{
-    my $self = shift;
-    return $self->{error};
-}
-
-sub addTrace
-{
-    my $self = shift;
-    my $func = shift;
-    my $add = shift;
-    $add = flattenArray($self, $add, 'string');
-    my @t = @{$self->{trace}};
-    push (@t, $func .' / ' . $add);
-    $self->{trace} = \@t;
-}
-
-sub getTrace
-{
-    my $self = shift;
-    return $self->{trace};
-}
-
-sub flattenArray
-{
-    my $self = shift;
-    my $array = shift;
-    my $desiredResult = shift;
-    my $retString = "";
-    my @retArray = ();
-    if(ref $array eq 'ARRAY')
-    {
-        my @a = @{$array};
-        foreach(@a)
-        {
-            $retString .= "$_ / ";
-            push (@retArray, $_);
-        }
-        $retString = substr($retString, 0, -3); # lop off the last trailing ' / '
-    }
-    elsif(ref $array eq 'HASH')
-    {
-        my %a = %{$array};
-        while ( (my $key, my $value) = each(%a) )
-        {
-            $retString .= "$key = $value / ";
-            push (@retArray, ($key, $value));
-        }
-        $retString = substr($retString, 0, -3); # lop off the last trailing ' / '
-    }
-    else # must be a string
-    {
-        $retString = $array;
-        @retArray = ($array);
-    }
-    return \@retArray if ( lc($desiredResult) eq 'array' );
-    return $retString;
-}
-
 sub checkIfCorrectPage
 {
     my $self = shift;
     my $string = shift;
-    my @strings = @{flattenArray($self, $string, 'array')};
-    addTrace($self, "checkIfCorrectPage", $string);
+    my @strings = @{$self->flattenArray($string, 'array')};
+    $self->addTrace( "checkIfCorrectPage", $string);
     my $ret = 1;
     foreach(@strings)
     {
@@ -463,8 +351,8 @@ sub stringMatch
     my $string2 = shift;
     my $caseSensitive = shift || 0;
 
-    $string =~ trim($self, $string);
-    $string2 =~ trim($self, $string2);
+    $string =~ $self->trim($string);
+    $string2 =~ $self->trim($string2);
     my $ret = 0;
     if($caseSensitive)
     {
@@ -634,8 +522,8 @@ sub extractCompressedFile
         my $zip = Archive::Zip->new();
         unless ( $zip->read( $self->{downloadDIR} . $file ) == AZ_OK )
         {
-            setError($self, "Could not open $file");
-            addTrace($self, "Could not open $file");
+            $self->setError( "Could not open $file");
+            $self->addTrace( "Could not open $file");
             return 'error reading zip';
         }
         my @list = $zip->memberNames();
@@ -738,27 +626,6 @@ sub getsubfield
     return $ret;
 }
 
-sub convertMARCtoXML
-{
-    my $self = shift;
-    my $marc = shift;
-    my $thisXML =  $marc->as_xml(); #decode_utf8();
-
-    $thisXML =~ s/\n//sog;
-    $thisXML =~ s/^<\?xml.+\?\s*>//go;
-    $thisXML =~ s/>\s+</></go;
-    $thisXML =~ s/\p{Cc}//go;
-    $thisXML = entityize($self, $thisXML);
-    $thisXML =~ s/[\x00-\x1f]//go;
-    $thisXML =~ s/^\s+//;
-    $thisXML =~ s/\s+$//;
-    $thisXML =~ s/<record><leader>/<leader>/;
-    $thisXML =~ s/<collection/<record/;
-    $thisXML =~ s/<\/record><\/collection>/<\/record>/;
-
-    return $thisXML;
-}
-
 sub entityize { 
     my($self, $string, $form) = @_;
     $form ||= "";
@@ -786,12 +653,12 @@ sub createFileEntry
     my $self = shift;
     my $file = shift;
     my $key = shift;
-    $key = escapeData($self, $key);
+    $key = $self->escapeData( $key);
     my $query = "INSERT INTO 
     $self->{prefix}"."_file_track (fkey, filename, source, client)
     VALUES(?, ?, ?, ?)";
     my @vals = ($key, $file, $self->{sourceID}, $self->{clientID});
-    doUpdateQuery($self, $query, undef, \@vals);
+    $self->doUpdateQuery( $query, undef, \@vals);
     return getFileID($self, $key, $file);
 }
 
@@ -808,16 +675,16 @@ sub getFileID
     and client = " .$self->{clientID};
     if($file)
     {
-        $file = escapeData($self, $file);
+        $file = $self->escapeData( $file);
         $query .= " and filename = '$file'";
     }
     if($key)
     {
-        $key = escapeData($self, $key);
+        $key = $self->escapeData( $key);
         $query .= " and fkey = '$key'";
     }
     $self->{log}->addLine($query);
-    my @results = @{$self->{dbHandler}->query($query)};
+    my @results = @{$self->getDataFromDB($query)};
     foreach(@results)
     {
         my @row = @{$_};
@@ -842,7 +709,7 @@ sub createImportStatusFromRecordArray
     foreach(@records)
     {
         $loops++;
-        my $record = convertMARCtoXML($self, $_);
+        my $record = $self->convertMARCtoXML($_);
         my $z01 = getsubfield($self, $_, '001');
         push (@vals, $fileID);
         push (@vals, $record);
@@ -878,7 +745,7 @@ sub createImportStatus
     my $query = shift;
     my $v = shift;
     my @vals = @{$v};
-    my $worked = doUpdateQuery($self, $query, undef, \@vals);
+    my $worked = $self->doUpdateQuery( $query, undef, \@vals);
     return $worked;
 }
 
@@ -895,22 +762,15 @@ sub makeTag
     c.id=f.client and
     s.id=f.source and
     f.id= $fileID";
-    addTrace($self,"makeTag","Making Tag");
+    $self->addTrace("makeTag","Making Tag");
     $self->{log}->addLine($query);
-    my @results = @{$self->{dbHandler}->query($query)};
+    my @results = @{$self->getDataFromDB($query)};
     foreach(@results)
     {
         my @row = @{$_};
         $ret = @row[0];
     }
     return $ret;
-}
-
-sub getImportStatus
-{
-    my $self = shift;
-    my $fileID = shift;
-    
 }
 
 sub createJob
@@ -920,7 +780,7 @@ sub createJob
     $self->{prefix}"."_job (current_action)
     VALUES(null)";
     my @vals = ();
-    doUpdateQuery($self, $query, undef, \@vals);
+    $self->doUpdateQuery( $query, undef, \@vals);
     return getJobID($self);
 }
 
@@ -933,7 +793,7 @@ sub getJobID
     where
     status = 'new'";
     $self->{log}->addLine($query);
-    my @results = @{$self->{dbHandler}->query($query)};
+    my @results = @{$self->getDataFromDB($query)};
     foreach(@results)
     {
         my @row = @{$_};
@@ -948,7 +808,7 @@ sub readyJob
     my $jobID = shift || $self->{job};
     my $query = "UPDATE $self->{prefix}"."_job SET status = 'ready' where id = $jobID";
     my @vars = ();
-    doUpdateQuery($self, $query, undef, \@vars);
+    $self->doUpdateQuery( $query, undef, \@vars);
     undef @vars;
 }
 
@@ -998,7 +858,7 @@ sub cleanFolder
     if(-d $folder)
     {
         my @files = ();
-        @files = @{dirtrav(\@files,$folder)};
+        @files = @{$self->dirtrav(\@files,$folder)};
         foreach(@files)
         {
             print "Deleting: $_\n";
@@ -1015,16 +875,6 @@ sub getHTMLBody
     return $body;
 }
 
-sub escapeData
-{
-    my $self = shift;
-    my $d = shift;
-    $d =~ s/'/\\'/g;   # ' => \'
-    $d =~ s/\\/\\\\/g; # \ => \\
-    return $d;
-}
-
-
 sub takeScreenShot
 {
     my $self = shift;
@@ -1036,52 +886,6 @@ sub takeScreenShot
     # $self->{log}->addLine("screenshot self: ".Dumper($self));
     # print "ScreenShot: ".$self->{screenshotDIR}."/".$self->{name}."_".$self->{screenShotStep}."_".$action.".png\n";
     $self->{driver}->capture_screenshot($self->{screenshotDIR}."/".$self->{name}."_".$self->{screenShotStep}."_".$action.".png", {'full' => 1});
-}
-
-sub trim
-{
-    my $self = shift;
-	my $string = shift;
-	$string =~ s/^[\t\s]+//;
-	$string =~ s/[\t\s]+$//;
-	return $string;
-}
-
-sub dirtrav
-{
-    my @files = @{@_[0]};
-    my $pwd = @_[1];
-    opendir(DIR,"$pwd") or die "Cannot open $pwd\n";
-    my @thisdir = readdir(DIR);
-    closedir(DIR);
-    foreach my $file (@thisdir) 
-    {
-        if(($file ne ".") and ($file ne ".."))
-        {
-            if (-d "$pwd/$file")
-            {
-                push(@files, "$pwd/$file");
-                @files = @{dirtrav(\@files,"$pwd/$file")};
-            }
-            elsif (-f "$pwd/$file")
-            {            
-                push(@files, "$pwd/$file");            
-            }
-        }
-    }
-    return \@files;
-}
-
-sub getError
-{
-    my $self = shift;
-    return $self->{error};
-}
-
-sub getTrace
-{
-    my $self = shift;
-    return $self->{trace};
 }
 
 sub DESTROY

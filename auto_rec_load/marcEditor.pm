@@ -25,6 +25,7 @@ sub _init
     {
         log => shift,
         debug = shift
+        
     };
     return $self;
 }

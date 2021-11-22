@@ -23,6 +23,10 @@ use email;
 
 use dataHandler;
 use dataHandlerProquest;
+use commonTongue;
+use job;
+
+use sigtrap qw(handler cleanup normal-signals);
 
 our $stagingTablePrefix = "auto";
 our $pidfile = "/tmp/auto_rec_load.pl.pid";
@@ -38,6 +42,8 @@ our $dbSeed;
 our $specificSource;
 our $specificClient;
 our $runAllScrapers = 0;
+our $runAllJobs = 0;
+our $runJobID;
 our $configFile;
 our $jobid = -1;
 our $vendor = "";
@@ -51,6 +57,9 @@ GetOptions (
 "specificSource=s" => \$specificSource,
 "specificClient=s" => \$specificClient,
 "runAllScrapers" => \$runAllScrapers,
+"runAllJobs" => \$runAllJobs,
+"runJob" => \$runJobID,
+"pidfile" => \$pidfile,
 )
 or die("Error in command line arguments\nYou can specify
 --config                                      [Path to the config file]
@@ -91,15 +100,21 @@ if($conf)
         $screenShotDIR = "$cwd/screenshots";
         mkdir $screenShotDIR unless -d $screenShotDIR;
 
+# my $test = new job($log,$dbHandler,$stagingTablePrefix, $debug,  1);
+# exit;
         runScrapers() if($runAllScrapers || ($specificSource && $specificClient));
+        
+        runJobs() if($runAllJobs || ($runJobID));
 
         undef $writePid;
-        
+        unlink $pidFile;
+
         $log->addLogLine("****************** Ending ******************");
+
     }
     else
     {
-        
+        print "Your config file needs to specify a logfile\n";
     }
 }
 else
@@ -123,9 +138,9 @@ sub runScrapers
             print "Working on: '$vendor'\n";
             my $json = decode_json( $details{"json"} );
             my $source;
-            my $perl = '$source = new ' . $details{"perl_mod"} .'($key, "' . $vendor . '"' .
-                       ', $dbHandler, $stagingTablePrefix, $driver, $screenShotDIR, $log, $debug, $folder, $json, ' . $details{"clientid"} .');';
-            print $perl . "\n";
+            my $perl = '$source = new ' . $details{"perl_mod"} .'($log, $dbHandler, $stagingTablePrefix, $debug, '.
+                       '$key, "' . $vendor . '", $driver, $screenShotDIR, $folder, $json, ' . $details{"clientid"} .');';
+            print $perl . "\n" if $debug;
             # Instantiate the perl Module
             {
                 local $@;
@@ -161,29 +176,7 @@ sub runScrapers
                 };
             }
             concatTrace('', $source->getTrace(), '');
-            # Run deal with any data files that were produced
-            # {
-                # local $@;
-                # eval
-                # {
-                    # print "Scraping\n" if $debug;
-                    # $source->scrape();
-                    # die if $source->getError();
-                    # 1;  # ok
-                # } or do
-                # {
-                    # my $evalError = $@ || "error";
-                    # my @trace = @{$source->getTrace()};
-                    # foreach(@trace)
-                    # {
-                        # $evalError .= "\r\n$_";
-                    # }
-                    # $evalError .= "\r\n" . $source->getError();
-                    # print $evalError if $debug;
-                    # alertErrorEmail($evalError) if!$debug;
-                    # next;
-                # };
-            # }
+            undef $source;
         }
         else
         {
@@ -194,40 +187,83 @@ sub runScrapers
     closeBrowser();
 }
 
-sub checkFolders
+sub runJobs
 {
-    my $d = shift;
-    my %details = %{$d};
-    my $ret = 1;
-    my $json = decode_json( $details{"json"} );
-    if(ref $json->{"folders"} eq 'HASH')
+    my @jobs = @{getReadyJobs()};
+    foreach(@jobs)
     {
-        while ( (my $key, my $folder) = each(%{$json->{"folders"}}) )
+        my $thisJobID = $_;
+        print "Working on: '$thisJobID'\n";
+        my $tJob;
+        my $perl = '$tJob = new job($log, $dbHandler, $stagingTablePrefix, $debug, $thisJobID);';
+        print $perl . "\n" if $debug;
+        # Instantiate the Job
         {
-            print "Checking '$key' = '$folder'\n";
-            $ret = 0 if( !(-d $folder));
+            local $@;
+            eval
+            {
+                eval $perl;
+                die if $tJob->getError();
+                1;  # ok
+            } or do
+            {
+                my $evalError = concatTrace( $@ || "error", $tJob->getTrace(), $tJob->getError());
+                alertErrorEmail("Could not instanciate job: $thisJobID\r\n\r\n$perl\r\n\r\nerror:\r\n\r\n$evalError") if!$debug;
+                next;
+            };
         }
+        # Run the scrape function
+        {
+            local $@;
+            eval
+            {
+                print "Executing job: '$thisJobID'\n";
+                $tJob->runJob();
+                die if $tJob->getError();
+                1;  # ok
+            } or do
+            {
+                my $evalError = concatTrace( $@ || "error", $tJob->getTrace(), $tJob->getError());
+                alertErrorEmail($evalError) if!$debug;
+                next;
+            };
+        }
+        concatTrace('', $tJob->getTrace(), '');
+        undef $tJob;
     }
-    return $ret;
 }
 
-
-sub concatTrace
+sub getReadyJobs
 {
-    my $startingString = shift;
-    my $traceArray = shift;
-    my $endingString = shift;
-    my $ret = $startingString;
-    my @trace = @{$traceArray};
+    my @ret = ();
+    my $query = "
+    SELECT
+    job.id
+    FROM
+    $stagingTablePrefix"."_job client
+    where
+    job.status = 'ready'
+    and job.start_time is null
+    ___specificJob___
+    order by 1
+    ";
+    # defang
+    undef $runJobID if($runJobID =~ m/[&'%\\\/]/);
+    $runJobID =~ s/\D//g if $runJobID; #remove non-numeric values. We expect and ID number here
 
-    foreach(@trace)
+    $query =~ s/___specificJob___/AND job.id = $runJobID/g if ($runJobID && trim($runJobID) != '');
+    $query =~ s/___specificJob___//g if !($runJobID && trim($runJobID) != '');
+
+
+    $log->addLogLine($query);
+    my @results = @{$dbHandler->query($query)};
+    foreach(@results)
     {
-        $ret .= "\r\n$_";
+        my @row = @{$_};
+        push (@ret, @row[0]);
     }
-    $ret .= "\r\n" . $endingString;
-    $log->addLine($ret) if $debug;
-    print $ret if $debug;
-    return $ret;
+    print Dumper(@ret) if $debug;
+    return \@ret;
 }
 
 sub getSources
@@ -275,7 +311,7 @@ sub getSources
         $hash{"clientid"} = @row[6];
         $sources{@row[0]} = \%hash;
     }
-    print Dumper(%sources);
+    print Dumper(%sources) if $debug;
     return \%sources;
 }
 
@@ -386,7 +422,8 @@ sub createDatabase
         ##################
         my $query = "CREATE TABLE $stagingTablePrefix"."_job (
         id int not null auto_increment,
-        start_time datetime DEFAULT CURRENT_TIMESTAMP,
+        create_time datetime DEFAULT CURRENT_TIMESTAMP,
+        start_time datetime,
         last_update_time datetime DEFAULT CURRENT_TIMESTAMP,
         current_action varchar(1000),
         status varchar(100) default 'new',
@@ -486,7 +523,22 @@ sub createDatabase
         ";
         $log->addLine($query) if $debug;
         $dbHandler->update($query);
-        
+ 
+
+        ##################
+        # FUNCTIONS
+        ##################
+
+        $query = "
+         CREATE TRIGGER $stagingTablePrefix"."_job_update BEFORE UPDATE ON $stagingTablePrefix"."_job
+            FOR EACH ROW
+            BEGIN
+                SET NEW.last_update_time = CURRENT_DATE();
+                SET NEW.current_action_num = OLD.current_action_num + 1;
+            END;
+        ";
+        $log->addLine($query) if $debug;
+        $dbHandler->update($query);
 
         seedDB($dbSeed) if $dbSeed;
 
@@ -703,6 +755,42 @@ sub dirtrav
 	return \@files;
 }
 
+sub checkFolders
+{
+    my $d = shift;
+    my %details = %{$d};
+    my $ret = 1;
+    my $json = decode_json( $details{"json"} );
+    if(ref $json->{"folders"} eq 'HASH')
+    {
+        while ( (my $key, my $folder) = each(%{$json->{"folders"}}) )
+        {
+            print "Checking '$key' = '$folder'\n";
+            $ret = 0 if( !(-d $folder));
+        }
+    }
+    return $ret;
+}
+
+
+sub concatTrace
+{
+    my $startingString = shift;
+    my $traceArray = shift;
+    my $endingString = shift;
+    my $ret = $startingString;
+    my @trace = @{$traceArray};
+
+    foreach(@trace)
+    {
+        $ret .= "\r\n$_";
+    }
+    $ret .= "\r\n" . $endingString;
+    $log->addLine($ret) if $debug;
+    print $ret if $debug;
+    return $ret;
+}
+
 sub figurePIDFileStuff
 {
     if (-e $pidfile)
@@ -739,6 +827,11 @@ sub alertErrorEmail
     ";
 
     # $email->send("Automatic Record Load Utility - $vendor Import Report Job # $jobid - ERROR","$error\r\n\r\n-Friendly MOBIUS Server-");
+}
+
+sub cleanup
+{
+    DESTROY();
 }
 
 sub DESTROY
