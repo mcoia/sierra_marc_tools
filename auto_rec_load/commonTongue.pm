@@ -36,6 +36,7 @@ sub parseJSON
 {
     my $self = shift;
     my $json = shift;
+    addTrace($self, "parseJSON", "Parsing JSON init");
     if( ref $json eq 'HASH' )
     {
         while ( (my $key, my $value) = each( %{$json} ) )
@@ -56,6 +57,7 @@ sub parseJSON
             }
         }
     }
+    addTrace($self, "parseJSON", "Parsing JSON finished") if $self->{debug};
     return $self;
 }
 

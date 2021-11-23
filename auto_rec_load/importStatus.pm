@@ -4,12 +4,15 @@ package importStatus;
 
 use lib qw(./);
 use Data::Dumper;
+use marcEditor;
 use parent commonTongue;
 
 sub new
 {
     my ($class, @args) = @_;
     my ($self, $args) = $class->SUPER::new(@args);
+print "Starting importStatus\n";
+
     @args = @{$args};
     $self = _init($self, @args);
     return $self;
@@ -65,10 +68,10 @@ sub fillVars
     ".$self->{prefix}.
     "_source aus on (aus.id=aft.source)
     where
-    stat.id = ".$self->{importStatusID};
+    ais.id = ".$self->{importStatusID};
 
     $self->{log}->addLine($query) if $self->{debug};
-    my @results = @{$self->{getDataFromDB($query)};
+    my @results = @{$self->getDataFromDB($query)};
     foreach(@results)
     {
         my @row = @{$_};
@@ -94,22 +97,25 @@ sub fillVars
     return $self;
 }
 
-sub processMARC
+sub convertMARC
 {
     my $self = shift;
+    my $type = shift;
     my $beforeFile = shift;
     my $afterFile = shift;
-    my $manip = new marcEditor($log, $debug);
+    my $manip = new marcEditor($log, $debug, $type);
     my $marc = $self->{record_raw};
     $marc =~ s/(<leader>.........)./${1}a/;
     my $marcobject = MARC::Record->new_from_xml($marc);
     $beforeFile->addLine($marcobject->as_formatted()) if($beforeFile);
-
+print "Wrote to before\n";
+exit;
     $self->{record_tweaked} = $manip->manipulateMARC($self->{marc_editor_name}, $marcobject, $self->{tag});
     $afterFile->addLine($self->{record_tweaked}->as_formatted()) if($afterFile);
     $self->{record_tweaked} = $self->convertMARCtoXML($self->{record_tweaked});
+    undef $marc;
+    undef $marcobject;
     return $self->{record_tweaked};
-
 }
 
 sub getTag
@@ -118,15 +124,53 @@ sub getTag
     return $self->{tag};
 }
 
+sub getSourceID
+{
+    my $self = shift;
+    return $self->{source};
+}
+
 sub writeDB
 {
-    
+    my $self = shift;
+    my $query = "UPDATE
+    ".$self->{prefix}.
+    "_import_status ais
+    SET
+    status = ?,
+    record_raw = ?,
+    record_tweaked = ?,
+    z001 = ?,
+    loaded = ?,
+    ils_id = ?
+    WHERE
+    id = ?";
+    my @vars = ($self->{status},$self->{record_raw},$self->{record_tweaked},$self->{z001},$self->{loaded},$self->{ils_id},$self->{importStatusID});
+    $self->doUpdateQuery($query, undef, \@vars);
 }
 
 sub getSource
 {
     my $self = shift;
     return $self->{source};
+}
+
+sub setStatus
+{
+    my $self = shift;
+    my $self->{status} = shift;
+}
+
+sub setILSID
+{
+    my $self = shift;
+    my $self->{ils_id} = shift;
+}
+
+sub setLoaded
+{
+    my $self = shift;
+    my $self->{loaded} = shift;
 }
 
 sub DESTROY

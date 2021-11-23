@@ -168,16 +168,20 @@ sub processDownloadedFile
         foreach(@files)
         {
             my $thisFile = $_;
-            my $fileID = $self->createFileEntry($self->getFileNameWithoutPath($thisFile), $key);
-            if($fileID)
+            my $bareFileName = $self->getFileNameWithoutPath($thisFile);
+            if($self->decideToProcessFile($bareFileName))
             {
-                my @records = @{$self->readMARCFile($thisFile)};
-                $self->{log}->addLine("Read: " . $#records . " MARC records");
-                $self->createImportStatusFromRecordArray($fileID, $job, \@records);
-            }
-            else
-            {
-                $self->setError("Couldn't create a DB entry for $file");
+                my $fileID = $self->createFileEntry($bareFileName, $key);
+                if($fileID)
+                {
+                    my @records = @{$self->readMARCFile($thisFile)};
+                    $self->{log}->addLine("Read: " . $#records . " MARC records");
+                    $self->createImportStatusFromRecordArray($fileID, $job, \@records);
+                }
+                else
+                {
+                    $self->setError("Couldn't create a DB entry for $file");
+                }
             }
         }
         $self->readyJob($job);

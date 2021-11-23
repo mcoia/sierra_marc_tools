@@ -819,6 +819,39 @@ sub updateJob
     
 }
 
+sub decideToProcessFile
+{
+    my $self = shift;
+    my $sourceFileName = shift;
+    $sourceFileName = lc $sourceFileName;
+    my $ret = "";
+    foreach($self->{deletes})
+    {
+        my $scrap = lc $_;
+        if($sourceFileName =~ m/$scrap/g)
+        {
+            $ret = 1;
+        }
+    }
+    if($self->{adds})
+    {
+        foreach($self->{adds})
+        {
+            my $scrap = lc $_;
+            if($sourceFileName =~ m/$scrap/g)
+            {
+                $ret = 1;
+                last;
+            }
+        }
+    }
+    else
+    {
+        $ret = 1;
+    }
+    return $ret;
+}
+
 sub calcCheckDigit
 {
     my $self = shift;

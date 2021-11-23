@@ -189,6 +189,18 @@ sub runScrapers
 
 sub runJobs
 {
+    my $query = "
+    update auto_import_status
+set
+status='new'";
+$dbHandler->update($query);
+
+$query = "
+update auto_job
+set
+status='ready'";
+$dbHandler->update($query);
+
     my @jobs = @{getReadyJobs()};
     foreach(@jobs)
     {
@@ -240,7 +252,7 @@ sub getReadyJobs
     SELECT
     job.id
     FROM
-    $stagingTablePrefix"."_job client
+    $stagingTablePrefix"."_job job
     where
     job.status = 'ready'
     and job.start_time is null
