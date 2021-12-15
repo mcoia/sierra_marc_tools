@@ -6,6 +6,7 @@ use lib qw(./);
 
 use MARC::Record;
 use MARC::Field;
+use Data::Dumper;
 
 our %map = 
 (
@@ -38,13 +39,25 @@ sub manipulateMARC
     my $key = shift;
     my $marc = shift;
     my $tag = shift;
-print "starting manip\n";
     my $ret = $marc;
     if ( $map{$key} )
     {
         my $ev = '$ret = ' . $map{$key} .'($self, $marc);';
         $self->{log}->addLine("Running " . $map{$key} ) if($self->{debug});
+        # print $ev . "\n";
         eval $ev;
+        # local $@;
+        # eval
+        # {
+            # eval $ev;
+            # 1;  # ok
+        # } or do
+        # {
+            # print "Failed to manipulate\n";
+            # print $@;
+            # die;
+        # };
+        $ret = tagMARC($self, $ret, $tag);
     }
     return $ret;
 }
@@ -54,16 +67,14 @@ sub ebook_central_MWSU
     my $self = shift;
     my $marc = shift;
 
-print "Manipulating ebook_central_MWSU\n";
     # Add 506
-    my $field506 = MARC::Field->new( '506', undef, undef, 'c' => 'Access restricted to subscribers');
+    my $field506 = MARC::Field->new( '506', ' ', ' ', 'c' => 'Access restricted to subscribers');
     $marc->insert_grouped_field($field506);
-
     if($self->{type} eq 'adds')
     {
         # Add 949
         # \1$aMW E-Book$g1$h020$i0$lm2wii$o-$r-$s-$t014$u-$z099$xProQuest Reference E-Book
-        my $field949 = MARC::Field->new( '949', undef, 1,
+        my $field949 = MARC::Field->new( '949', ' ', 1,
         'a' => 'MW E-Book',
         'h' => '020',
         'o' => '-',
@@ -76,14 +87,13 @@ print "Manipulating ebook_central_MWSU\n";
         );
         $marc->insert_grouped_field($field949);
     }
-
     $marc = updateSubfields($marc, '856', 'u', 'https://login.ezproxy.missouriwestern.edu/login?url=', 1); # prepend
     $marc = updateSubfields($marc, '856', 'z', 'MWSU E Book');
     $marc = updateSubfields($marc, '856', '5', '6mwsu');
 
     # Inject a 245$h after all a and p subfields
-    my @prefields = ('a','p');
-    $marc = createSubfieldBetween($marc, '245', 'h', '[electronic resource (video)]', \@prefields, undef, ' / ');
+    my @prefields = ('a','p','n');
+    $marc = createSubfieldBetween($marc, '245', 'h', '[electronic resource (video)]', \@prefields, undef, undef);
     return $marc;
 }
 
@@ -101,8 +111,9 @@ sub createSubfieldBetween
 
 
     if($presubfieldsRef)
-    {
-       @preSubfieldCodes = @{presubfieldsRef};
+    {   
+       @preSubfieldCodes = @{$presubfieldsRef};
+     
     }
     if($aftersubfieldsRef)
     {
@@ -113,28 +124,31 @@ sub createSubfieldBetween
     foreach(@fields)
     {
         my $thisfield = $_;
+        # print Dumper($thisfield);
         $thisfield->delete_subfield(code => $subfield); # remove any pre-existing destination subfield
         my @all = $thisfield->subfields();
+        # print Dumper(\@all);
         $thisfield->delete_subfield(match => qr/./); #wipe everything out
         my $didntPrepend = 0;
         for my $i (0..$#all) #find all of the subfields that we should start with
         {
             if(@all[$i])
             {
-                my @combo = @{$_};
+                my @combo = @{@all[$i]};
                 my $found = 0;
                 foreach(@preSubfieldCodes)
                 {
                     if( ($_ eq @combo[0]) && !$found)
                     {
                         $thisfield->add_subfields(@combo[0] => @combo[1]);
-                        delete @all[$i];
+                        @all[$i] = undef;
                         $found = 1;
                     }
                 }
                 $didntPrepend = 1 if(!$found);
             }
         }
+
         $subfieldValue .= $optionalAppend if($optionalAppend && $didntPrepend);
 
         $thisfield->add_subfields($subfield => $subfieldValue);
@@ -142,7 +156,7 @@ sub createSubfieldBetween
         {
             if(@all[$i])
             {
-                my @combo = @{$_};
+                my @combo = @{@all[$i]};
                 $thisfield->add_subfields(@combo[0] => @combo[1]);
             }
         }
@@ -155,22 +169,12 @@ sub tagMARC
     my $self = shift;
     my $marc = shift;
     my $tag = shift;
-    
+    if ($tag)
+    {
+        my $field830 = MARC::Field->new( '830', ' ', ' ', 'a' => $tag);
+        $marc->insert_grouped_field($field830);
+    }
     return $marc;
-}
-
-sub KC_Towers_FOD_Avila
-{
-    my $marc = @_[0];
-    my $z001 = $marc->field('001');
-    $z001->update("fod".$z001->data());
-    my $field949 = MARC::Field->new( '949',' ','1', h => '100', i=>0, l=>'avelr', r => 'z', s => 'i', t => '014', u => '-' );
-    $marc->insert_grouped_field( $field949 );
-    $marc = prepost856z($marc,"<a href=","><img src=\"/screens/avila_856_icon.jpg \" alt=\"Avila Online Access\"></a>");
-    $marc = remove856u($marc);
-    #print ("U removed, z takes argument of u as a clickable link"); 
-    return $marc;
-
 }
 
 sub updateSubfields

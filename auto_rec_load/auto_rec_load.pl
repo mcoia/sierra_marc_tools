@@ -24,9 +24,10 @@ use email;
 use dataHandler;
 use dataHandlerProquest;
 use commonTongue;
+use marcEditor;
 use job;
 
-use sigtrap qw(handler cleanup normal-signals);
+# use sigtrap qw(handler cleanup normal-signals);
 
 our $stagingTablePrefix = "auto";
 our $pidfile = "/tmp/auto_rec_load.pl.pid";
@@ -46,8 +47,9 @@ our $runAllJobs = 0;
 our $runJobID;
 our $configFile;
 our $jobid = -1;
-our $vendor = "";
+our $vendor = '';
 our $screenShotDIR;
+our $testMARC = '';
 
 GetOptions (
 "config=s" => \$configFile,
@@ -60,13 +62,14 @@ GetOptions (
 "runAllJobs" => \$runAllJobs,
 "runJob" => \$runJobID,
 "pidfile" => \$pidfile,
+"testMARC=s" => \$testMARC,
 )
 or die("Error in command line arguments\nYou can specify
 --config                                      [Path to the config file]
 --debug                                       [Cause more log output]
 --recreateDB                                  [Deletes the tables and recreates them]
 --dbSeed                                      [DB Seed file - populating the base data]
-
+--testMARC                                    [Expects to find test.mrc in working folder, pass the name of the MARC editor you want to test EG 'ebook_central_MWSU']
 \n");
 
 if(!$configFile || !(-e $configFile) )
@@ -87,7 +90,10 @@ if($conf)
         figurePIDFileStuff();
         checkConfig();
         $log = new Loghandler($conf->{"logfile"});
-        $log->truncFile("****************** Starting ******************");
+        $log->truncFile("");
+        $log->addLogLine("****************** Starting ******************");
+
+        runTest() if($testMARC);
 
         setupDB();
 
@@ -100,8 +106,6 @@ if($conf)
         $screenShotDIR = "$cwd/screenshots";
         mkdir $screenShotDIR unless -d $screenShotDIR;
 
-# my $test = new job($log,$dbHandler,$stagingTablePrefix, $debug,  1);
-# exit;
         runScrapers() if($runAllScrapers || ($specificSource && $specificClient));
         
         runJobs() if($runAllJobs || ($runJobID));
@@ -192,13 +196,16 @@ sub runJobs
     my $query = "
     update auto_import_status
 set
-status='new'";
+status='new',
+record_tweaked=null,
+itype=null";
 $dbHandler->update($query);
 
 $query = "
 update auto_job
 set
-status='ready'";
+status='ready',
+current_action_num=0";
 $dbHandler->update($query);
 
     my @jobs = @{getReadyJobs()};
@@ -224,7 +231,7 @@ $dbHandler->update($query);
                 next;
             };
         }
-        # Run the scrape function
+        # Run the runJob function
         {
             local $@;
             eval
@@ -243,6 +250,53 @@ $dbHandler->update($query);
         concatTrace('', $tJob->getTrace(), '');
         undef $tJob;
     }
+}
+
+sub runTest
+{
+    print "Testing MARC manipulations: $testMARC\n";
+    my $cwd = getcwd();
+    my $marcin = "$cwd/test.mrc";
+    if(!(-e $marcin))
+    {
+        print "Can't test without some MARC, please provide 'test.mrc' in current working directory\n";
+    }
+    my $before = new Loghandler("$cwd/before.txt");
+    my $after = new Loghandler("$cwd/after.txt");
+    $before->truncFile("");
+    $after->truncFile("");
+    my $file = MARC::File::USMARC->in($marcin);
+    my @types = ("adds", "updates");
+    my $count = 0;
+    while ( my $marc = $file->next() )
+    {
+        my $pristine = $marc->clone;
+        foreach(@types)
+        {
+            $count++;
+            my $marc2 = $pristine->clone;
+            my $editor = new marcEditor($log, $debug, $_);
+            $before->addLine("***********Test $count - Type: $_**************");
+            $after->addLine("***********Test $count - Type: $_**************");
+            $before->addLine($marc2->as_formatted());
+            print "Running manipulator\n'$testMARC'\n";
+            $marc2 = $editor->manipulateMARC($testMARC, $marc2, "Test Dummy");
+            $after->addLine($marc2->as_formatted());
+            $before->addLine("***********End Test $count**************");
+            $after->addLine("***********End Test $count**************");
+            foreach my $i (0..10)
+            {
+                my $rand = $mobUtil->generateRandomString(30);
+                $before->addLine($rand);
+                $after->addLine($rand);
+            }
+            undef $editor;
+            undef $marc2;
+        }
+        undef $pristine;
+    }
+    print "The before and after files are here:\n" . $before->getFileName() . "\n" . $after->getFileName() . "\n";
+    exit;
 }
 
 sub getReadyJobs
@@ -515,6 +569,7 @@ sub createDatabase
         z001 varchar(100),
         loaded BOOLEAN DEFAULT FALSE,
         ils_id varchar(100),
+        itype varchar(10),
         insert_time datetime DEFAULT CURRENT_TIMESTAMP,
         job int,
         PRIMARY KEY (id),

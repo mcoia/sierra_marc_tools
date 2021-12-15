@@ -626,28 +626,6 @@ sub getsubfield
     return $ret;
 }
 
-sub entityize { 
-    my($self, $string, $form) = @_;
-    $form ||= "";
-
-    if ($form eq 'D')
-    {
-        $string = NFD($string);
-    }
-    else
-    {
-        $string = NFC($string);
-    }
-
-    # Convert raw ampersands to entities
-    $string =~ s/&(?!\S+;)/&amp;/gso;
-
-    # Convert Unicode characters to entities
-    $string =~ s/([\x{0080}-\x{fffd}])/sprintf('&#x%X;',ord($1))/sgoe;
-
-    return $string;
-}
-
 sub createFileEntry
 {
     my $self = shift;

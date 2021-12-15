@@ -54,7 +54,48 @@ sub fillVars
 
     my @results = @{$self->{dbHandler}->query($query)};
 
-    $self->{error} = "No Job with that ID number: " . $self->{job} if($#results == -1);
+    $self->setError("No Job with that ID number: " . $self->{job}) if($#results == -1);
+    if($#results > -1)
+    {
+        $query = "SELECT
+        distinct source.json_connection_detail,
+        cluster.postgres_host,
+        cluster.postgres_db,
+        cluster.postgres_port,
+        cluster.postgres_username,
+        cluster.postgres_password
+        FROM
+        ".$self->{prefix} ."_import_status import
+        join
+        ".$self->{prefix} ."_file_track file on (file.id=import.file)
+        join
+        ".$self->{prefix} ."_source source on (file.source=source.id)
+        join
+        ".$self->{prefix} ."_client client on (client.id=source.client)
+        join
+        ".$self->{prefix} ."_cluster cluster on (cluster.id=client.cluster)
+        WHERE
+        import.job = ".$self->{job};
+        @results = @{$self->getDataFromDB($query)};
+        foreach(@results)
+        {
+            my @row = @{$_};
+            $self->{json} = decode_json( @row[0] );
+            $self->{dbhost} = @row[1];
+            $self->{dbdb} = @row[2];
+            $self->{dbport} = @row[3];
+            $self->{dbuser} = @row[4];
+            $self->{dbpass} = @row[5];
+
+            $self->parseJSON($self->{json});
+
+            setupExternalPGConnection($self) if(!$self->{extPG} && $self->{checkAddsVsUpdates});
+
+            $self->parseJSON($self->{json});
+
+            last; # should only be one row returned
+        }
+    }
 
     return $self;
 }
@@ -69,127 +110,128 @@ sub runJob
     my %recordTracker = ();
     $recordTracker{"convertedSuccess"} = 0;
     $recordTracker{"convertedFailed"} = 0;
-    $recordTracker{"outputSuccess"} = 0;
-    $recordTracker{"outputFailed"} = 0;
     $recordTracker{"total"} = 0;
     updateJobStatus($self, 'Job Started');
     markImportsAsWorking($self, \@importIDs, "processing");
-    my %fileOutPutDestination = %{addsOrUpdates($self, \%imports)};
-
-
-my $before = new Loghandler("/mnt/evergreen/tmp/auto_rec_load/before.txt");
-my $after = new Loghandler("/mnt/evergreen/tmp/auto_rec_load/after.txt");
+    my %fileOutPutDestination = %{outputFileRecordSortingHat($self, \%imports)};
+    %fileOutPutDestination = %{addsOrUpdates($self, \%fileOutPutDestination)};
 
     my $currentSource = 0;
+    my %fileOutput = ();
     # Convert the marc, store results in the DB, weeding out errors
     while($#importIDs > -1)
     {
         $recordTracker{"total"}++;
         my $iID = shift @importIDs;
-        my @values = @{$imports{$iID}};
+        my @values = @{$fileOutPutDestination{$iID}};
         my $tag = @values[0];
         my $marcXML = @values[1];
         my $filename = @values[2];
         my $sourceID = @values[3];
-        my $import;
-        my $perl = '$import = new importStatus($self->{log}, $self->{dbHandler}, $self->{prefix}, $self->{debug}, $iID);';
-
-        # Instantiate the import
+        my $z001 = @values[4];
+        my $type = @values[5];
+        if($type eq 'ignore')
         {
-            local $@;
-            eval
-            {
-                eval $perl;
-                1;  # ok
-            } or do
-            {
-                updateImportError($self, $iID, "Couldn't read something correctly, error creating importStatus object");
-                $recordTracker{"convertedFailed"}++;
-            };
+            $import->setItype($type);
+            $import->writeDB();
+            updateImportError($self, $iID, "Filename is ignored");
         }
+        else
         {
-            local $@;
-            eval
+            if($currentSource != $sourceID)
             {
-                updateJobStatus($self, "Converting MARC importID $iID");
-                $import->convertMARC("adds", $before, $after);
-                $import->setStatus("Converted MARC");
-                
-                $import->writeDB();
-                $recordTracker{"convertedSuccess"}++;
-                1;  # ok
-            } or do
-            {
-                updateImportError($self, $iID, "Couldn't manipulate the MARC: importStatus object");
-                $recordTracker{"convertedFailed"}++;
-            };
-        }
-        undef $import;
+                writeOutputMARC($self, \%fileOutput, $tag);
+                %fileOutput = ();
+                $currentSource = $sourceID;
+            }
+            my $import;
+            my $perl = '$import = new importStatus($self->{log}, $self->{dbHandler}, $self->{prefix}, $self->{debug}, $iID);';
 
+            # Instantiate the import
+            {
+                local $@;
+                eval
+                {
+                    eval $perl;
+                    1;  # ok
+                } or do
+                {
+                    $self>{log}->addLogLine("\n\nError during Instantiating importStatus ID $iID - " .$@ . "\n\n");
+                    updateImportError($self, $iID, "Couldn't read something correctly, error creating importStatus object");
+                    $recordTracker{"convertedFailed"}++;
+                };
+            }
+            {
+                local $@;
+                eval
+                {
+                    updateJobStatus($self, "Converting MARC importID $iID");
+                    print "Converting...\n" if $self->{debug};
+                    $import->convertMARC($type);
+                    print "Converted...\n" if $self->{debug};
+                    $import->setStatus("Converted MARC");
+                    $import->setItype($type);
+
+                    $fileOutput{$type} = '' if(!$fileOutput{$type});
+
+                    my $marc = MARC::Record->new_from_xml($import->getTweakedRecord());
+                    print "created marc object...\n" if $self->{debug};
+                    if($self->{"outfile_$type"})
+                    {
+                        $fileOutput{$type} .= $marc->as_usmarc();
+                        $recordTracker{"convertedSuccess"}++;
+                        print "writing success\n" if $self->{debug};
+                    }
+                    else
+                    {
+                        $import->setStatus("Output Folder: $type is not defined, cannot write to disk");
+                        print "writing fail\n" if $self->{debug};
+                    }
+                    $import->writeDB();
+                    1;  # ok
+                } or do
+                {
+                    $self>{log}->addLogLine("Error during converting/writing MARC Status ID $iID - " .$@);
+                    updateImportError($self, $iID, "Couldn't manipulate the MARC: importStatus object");
+                    $recordTracker{"convertedFailed"}++;
+                };
+            }
+            undef $import;
+        }
         if($#importIDs == -1) # get more
         {
             %imports = undef; # Hopefully garbage collector comes :)
             %imports = %{getImportIDs($self)};
             @importIDs = ( keys %imports );
-            %fileOutPutDestination = %{addsOrUpdates($self, \%imports)};
+            %fileOutPutDestination = %{outputFileRecordSortingHat($self, \%imports)};
+            %fileOutPutDestination = %{addsOrUpdates($self, \%fileOutPutDestination)};
         }
     }
+    writeOutputMARC($self, \%fileOutput);
+    my $totalLine = "Job's Done; Total: " . $recordTracker{"total"} . " success: " . $recordTracker{"convertedSuccess"} . " fail: " . $recordTracker{"convertedFailed"};
+    finishJob($self, $totalLine)
+}
 
-    
-    # # Write the resulting MARC to output file, sorting them into their approproate output folders
-    # my %imports = %{getImportIDsForOutputFile($self)};
-    # @importIDs = ( keys %imports );
-    # %outputTrack = ();
-    # while($#importIDs > -1)
-    # {
-        # my $iID = shift @importIDs;
-        # my @values = $imports{$iID};
-        # print Dumper(\@values);
-        # exit;
-        # my $tag = @values[0];
-        # my $marcXML = @values[1];
-        # my $filename = @values[2];
-        # my $sourceID = @values[2];
-        # setupSourceOutputFiles($self, $sourceID, $tag) if($currentSource != $sourceID);
-        # $currentSource = $sourceID if($currentSource != $sourceID);
-        # # Instantiate the import
-        # {
-            # local $@;
-            # eval
-            # {
-                # eval $perl;
-                # 1;  # ok
-            # } or do
-            # {
-                # updateImportError($self, $iID, "Couldn't read something correctly, error creating importStatus object");
-                # $recordTracker{"outputFailed"}++;
-            # };
-        # }
-        # {
-            # local $@;
-            # eval
-            # {
-                # updateJobStatus($self, 'Converting MARC importID $iID');
-                # $import->convertMARC();
-                # $import->setStatus("Converted MARC");
-                # $import->writeDB();
-                # $recordTracker{"outputSuccess"}++;
-                # 1;  # ok
-            # } or do
-            # {
-                # updateImportError($self, $iID, "Couldn't manipulate the MARC: importStatus object");
-            # };
-        # }
-        # undef $import;
+sub writeOutputMARC
+{
+    my $self = shift;
+    my $outputRef = shift;
+    my $tag = shift;
+    my %fileOutput = %{$outputRef};
+    # $self->{log}->addLine("Writing MARC data to disk");
+    # $self->{log}->addLine(Dumper(\%fileOutput));
 
-        # if($#importIDs == -1) # get more
-        # {
-            # %imports = undef; # Hopefully garbage collector comes :)
-            # %imports = %{getImportIDsForOutputFile($self)};
-            # @importIDs = ( keys %imports );
-        # }
-    # }
-
+    while ( (my $type, my $output) = each(%fileOutput) )
+    {
+        $self->{log}->addLogLine("Writing $type -> ". $self->{"outfile_$type"});
+        if( ($self->{"outfile_$type"}) && ($output ne '' ) )
+        {
+            print "Writing to: " . $self->{"outfile_$type"} . "\n" if $self->{debug};
+            my $outputFile = new Loghandler($self->{"outfile_$type"});
+            $outputFile->addLineRaw($output);
+        }
+    }
+    setupSourceOutputFiles($self, $tag) if $tag;
 }
 
 sub outputFileRecordSortingHat
@@ -199,32 +241,36 @@ sub outputFileRecordSortingHat
     my %imports = %{$importRef};
 
     my %fileAnswers = ();
-    while ( (my $key, my $value) = each(%imports}) )
+    while ( (my $key, my $value) = each(%imports) )
     {
         my @ar = @{$value};
         my $sourceFileName = @ar[2];
         $sourceFileName = lc $sourceFileName;
+        # print "Filename: $sourceFileName\n";
         my $answer = "adds";
         if(!$fileAnswers{$sourceFileName})
         {
-            foreach($self->{deletes}) #if it's a delete, then we don't do anything
+            if($self->{deletes})
             {
-                my $scrap = lc $_;
-                if($sourceFileName =~ m/$scrap/g)
+                foreach(@{$self->{deletes}}) #if it's a delete, then we don't do anything
                 {
-                    $fileAnswers{$sourceFileName} = "deletes";
-                    $answer = "deletes";
+                    my $scrap = lc $_;
+                    if($sourceFileName =~ m/$scrap/g)
+                    {
+                        $fileAnswers{$sourceFileName} = "deletes";
+                        $answer = "deletes";
+                    }
                 }
             }
             if($self->{adds}) # ensuring that there is a match, if none, then ignore the file
             {
                 my $found = 0;
-                foreach($self->{adds}) #if "adds" is defined in the json string, then we only want to deal with records that match any of those scraps
+                foreach(@{$self->{adds}}) #if "adds" is defined in the json string, then we only want to deal with records that match any of those scraps
                 {
                     my $scrap = lc $_;
                     $found =  1 if($sourceFileName =~ m/$scrap/g); 
                 }
-                $answer = undef if !$found;
+                $answer = "ignore" if !$found;
             }
         }
         else
@@ -241,25 +287,31 @@ sub addsOrUpdates
 {
     my $self = shift;
     my $importRef = shift;
-    my %imports = %{$importRef};
+    my %imports = %{$importRef};;
 
     if($self->{locationCodeRegex} && $self->{checkAddsVsUpdates} && $self->{extPG})
     {
         my %z001Map = ();
         my $z001IDString = "";
-        while ( (my $key, my $value) = each(%imports}) )
+        while ( (my $key, my $value) = each(%imports) )
         {
             my @ar = @{$value};
             my $z001 = @ar[4];
-            my @empty = ();
-            $z001Map{$z001} = \@empty if(!$z001Map{$z001});
-            @empty = @{$z001Map{$z001}};
-            push (@empty, $key);
-            $z001Map{$z001} = \@empty;
-            $z001IDString .= "'$z001',";
+            my $type = @ar[5];
+            if($type eq 'adds') # We only care about distinguishing adds from "updates". deletes are ignoreed here
+            {
+                $self->{log}->addLine("Parsing addsorupdates");
+                $self->{log}->addLine(Dumper(\@ar));
+                my @empty = ();
+                $z001Map{$z001} = \@empty if(!$z001Map{$z001});
+                @empty = @{$z001Map{$z001}};
+                push (@empty, $key);
+                $z001Map{$z001} = \@empty;
+                $z001IDString .= "\$ooone\$$z001\$ooone\$,";
+            }
         }
         $z001IDString = substr($z001IDString, 0, -1);
-        if($z001IDString !='')
+        if($z001IDString ne '')
         {
             my $query = "
             select vv.field_content from
@@ -273,67 +325,39 @@ sub addsOrUpdates
             foreach(@results)
             {
                 my @row = @{$_};
-                my @ids;
+                my @ids = ();
                 @ids = @{$z001Map{@row[0]}} if $z001Map{@row[0]};
                 foreach(@ids)
                 {
-                    $ret{$_} = "updates";
+                    print "Looping: $_\n";
+                    my @ar = @{$imports{$_}} if $imports{$_};
+                    $self->{log}->addLine(Dumper(\@ar));
+                    @ar[5] = "updates";
+                    $self->{log}->addLine(Dumper(\@ar));
+                    $imports{$_} = \@ar;
                 }
-            }
-            while ( (my $key, my $value) = each(%imports}) )
-            {
-                $ret{$key} = "adds" if !$ret{$key};
             }
         }
     }
+    $self->{log}->addLine(Dumper(\%imports)) if $self->{debug};
+    return \%imports;
 }
 
 sub setupSourceOutputFiles
 {
     my $self = shift;
-    my $sourceID = shift;
     my $tag = shift;
-    my $query = "SELECT
-    source.json_connection_detail,
-    cluster.postgres_host,
-    cluster.postgres_db,
-    cluster.postgres_port,
-    cluster.postgres_username,
-    cluster.postgres_password
-    FROM
-    ".$self->{prefix} ."_source source
-    join
-    ".$self->{prefix} ."_client client on (client.id=source.client)
-    join
-    ".$self->{prefix} ."_cluster cluster on (cluster.id=client.cluster)
-    WHERE
-    source.id = $sourceID";
-    my @results = @{$self->getDataFromDB($query)};
-    foreach(@results)
+    
+    if($self->{folders})
     {
-        my @row = @{$_};
-        $self->{json} = decode_json( @row[0] );
-        $self->{dbhost} = @row[1];
-        $self->{dbdb} = @row[2];
-        $self->{dbport} = @row[3];
-        $self->{dbuser} = @row[4];
-        $self->{dbpass} = @row[5];
-
-        $self->parseJSON($self->{json});
-
-        setupExternalPGConnection($self) if(!$self->{extPG} && $self->{checkAddsVsUpdates});
-        $self->{adds_file_prefix} = @row[1];
-        if($self->{folders})
+        my $mobUtil = new Mobiusutil();
+        while ( (my $key, my $value) = each(%{$self->{folders}}) )
         {
-            my $mobUtil = new Mobiusutil();
-            while ( (my $key, my $value) = each(%{$self->{folders}}) )
-            {
-                $self->{'outfile_'. $key} = $mobUtil->chooseNewFileName($value, $tag, "mrc");
-            }
-            undef $mobUtil;
+            $self->{'outfile_'. $key} = $mobUtil->chooseNewFileName($value, $tag, "mrc");
         }
-        last; # should only be one row returned
+        undef $mobUtil;
     }
+    $self->{log}->addLine(Dumper($self));
 }
 
 sub setupExternalPGConnection
@@ -341,14 +365,23 @@ sub setupExternalPGConnection
     my $self = shift;
     my @needed = qw(dbhost dbdb dbport dbuser dbpass);
     my $missing = 0;
-    while(@needed)
+    print "Starting externalPGConnection\n";
+    foreach(@needed)
     {
         $missing = 1 if !($self->{$_});
     }
     if(!$missing)
     {
-        $self->{extPG} = DBhandler($self->{"dbdb"},$self->{"dbhost"},$self->{"dbuser"},$self->{"dbpass"},$self->{"dbport"});
+        print "Starting object creation\n";
+        eval{$self->{extPG} = new DBhandler($self->{"dbdb"},$self->{"dbhost"},$self->{"dbuser"},$self->{"dbpass"},$self->{"dbport"});};
+        if ($@)
+        {
+            $self->setError("Could not establish a connection to external DB host: '" . $self->{"dbhost"} . "'");
+            undef $self->{extPG};
+        }
+
     }
+    print "done externalPGConnection\n";
 }
 
 sub updateImportError
@@ -475,6 +508,7 @@ sub finishJob
 sub DESTROY
 {
     my ($self) = @_[0];
+    $self->{extPG}->breakdown() if $self->{extPG};
     ## call destructor
 }
 

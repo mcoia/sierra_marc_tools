@@ -11,7 +11,6 @@ sub new
 {
     my ($class, @args) = @_;
     my ($self, $args) = $class->SUPER::new(@args);
-print "Starting importStatus\n";
 
     @args = @{$args};
     $self = _init($self, @args);
@@ -50,6 +49,7 @@ sub fillVars
     ais.z001,
     ais.loaded,
     ais.ils_id,
+    ais.itype,
     ais.job,
     aus.id,
     ac.id,
@@ -79,15 +79,16 @@ sub fillVars
         $self->{status} = @row[0];
         $self->{record_raw} = @row[1];
         $self->{record_tweaked} = @row[2];
-        $self->{tag} = @row[3];
+        $self->{tag} = @row[3] . $self->{importStatusID}; # The records are unique and get tagged with the seed plus the ID number
         $self->{z001} = @row[4];
         $self->{loaded} = @row[5];
         $self->{ils_id} = @row[6];
-        $self->{job} = @row[7];
-        $self->{source} = @row[8];
-        $self->{client} = @row[9];
-        $self->{source_name} = @row[10];
-        $self->{client_name} = @row[11];
+        $self->{itype} = @row[7];
+        $self->{job} = @row[8];
+        $self->{source} = @row[9];
+        $self->{client} = @row[10];
+        $self->{source_name} = @row[11];
+        $self->{client_name} = @row[12];
         $self->{marc_editor_name} = $self->{source_name} . '_' . $self->{client_name};
     }
 
@@ -103,13 +104,11 @@ sub convertMARC
     my $type = shift;
     my $beforeFile = shift;
     my $afterFile = shift;
-    my $manip = new marcEditor($log, $debug, $type);
+    my $manip = new marcEditor($self->{log}, $self->{debug}, $type);
     my $marc = $self->{record_raw};
     $marc =~ s/(<leader>.........)./${1}a/;
     my $marcobject = MARC::Record->new_from_xml($marc);
     $beforeFile->addLine($marcobject->as_formatted()) if($beforeFile);
-print "Wrote to before\n";
-exit;
     $self->{record_tweaked} = $manip->manipulateMARC($self->{marc_editor_name}, $marcobject, $self->{tag});
     $afterFile->addLine($self->{record_tweaked}->as_formatted()) if($afterFile);
     $self->{record_tweaked} = $self->convertMARCtoXML($self->{record_tweaked});
@@ -142,11 +141,28 @@ sub writeDB
     record_tweaked = ?,
     z001 = ?,
     loaded = ?,
-    ils_id = ?
+    ils_id = ?,
+    itype = ?
     WHERE
     id = ?";
-    my @vars = ($self->{status},$self->{record_raw},$self->{record_tweaked},$self->{z001},$self->{loaded},$self->{ils_id},$self->{importStatusID});
+    my @vars =
+    (
+    $self->{status},
+    $self->{record_raw},
+    $self->{record_tweaked},
+    $self->{z001},
+    $self->{loaded},
+    $self->{ils_id},
+    $self->{itype},
+    $self->{importStatusID}
+    );
     $self->doUpdateQuery($query, undef, \@vars);
+}
+
+sub getTweakedRecord
+{
+    my $self = shift;
+    return $self->{record_tweaked};
 }
 
 sub getSource
@@ -155,22 +171,34 @@ sub getSource
     return $self->{source};
 }
 
+sub getItype
+{
+    my $self = shift;
+    return $self->{itype};
+}
+
 sub setStatus
 {
     my $self = shift;
-    my $self->{status} = shift;
+    $self->{status} = shift;
 }
 
 sub setILSID
 {
     my $self = shift;
-    my $self->{ils_id} = shift;
+    $self->{ils_id} = shift;
 }
 
 sub setLoaded
 {
     my $self = shift;
-    my $self->{loaded} = shift;
+    $self->{loaded} = shift;
+}
+
+sub setItype
+{
+    my $self = shift;
+    $self->{itype} = shift;
 }
 
 sub DESTROY
