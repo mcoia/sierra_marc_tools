@@ -590,7 +590,45 @@ sub createDatabase
         ";
         $log->addLine($query) if $debug;
         $dbHandler->update($query);
- 
+
+        $query = "CREATE TABLE $stagingTablePrefix"."_wwwpages (
+        id int not null auto_increment,
+        name varchar(1000),
+        class_name varchar(1000),
+        PRIMARY KEY (id)
+        )
+        ";
+        $log->addLine($query) if $debug;
+        $dbHandler->update($query);
+
+        $query = "INSERT INTO $stagingTablePrefix"."_wwwpages (name, class_name)
+        values('dashboard','dashboardUI')";
+        $log->addLine($query) if $debug;
+        $dbHandler->update($query);
+
+
+        $query = "CREATE TABLE $stagingTablePrefix"."_wwwusers (
+        id int not null auto_increment,
+        username varchar(100) not null,
+        password varchar(100) not null,
+        first_name varchar(100),
+        last_name varchar(100),
+        phone1 varchar(50),
+        phone2 varchar(50),
+        address1 varchar(100),
+        address2 varchar(100),
+        email_address varchar(300),
+        PRIMARY KEY (id)
+        )
+        ";
+        $log->addLine($query) if $debug;
+        $dbHandler->update($query);
+
+        $query = "INSERT INTO $stagingTablePrefix"."_wwwusers (username, password)
+        values('admin', md5(\'password\'))";
+        $log->addLine($query) if $debug;
+        $dbHandler->update($query);
+
 
         ##################
         # FUNCTIONS
