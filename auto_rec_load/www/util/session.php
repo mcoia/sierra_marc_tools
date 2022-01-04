@@ -83,17 +83,16 @@ echo '<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www
 	echo '>';
 }
 
-function printHead(){
+function printHead()
+{
 	printJustHeader(false);
 	echo '<div id="container">';
-	printNav();
-
-echo'<div id="topbar">
+    echo'<div id="topbar">
 			<div id="titlehead">MOBIUS Automated Record Loads</div>';
-echo printUserBar();
-echo'</div><!--  End Topbar -->
-		<div id="content">
-		';
+    echo printUserBar();
+    echo'</div><!--  End Topbar -->';
+    printNav();
+    echo'<div id="content">';
 }
 
 function printFoot(){
@@ -149,10 +148,9 @@ function printWelcome()
 	global $currentUser;
 	echo'<div class="regularBox textAlignCenterBox"><div class="title">Welcome ';
 	$userStuff = $currentUser->getUserArray();
-	echo $userStuff["FIRST_NAME"]." ".$userStuff["LAST_NAME"];
+	echo $userStuff["first_name"]." ".$userStuff["last_name"];
 	echo'</div><br /><br />
-	<h1>THE PLACE WHERE DRYWALL HAPPENS!</h1><br /><br />
-	<img src="images/Quality_Drywall_01.gif" />
+	<h1>Automated Record Loads!</h1><br /><br />
 	<br /><br />
 	<h2>Please choose a task from the menu</h2>
 	</div>
@@ -168,7 +166,7 @@ function printNav()
 
 	if(isset($currentUser) && get_class($currentUser)!==false && get_class($currentUser)=='user')
 	{
-		
+		$printThis = '';
         $printThis.="<a href='javascript:void(0);' id='navBarIcon' onclick='navBarPop()'> <i class='fa fa-bars'></i></a><div id='navbar'>";
 
         $query="SELECT id,name FROM " . $tablePrefix ."wwwpages";
@@ -207,14 +205,14 @@ function printUserBar()
 	if(isset($currentUser) && get_class($currentUser)!==false && get_class($currentUser)=='user')
 	{
 		$usera = $currentUser->getUserArray();
-		$name = $usera["FIRST_NAME"];
+		$name = $usera["first_name"];
 		$id = $currentUser->getUserID();
 		$separater = (strpos($url,"?")!==false)?"&":"?";
 		$unimpersonateLink="";
 		if(isset($_SESSION["impUser"]))
 		{
 			$unimpersonateLink = ' |  <a href="'.$url.$separater.'unimpersonate=1">Unimpersonate</a>';
-		}		
+		}
 		addDebug("Count URI = ".count($uri));
 		
 		echo'<div id="userinfobar"><span id="userwelcometext">Welcome, '.$name.$unimpersonateLink.' |  <a href="'.$url.$separater.'logout=1">Logout</a></span></div>';

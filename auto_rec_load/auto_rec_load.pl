@@ -602,7 +602,7 @@ sub createDatabase
         $dbHandler->update($query);
 
         $query = "INSERT INTO $stagingTablePrefix"."_wwwpages (name, class_name)
-        values('dashboard','dashboardUI')";
+        values('Dashboard','dashboardUI')";
         $log->addLine($query) if $debug;
         $dbHandler->update($query);
 
@@ -624,8 +624,8 @@ sub createDatabase
         $log->addLine($query) if $debug;
         $dbHandler->update($query);
 
-        $query = "INSERT INTO $stagingTablePrefix"."_wwwusers (username, password)
-        values('admin', md5(\'password\'))";
+        $query = "INSERT INTO $stagingTablePrefix"."_wwwusers (username, password, first_name, last_name)
+        values('admin', md5(\'password\'), 'MOBIUS', 'ADMIN')";
         $log->addLine($query) if $debug;
         $dbHandler->update($query);
 

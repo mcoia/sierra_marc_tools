@@ -5,7 +5,7 @@
 
 body {
 	padding: 6px 0px 12px;
-	background-color: #d3e6fd;
+	background-color: #f6faff;
 	color: #333333;
 	font-family: verdana, Helvetica, sans-serif;
 	font-size: 11px;
@@ -250,7 +250,7 @@ a[rel='csv'] {
 #container {
 	/*margin: 0px auto;*/
 	padding-top: 7px;
-	width: 1050px;
+	width: 100%;
 	text-align: justify;
 	
 }
@@ -523,25 +523,25 @@ form table td input{
 	}
 	
 #navbar{
-	background-color: PowderBlue;
-    border: 2px solid white;
-    border-radius: 8px 8px 8px 8px;
-    box-shadow: 0 0 0 5px #000000;
-    margin: 100px 10px 10px;
-    width: 170px;
+    margin: 10px;
+    width: 98%;
+    height: 45px;
 	}
+
 #navbar ul{
-	
+	width: 100%;
 	}
 #navbar ul li{
+    float: left;
 	background: url("../images/link-background2.png") repeat-x scroll center bottom #FFFFFF;
 	border-radius: 8px 8px 8px 8px;
-    border: 2px solid black;
+    border: 1px solid #e7d6ff;
     font-size: 14pt;
     font-family: verdana;
     min-height: 25px;
     margin: 4px;
     text-align: center;
+    padding: 4px
 	}
 #navbar .selected{
 	color: #2db808;
@@ -549,7 +549,7 @@ form table td input{
 #navbar ul li a{
 	color: #000000;
     text-decoration: none;
-    width:100%;
+    width: 100%;
     font-weight: bold;
 	}
 #navbar ul li:hover{
@@ -557,11 +557,7 @@ form table td input{
 	}
 
 #content{
-	background-color: white;
-    border: 3px solid OliveDrab;
-    border-radius: 8px 8px 8px 8px;
-    box-shadow: 0 0 0 3px #000000;
-    margin-top: 10px;
+	margin-top: 10px;
     /*min-height: 900px;*/
     padding: 10px;
 	}
@@ -1041,10 +1037,6 @@ input[readonly="readonly"]
 	}
 
 	#content {
-		background-color: white;
-	    border: 3px solid OliveDrab;
-	    border-radius: 8px 8px 8px 8px;
-	    box-shadow: 0 0 0 3px #000000;
 	    margin-top: 10px;
 	    padding: 10px;
 	}

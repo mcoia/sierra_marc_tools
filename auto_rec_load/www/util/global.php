@@ -6,6 +6,7 @@ require_once ("session.php");
 require_once ("trackingclass.php");
 require_once ("job.php");
 require_once ("user.php");
+require_once ("dashboard.php");
 require_once ("ui/dbfieldclass.php");
 require_once ("ui/tabs.php");
 
@@ -45,26 +46,35 @@ $sqlconnect = new sqlconnect();
     $debugOutput[]= "URL = $url";
     $uriString = parse_url($url);
 
-    $parts = explode('&', $uriString['query']);
-
+    $parts = array();
     $uri = array();
-    foreach ($parts as $param)
+    if(array_key_exists('query', $uriString))
     {
-        //echo $param."<br />";
-        $item = explode('=', urldecode($param));
-        if(count($item)==2)
+        $parts = explode('&', $uriString['query']);
+        $uriString = $uriString['query'];
+        foreach ($parts as $param)
         {
-            $uri[$item[0]] = $item[1];
-            //echo $item[0]." = ".$item[1]."</br >";
+            //echo $param."<br />";
+            $item = explode('=', urldecode($param));
+            if(count($item)==2)
+            {
+                $uri[$item[0]] = $item[1];
+                //echo $item[0]." = ".$item[1]."</br >";
+            }
+            else if(count($item)==1)
+                $uri[$item[0]] = "";
         }
-        else if(count($item)==1)
-            $uri[$item[0]] = "";
+        if(!$uri["pageid"])
+        {
+            $uri["pageid"] = 1; # always load dashboard
+        }
     }
-    if(!$uri["pageid"])
+    else
     {
-        $uri["pageid"] = 1; # always load dashboard
+        $uriString = '';
+        $uri["pageid"] = 1;
     }
-    $uriString = $uriString['query'];
+    
 
 /******END          Setup URL               */
         
@@ -274,7 +284,6 @@ function allowedHere()
 	global $currentUser;
 	global $uri;
 	$ret=true;
-
 	return $ret;
 }
 

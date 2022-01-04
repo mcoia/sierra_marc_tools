@@ -60,7 +60,7 @@ else if(isset($uri["getjson"]))
 	}
 }
 else
-{	
+{
 	printHead();
 	
     if(allowedHere())
@@ -97,17 +97,7 @@ else
 		echo "</div> <!-- END Debug Windows -->";
 	}
 	global $currentUser;
-	if(isset($currentUser))
-	{
-		$seeTracking = $currentUser->getPrivileges()->findID("tracking");
-		if($seeTracking!==false)
-		{
-			echo "<div class=\"trackingWindow\"><div class=\"titlesmaller\">Recent Activity</div><div id=\"trackingDIV\">";
-			$tracking = new trackingUI();
-			echo $tracking->getRecentActivity()."</div>";
-			echo "</div> <!-- END tracking -->";
-		}
-	}
+
 	printFoot();
 }
 
