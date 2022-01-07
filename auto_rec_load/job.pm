@@ -116,6 +116,8 @@ sub runJob
     my %fileOutPutDestination = %{outputFileRecordSortingHat($self, \%imports)};
     %fileOutPutDestination = %{addsOrUpdates($self, \%fileOutPutDestination)};
 
+    startJob($self);
+
     my $currentSource = 0;
     my %fileOutput = ();
     # Convert the marc, store results in the DB, weeding out errors
@@ -478,6 +480,22 @@ sub recordOutputFileDB
     }
     $query = substr($query,0,-1); #remove the last comma
     $self->doUpdateQuery($query, undef, \@vars);
+}
+
+
+sub startJob
+{
+    my $self = shift;
+    my $query =
+    "UPDATE
+    ".$self->{prefix}.
+    "_job
+    set
+    start_time = CURRENT_DATE()
+    where
+    id = ?";
+    my @vals = ($self->{job});
+    $self->doUpdateQuery($query, undef, \@vals);
 }
 
 sub updateJobStatus

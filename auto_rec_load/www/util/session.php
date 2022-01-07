@@ -71,6 +71,7 @@ echo '<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www
 	<script type="text/javascript" src="js/tabs.js"></script>
 	<script type="text/javascript" src="js/search-table.js"></script>
 	<script type="text/javascript" src="js/searchable-dropdown.js"></script>
+    <script type="text/javascript" src="js/dashboard.js"></script>
 	
 	<title>MOBIUS Automated Record loads</title>
 	
@@ -88,7 +89,8 @@ function printHead()
 	printJustHeader(false);
 	echo '<div id="container">';
     echo'<div id="topbar">
-			<div id="titlehead">MOBIUS Automated Record Loads</div>';
+			<div id="titlehead">MOBIUS Automated Record Loads</div>
+            <div class="headerimage"><img src="images/auto_record_load_banner.png" /></div>';
     echo printUserBar();
     echo'</div><!--  End Topbar -->';
     printNav();
@@ -215,7 +217,8 @@ function printUserBar()
 		}
 		addDebug("Count URI = ".count($uri));
 		
-		echo'<div id="userinfobar"><span id="userwelcometext">Welcome, '.$name.$unimpersonateLink.' |  <a href="'.$url.$separater.'logout=1">Logout</a></span></div>';
+		echo'<div id="userinfobar"><span id="userwelcometext">Welcome '.$name.$unimpersonateLink;
+        # .' |  <a href="'.$url.$separater.'logout=1">Logout</a></span></div>';
 	}
 }
 ?>

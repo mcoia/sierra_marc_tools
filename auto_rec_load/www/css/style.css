@@ -94,13 +94,9 @@ body {
 	}
 
 .regularBox{
-	/*border: 2px solid #D6E1F4;
-    border-radius: 8px 8px 8px 8px;
-    box-shadow: 0 0 6px 5px #000000;*/
     margin: 5px;
     background-color: #FFFFFF;
     padding-bottom: 13px;
-    padding-left: 7px;
 	}
 	
 .regularPrivBox{
@@ -512,6 +508,18 @@ form table td input{
 #topbar{
 	width: 100%;
 	}
+
+#topbar .headerimage{
+	text-align: center;
+    overflow: hidden;
+    max-width: 1260px;
+    margin: auto;
+    width: 100%;
+	}
+
+#topbar .headerimage img{
+	width: 100%
+	}
 	
 #titlehead{
 	font-size: 28pt;
@@ -556,30 +564,19 @@ form table td input{
 	background: url("../images/link-background-hover.png") repeat-x scroll center top #FFFFFF;
 	}
 
-#content{
+#content {
 	margin-top: 10px;
     /*min-height: 900px;*/
     padding: 10px;
-	}
-	
-#trackingUL{
-	}
-	
-#trackingUL li{
-	}
-	
-.trackingline{
-	margin-bottom: 10px;
-    margin-top: 10px;
-	}
+}
 
-/*.trackingline*/ 
-a{
+
+a {
 	color: #000000;
     text-decoration: none;
-	}
+}
 	
-/*.trackingline */ 
+
 a:hover{
 	text-decoration:underline;
 	}
@@ -635,6 +632,15 @@ input {
 }
 
 /* Page Content */
+
+.dashboard_summary_container {
+    display: flex;
+    
+}
+
+.dashboard_summary_container_child {
+    width: 100%;
+}
 
 #page_content {
 	padding: 5px 0px 0px;

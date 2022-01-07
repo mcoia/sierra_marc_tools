@@ -64,7 +64,7 @@ $sqlconnect = new sqlconnect();
             else if(count($item)==1)
                 $uri[$item[0]] = "";
         }
-        if(!$uri["pageid"])
+        if(!(array_key_exists("pageid",$uri)))
         {
             $uri["pageid"] = 1; # always load dashboard
         }

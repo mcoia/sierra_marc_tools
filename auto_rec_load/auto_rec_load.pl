@@ -635,12 +635,18 @@ sub createDatabase
         ##################
 
         $query = "
-         CREATE TRIGGER $stagingTablePrefix"."_job_update BEFORE UPDATE ON $stagingTablePrefix"."_job
-            FOR EACH ROW
-            BEGIN
+        CREATE TRIGGER $stagingTablePrefix"."_job_update BEFORE UPDATE ON $stagingTablePrefix"."_job
+        FOR EACH ROW
+        BEGIN
+            IF NEW.current_action != OLD.current_action THEN
                 SET NEW.last_update_time = CURRENT_DATE();
                 SET NEW.current_action_num = OLD.current_action_num + 1;
-            END;
+            END IF;
+            IF NEW.status != OLD.status THEN
+                SET NEW.last_update_time = CURRENT_DATE();
+                SET NEW.current_action_num = OLD.current_action_num + 1;
+            END IF;
+        END;
         ";
         $log->addLine($query) if $debug;
         $dbHandler->update($query);

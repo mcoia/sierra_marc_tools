@@ -41,10 +41,15 @@ else if(isset($uri["getdata"]))
 else if(isset($uri["getgraph"]))
 {
 	if(allowedHere())
-	{	
-		require_once ("util/graph.php");
-		$graph = new graphit(); 
-		$graph->getGraph();
+	{
+        $decideUI = decideUI();
+		if(isset($decideUI))
+		{
+            require_once ("graph/src/jpgraph.php");
+            require_once ('graph/src/jpgraph_bar.php');
+            require_once ('graph/src/jpgraph_pie.php');
+			$decideUI->go();
+		}
 	}
 }
 else if(isset($uri["getjson"]))
