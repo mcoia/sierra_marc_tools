@@ -5,8 +5,8 @@ global $debug;
 
 require_once ("util/global.php");
 
-# $debug = false;
-$debug = true;
+$debug = false;
+// $debug = true;
 global $uri;
 global $sqlconnect;
 
@@ -45,9 +45,9 @@ else if(isset($uri["getgraph"]))
         $decideUI = decideUI();
 		if(isset($decideUI))
 		{
-            require_once ("graph/src/jpgraph.php");
-            require_once ('graph/src/jpgraph_bar.php');
-            require_once ('graph/src/jpgraph_pie.php');
+            require_once ("util/graph/src/jpgraph.php");
+            require_once ('util/graph/src/jpgraph_bar.php');
+            require_once ('util/graph/src/jpgraph_pie.php');
 			$decideUI->go();
 		}
 	}
@@ -62,6 +62,16 @@ else if(isset($uri["getjson"]))
 			header('Content-type: application/json');
 			echo $decideUI->go();
 		}
+	}
+}
+else if(isset($uri["getmarc"]))
+{
+	if(allowedHere())
+	{	
+		$marc = new marc();
+        header('Content-type: application/xml');
+        header('Content-Type: application/octet-stream');
+        $marc->go();
 	}
 }
 else

@@ -7,6 +7,10 @@ require_once ("trackingclass.php");
 require_once ("job.php");
 require_once ("user.php");
 require_once ("dashboard.php");
+require_once ("control_panel.php");
+require_once ("files.php");
+require_once ("marc.php");
+require_once ("vendors.php");
 require_once ("ui/dbfieldclass.php");
 require_once ("ui/tabs.php");
 
@@ -289,7 +293,7 @@ function allowedHere()
 
 function ensureDate($date) # Expects m-d-y or y-m-d
 {
-	$split = preg_split("[\\/\\\-]", $date);
+	$split = preg_split("/[\\/\\\-]/", $date);
 	# Must must be a date
 	if(count($split) == 3)
 	{
@@ -299,7 +303,7 @@ function ensureDate($date) # Expects m-d-y or y-m-d
 		
 		return $split[0].'-'.$split[1].'-'.$split[2];
 	}
-	return $date;
+	return null;
 }
 
 
@@ -315,7 +319,7 @@ function convertToDatabaseDate($date)
 			$ret = $keywords[2].'-'.$keywords[0].'-'.$keywords[1];
 		}
 	}
-			
+
 	return $ret;
 }
 
@@ -331,7 +335,7 @@ function convertFromDatabaseDate($date)
 			$ret = $keywords[1].'-'.$keywords[2].'-'.$keywords[0];
 		}
 	}
-			
+
 	return $ret;
 }
 	
@@ -341,7 +345,7 @@ function addDebug($string)
 	$debugOutput[]=$string;
 }
 
-function makeSearchTable($dbTable,$columnNames,$clickableIDPosition,$showColumns,$searchableColumns,$tableID,$uriValForClick,$additionalUri,$additionalAnchorProperties,$searchString,$extraWhereClause, $orderClause, $getRaw = null)
+function makeSearchTable($dbTable,$columnNames,$clickableIDPosition,$showColumns,$searchableColumns,$tableID,$uriValForClick,$additionalUri,$additionalAnchorProperties,$searchString,$extraWhereClause, $orderClause, $getRaw = null, $groupClause)
 {
 	global $sqlconnect;
 	global $currentURLBase;
@@ -377,100 +381,107 @@ function makeSearchTable($dbTable,$columnNames,$clickableIDPosition,$showColumns
 		$query.=" AND $extraWhereClause";
 		else
 		$query.=" WHERE $extraWhereClause";
-	}	
+	}
+    if(isset($groupClause) && strlen($groupClause)>0)
+	{
+		$query.=" GROUP BY $groupClause";
+	}
 	if(isset($orderClause) && strlen($orderClause)>0)
 	{
 		$query.=" ORDER BY $orderClause";
 	}
-	#echo$query;
+	// echo"<pre>$query</pre>";
+    // exit;
 	addDebug("Make Table Query = $query");
 	$result = $sqlconnect->executeQuery($query,$vars);
-	
-	if(count($result)>0)
-	{
-		$ret = "<table id=\"$tableID\" class=\"tablesorter\">
-			<thead><tr>";
-		foreach($showColumns as $dbName => $humanColName)
-		$ret.="<th>$humanColName</th>";
-		$ret.="</tr></thead><tbody>";
-		$i=0;
-		foreach($result as $internal => $row)
-		{
-			$ret.="<tr>";
-			
-			$rowForJSON = array();
-			$shade="";
-			if($i % 2==0)
-			$shade=" class=\"rowshade\"";
-			
-			foreach($row as $colName => $colValue)
-			{
-				$colPos=0;
-				foreach($showColumns as $showPos => $showName)
-				{
-					if($colName==$showPos)
-					{	
-						$showPositionLinkable=-1;
-						$id="";
-						$uriVal="";
-						$additionURI="";
-						$additionalAnchorProps="";
-						$makeLinkaable=false;
-						if(isset($clickableIDPosition[$colName]))
-						{	
-							if(isset($clickableIDPosition[$colName]))
-							{
-								$id=$row[$clickableIDPosition[$colName]];
-								$makeLinkaable=true;
-							}
-							if(isset($uriValForClick[$colName]))
-							{	
-								$uriVal=$uriValForClick[$colName];
-							}
-							if(isset($additionalUri[$colName]))
-							$additionURI=$additionalUri[$colName];
-							if(isset($additionalAnchorProperties[$colName]))
-								$additionalAnchorProps=$additionalAnchorProperties[$colName];
-							
-							
-						}
-						
-						#addDebug("$colName = $showPos");
-						#$stringForJSON=preg_replace('/"/i','\\"',$colValue);
-						$stringForJSON=$colValue;
-						if($makeLinkaable===true)
-						{
-							#$stringForJSON="<a $additionalAnchorProps href=\\\"".$currentURLBase."/index.php?$uriVal=$id&$additionURI\\\"";
-							$stringForJSON="<a $additionalAnchorProps href=\"".$currentURLBase."/index.php?$uriVal=$id&$additionURI\"";
-							$ret.="<td$shade><a $additionalAnchorProps href=\"".$currentURLBase."/index.php?$uriVal=$id&$additionURI\"";
-							if(isset($uri['iframe']))
-							{
-								$ret.=" target='_parent'";
-								$stringForJSON.=" target='_parent'";
-							}
-							$ret.=">$colValue</a></td>";
-							#$colValue=preg_replace('/"/i','\\"',$colValue);
-							#$stringForJSON.=">$colValue<\\/a>";
-							$stringForJSON.=">$colValue</a>";
-						}
-						else
-						{
-							$ret.="<td$shade>$colValue</td>";
-						}
-						$rowForJSON[$showName]=$stringForJSON;
-					}
-					$colPos++;
-				}
-			}
-			$ret.="</tr>";
-			$json[]=$rowForJSON;
-			$i++;
-		}
-		$ret.="</tbody></table>";//<div id=\"pager\" class=\"pager\"></div>";
-	}
-	#echo"<xmp>";
-	#print_r( $json);
-	#echo"</xmp>";
+
+    $ret = "<table id=\"$tableID\" class=\"tablesorter\">
+        <thead><tr>";
+    foreach($showColumns as $dbName => $humanColName)
+    $ret.="<th>$humanColName</th>";
+    $ret.="</tr></thead><tbody>";
+    $i=0;
+    foreach($result as $internal => $row)
+    {
+        $ret.="<tr>";
+        
+        $rowForJSON = array();
+        $shade="";
+        if($i % 2==0)
+        $shade=" class=\"rowshade\"";
+        
+        foreach($row as $colName => $colValue)
+        {
+            $colPos=0;
+            foreach($showColumns as $showPos => $showName)
+            {
+                if($colName==$showPos)
+                {	
+                    $showPositionLinkable=-1;
+                    $id="";
+                    $uriVal="";
+                    $additionURI="";
+                    $additionalAnchorProps="";
+                    $makeLinkaable=false;
+                    if(isset($clickableIDPosition[$colName]))
+                    {	
+                        if(isset($clickableIDPosition[$colName]))
+                        {
+                            $id=$row[$clickableIDPosition[$colName]];
+                            $makeLinkaable=true;
+                        }
+                        if(isset($uriValForClick[$colName]))
+                        {	
+                            $uriVal=$uriValForClick[$colName];
+                        }
+                        if(isset($additionalUri[$colName]))
+                        $additionURI=$additionalUri[$colName];
+                        if(isset($additionalAnchorProperties[$colName]))
+                            $additionalAnchorProps=$additionalAnchorProperties[$colName];
+                        
+                        
+                    }
+                    
+                    #addDebug("$colName = $showPos");
+                    #$stringForJSON=preg_replace('/"/i','\\"',$colValue);
+                    $stringForJSON=$colValue;
+                    if($makeLinkaable===true)
+                    {
+                        #$stringForJSON="<a $additionalAnchorProps href=\\\"".$currentURLBase."/index.php?$uriVal=$id&$additionURI\\\"";
+                        $stringForJSON="<a $additionalAnchorProps href=\"".$currentURLBase."/index.php?$uriVal=$id&$additionURI\"";
+                        $ret.="<td$shade><a $additionalAnchorProps href=\"".$currentURLBase."/index.php?$uriVal=$id&$additionURI\"";
+                        if(isset($uri['iframe']))
+                        {
+                            $ret.=" target='_parent'";
+                            $stringForJSON.=" target='_parent'";
+                        }
+                        $ret.=">$colValue</a></td>";
+                        #$colValue=preg_replace('/"/i','\\"',$colValue);
+                        #$stringForJSON.=">$colValue<\\/a>";
+                        $stringForJSON.=">$colValue</a>";
+                    }
+                    else
+                    {
+                        $ret.="<td$shade>$colValue</td>";
+                    }
+                    if(!isset($stringForJSON)) # make null values a blank string
+                    {
+                        $stringForJSON = '';
+                    }
+                    $rowForJSON[$showName]=$stringForJSON;
+                }
+                $colPos++;
+            }
+        }
+        $ret.="</tr>";
+        $json[]=$rowForJSON;
+        $i++;
+    }
+    $ret.="</tbody></table>";//<div id=\"pager\" class=\"pager\"></div>";
+
+	// echo"<xmp>";
+	// print_r( $json);
+	// echo"</xmp>";
 	if($getRaw){return $json;}
 	return $ret;
 	

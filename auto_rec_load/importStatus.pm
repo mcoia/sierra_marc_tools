@@ -91,10 +91,26 @@ sub fillVars
         $self->{client_name} = @row[12];
         $self->{marc_editor_name} = $self->{source_name} . '_' . $self->{client_name};
     }
-
     $self->{error} = "Couldn't read import status data ID: ". $self->{importStatusID} if($#results == -1);
     die if($#results == -1);
 
+    $query = "select 
+    aoft.id,
+    aoft.filename
+    from
+    ".$self->{prefix}.
+    "_output_file_track aoft
+    where
+    aoft.import_id = ".$self->{importStatusID};
+
+    $self->{log}->addLine($query) if $self->{debug};
+    @results = @{$self->getDataFromDB($query)};
+    foreach(@results)
+    {
+        my @row = @{$_};
+        $self->{output_file_id} = @row[0];
+        $self->{output_filename_real} = @row[1]);
+    }
     return $self;
 }
 
@@ -157,6 +173,42 @@ sub writeDB
     $self->{importStatusID}
     );
     $self->doUpdateQuery($query, undef, \@vars);
+
+    # and update/insert row into output file track
+
+    # case where the output filename was changed during load/save
+    if($self->{output_file_id} && $self->{output_filename_real} ne $self->{output_filename})
+    {
+        $query = "UPDATE
+        ".$self->{prefix}.
+        "_output_file_track aoft
+        SET
+        filename = ?
+        WHERE
+        id = ?";
+        my @vars =
+        (
+        $self->{output_filename},
+        $self->{importStatusID}
+        );
+        $self->doUpdateQuery($query, undef, \@vars);
+        $self->{output_filename_real} = $self->{output_filename};
+    }
+    elsif(!$self->{output_file_id} && $self->{output_filename}) # newly written output
+    {
+        $query = "INSERT INTO
+        ".$self->{prefix}.
+        "_output_file_track aoft
+        (filename, import_id)
+        VALUES(?, ?)";
+        my @vars =
+        (
+        $self->{output_filename},
+        $self->{importStatusID}
+        );
+        $self->doUpdateQuery($query, undef, \@vars);
+        $self->{output_filename_real} = $self->{output_filename};
+    }
 }
 
 sub getTweakedRecord
@@ -199,6 +251,12 @@ sub setItype
 {
     my $self = shift;
     $self->{itype} = shift;
+}
+
+sub setOutputFilename
+{
+    my $self = shift;
+    $self->{output_filename} = shift;
 }
 
 sub DESTROY

@@ -633,13 +633,67 @@ input {
 
 /* Page Content */
 
+.loader {
+  border: 16px solid #f3f3f3; /* Light grey */
+  border-top: 16px solid #3498db; /* Blue */
+  border-radius: 50%;
+  width: 120px;
+  height: 120px;
+  animation: spin 2s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
 .dashboard_summary_container {
     display: flex;
-    
+    flex-flow: column wrap;
 }
 
 .dashboard_summary_container_child {
     width: 100%;
+    text-align: center;
+}
+
+#datecontrolpanel {
+    display: flex;
+    flex-flow: column wrap;
+}
+
+#datecontrolpanel .controlpanel_child {
+    width: 100%;
+    text-align: center;
+}
+
+#overlaydialog {
+    width: 100%;
+    height: 100%;
+    background-color: rgba(80, 69, 159, 0.75);
+    z-index: 999;
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+
+#jsoneditorerrorbox {
+    width: 100%;
+    text-align: center;
+    height: 100px;
+    color: red;
+    background-color: white;
+}
+
+#jsoneditorwrapper {
+    opacity: 100%;
+    width: 75%;
+    margin: 10%;
+}
+
+#jsoneditor {
+    width: 100%;
+    min-height: 300px;
 }
 
 #page_content {

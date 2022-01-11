@@ -8,7 +8,7 @@ class dashboardUI
 	private $url;
 	private $currentUser;
 	private $currentURLBase;
-	private $job;
+    private $tablePrefix;
 	function __construct()
 	{	
 		global $currentUser;
@@ -16,39 +16,75 @@ class dashboardUI
 		global $uri;
 		global $url;
 		global $currentURLBase;
+        global $tablePrefix;
 		$this->uri = copyArray($uri);
 		$this->sqlconnect = $sqlconnect;
 		$this->currentUser = $currentUser;
 		$this->currentURLBase = $currentURLBase;
 		$this->url = $url;
+        $this->tablePrefix = $tablePrefix;
 	}
 	
 	function go()
-	{			
+	{
 		$ret="";
        
 		if(isset($this->uri['getdata']))
 		{
-            $summaryData = $this->getSummaryData('2021-01-01',0);
-            print_r ($summaryData);
-            exit();
-			if(isset($this->uri['additionalsearch']) && isset($this->uri['searchstring']) && strlen($this->uri['searchstring']) > 1 )
-			{	
-				$this->getJobSearchResultsTable($this->uri['searchstring']);
-				exit();
-			}
-			else if(isset($this->uri['bidid']))
-			{
-				$laborid=isset($this->uri['laborid'])?$this->uri['laborid']:null;
-				$materialid=isset($this->uri['materialid'])?$this->uri['materialid']:null;
-				$ret = $this->updateBidItem($this->uri['bidid'],$this->uri['dec'],$laborid,$materialid,$this->uri['footage'],$this->uri['unit'],$this->uri['total']);
-			}
+            if(isset($this->uri['getsummarytable']))
+            {
+                $ret = $this->getSearchTable($this->uri['fromdate'], $this->uri['todate']);
+            }
 		}
+        else if(isset($this->uri['getjson']))
+        {
+            If(isset($this->uri['additionalsearch']) && isset($this->uri['searchstring']) && strlen($this->uri['searchstring']) > 1 )
+			{	
+				$ret = $this->getSearchTable(null, null, $this->uri['searchstring']);
+			}
+        }
 		else if(isset($this->uri['getgraph']))
         {
             if(isset($this->uri['summarypie']))
             {
-                makePieChart();
+                $summaryData = $this->getSummaryData($this->uri['fromdate'], $this->uri['todate']);
+                $percents = array();
+                $labels = array();
+                $total = 0;
+                if(count($summaryData) > 0)
+                {
+                    foreach($summaryData as $internal => $row)
+                    {
+                        $labels[] = $row["client"] . " " . $row["source"];
+                        $percents[] = $row["count"];
+                        $total += $row["count"];
+                    }
+                    foreach($percents as $internal => $value)
+                    {
+                        $percents[$internal] = round($percents[$internal] / $total, 2);
+                    }
+                    $title = "Percentage of records";
+                    if(isset($this->uri['fromdate']))
+                    {
+                        $title .= isset($this->uri['todate']) ? " from " : " since ";
+                        $title .= convertFromDatabaseDate($this->uri['fromdate']);
+                    }
+                    if(isset($this->uri['todate']))
+                    {
+                        $title .= " to " . convertFromDatabaseDate($this->uri['todate']);
+                    }
+                    if(!isset($this->uri['fromdate']) && !isset($this->uri['todate']))
+                    {
+                        $title .= " for all time";
+                    }
+                }
+                else
+                {
+                    $percents[] = 1;
+                    $labels[] = 'none';
+                    $title = "No Data";
+                }
+                $this->makePieChart($percents, $labels, $this->uri['width'], $this->uri['height'], $title);
             }
         }
         else
@@ -61,16 +97,27 @@ class dashboardUI
 	function UI()
 	{
 		$ret="";
-		$ret.="<div class=\"regularBox\">
+        $controlPanel = new control_panel();
+        $dateControlPanel = $controlPanel->getDateControlPanel();
+
+		$ret.="
+        <script type=\"text/javascript\" src=\"js/dashboard.js\"></script>
+        <div class='regularBox'>
         <div class='dashboard_summary_container'>
-        <div class='dashboard_summary_pie_chart dashboard_summary_container_child'>
-        
-        </div> <!-- dashboard_summary_pie_chart -->
-        <div class='dashboard_summary_datatable dashboard_summary_container_child'>
-        
-        </div> <!-- dashboard_summary_datatable -->
+            <div id='dashboard_date_control_panel' class='dashboard_summary_container_child'>
+            $dateControlPanel
+            </div><!-- dashboard_date_control_panel -->
+
+            <div id='dashboard_summary_pie_chart' class='dashboard_summary_container_child'>
+            <div class='loader'></div>
+            </div> <!-- dashboard_summary_pie_chart -->
+
+            <div id='dashboard_summary_datatable' class='dashboard_summary_container_child'>
+            <div class='loader'></div>
+            </div> <!-- dashboard_summary_datatable -->
+
         </div> <!-- dashboard_summary_container -->
-        </div>";
+        </div><!-- regularBox -->";
 		return $ret;
 	}
 
@@ -79,13 +126,13 @@ class dashboardUI
         $vars = array();
         $daterange = "";
         $query = "
-        select aj.status,ac.name \"client\", autos.name \"source\", count(*)
+        select ac.name \"client\", autos.name \"source\", count(*) \"count\"
         from
-        auto_import_status ais,
-        auto_file_track aft,
-        auto_source autos,
-        auto_client ac,
-        auto_job aj
+        ". $this->tablePrefix ."import_status ais,
+        ". $this->tablePrefix ."file_track aft,
+        ". $this->tablePrefix ."source autos,
+        ". $this->tablePrefix ."client ac,
+        ". $this->tablePrefix ."job aj
         where
         aj.id=ais.job and
         ac.id=aft.client and
@@ -107,23 +154,77 @@ class dashboardUI
         }
 
         $query = preg_replace('/!!daterange!!/i', $daterange, $query);
-
 		$result = $this->sqlconnect->executeQuery($query,$vars);
         return $result;
     }
-    
 
-    function makePieChart($percents, $labels, $small = true, $height = 500, $width = 500)
+    function makePieChart($percents, $labels, $width, $height, $title)
 	{
-        $labels = array('test1' ,'test2' ,'test3', 'test3');
-        $percents =  array(.3,.3,.3,.1);
+        $width = $width ? $width : 500;
+        $height = $height ? $height : 500;
+
         $piegraph = new PieGraph($height, $width);
         $pieplot = new PiePlot($percents);
         $pieplot->SetLabels($labels);
+        if(isset($title))
+        {
+            $pieplot->title->Set($title);
+        }
         $pieplot->ExplodeAll(10);
         $piegraph->Add($pieplot); 
         $piegraph->Stroke();
-
 	}
-	
+    
+    function getSearchTable($fromDate, $toDate, $searchstring = null)
+	{
+        $fromDate = convertToDatabaseDate($fromDate);
+        $toDate = convertToDatabaseDate($toDate);
+		addDebug("getSearchTable called");
+		$anchorProps = array();
+		$selectCols = array("ac.name \"clientname\"","asource.name \"sourcename\"","count(*) \"count\"");
+		$showCols = array("clientname"=>"Institution","sourcename"=>"Vendor","count"=>"Count");
+		$ClickPos=array();
+		$searchCols = array("ac.name","asource.name");
+		$tableID = "dashboardSearchTable";
+		$uriValClick = array();
+		$additionalURI = array();
+		$extraWhereClause = "";
+        if(isset($fromDate))
+        {
+            $extraWhereClause .= "aj.start_time > '$fromDate'";
+        }
+        if(isset($toDate))
+        {
+            $extraWhereClause .= isset($fromDate) ? " AND " : "";
+            $extraWhereClause .= "aj.start_time < '$toDate'";
+        }
+        $table = "
+        " . $this->tablePrefix ."file_track aft
+        JOIN " . $this->tablePrefix ."import_status ais ON (ais.file=aft.id)
+        JOIN " . $this->tablePrefix ."client ac ON (ac.id=aft.client)
+        JOIN " . $this->tablePrefix ."source asource ON (asource.id=aft.source)
+        JOIN " . $this->tablePrefix ."job aj ON (aj.id=ais.job)";
+
+		$search=null;
+		$getRaw=null;
+        $groupClause = "1,2";
+		$orderClause = "1,2";
+		if(isset($searchstring))
+		{
+			$search=$searchstring;
+			$getRaw=1;
+			$extraWhereClause="";
+		}
+        
+		$resultTable = makeSearchTable($table, $selectCols, $ClickPos, $showCols, $searchCols, $tableID, $uriValClick, $additionalURI, $anchorProps, $search, $extraWhereClause, $orderClause, $getRaw, $groupClause);
+		
+		if(isset($searchstring))
+		{
+			echo json_encode($resultTable);
+		}
+		else
+		{		
+			return $resultTable;
+		}
+	}
 }

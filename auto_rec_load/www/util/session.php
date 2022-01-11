@@ -8,71 +8,38 @@ echo '<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	
 <!-- JQUERY -->
-	<script type="text/javascript" src="js/jquery.js"></script>
+
+    <script type="text/javascript" src="js/jquery-3.6.0.min.js"></script>	
+	<script type="text/javascript" src="css/jquery-ui-1.13.0.custom/jquery-ui.min.js"></script>
 	
-	<!-- SEARCHABLE DROPDOWN -->
-	<!-- THIS PLUGIN REQUIRES THE OLDER VERSION OF JQUERY, SO WE HAVE TO LOAD IT NOW -->
-	<script type="text/javascript" src="js/jquery.searchabledropdown-v1.0.8/jquery.searchabledropdown-1.0.8.min.js"></script>	
-	<!-- NOW NOCONFLICT TO LOAD THE NEWER VERSION OF JQUERY -->
-	<script type="text/javascript">var jQuery_1_7_1 = $.noConflict(true); </script>
-	
-	<!-- NEWER VERSION SO JQUERY FOR THE REST OF THE CODE -->
-	<script type="text/javascript" src="js/jquery-1.11.3.min.js"></script>	
-	<script type="text/javascript" src="css/jquery-ui-1.11.4.custom/jquery-ui.min.js"></script>
-	
-<script type="text/javascript">
-	console.log(jQuery_1_7_1.fn.jquery);
-	console.log($.fn.jquery);
-</script>
 
 <!-- STYLES -->	
 	<!-- CUSTOM STYLES -->
-	<link href="css/thickbox.css" rel="stylesheet" type="text/css">
-	<link href="css/style.css"    rel="stylesheet" type="text/css" media="screen">
+	<link href="css/style.css" rel="stylesheet" type="text/css" media="screen">
 	
-	<!-- DATEPICKER DEPRICATED WITH THE NEWER VERSION OF JQUERY-UI -->
-	<!-- <link href="css/jquery.datepick.css" rel="stylesheet" type="text/css" media="screen"> -->	 
-		
 	<!-- DATATABLES -->
-	<link type="text/css" rel="stylesheet" href="js/DataTables-1.10.7/media/css/jquery.dataTables_themeroller.css">
-	
-	<!-- <link type="text/css" rel="stylesheet" href="js/DataTables-1.10.7/media/css/jquery.dataTables.min.css"> -->
-	
+    <link rel="stylesheet" type="text/css" href="js/DataTables/datatables.min.css"/>
 	
 	<!-- JQUERY UI -->
-	<!-- <link type="text/css" rel="stylesheet" href="css/jquery-ui-1.8.17.custom/css/custom-theme/jquery-ui-1.8.17.custom.css"> -->
-	<link type="text/css" rel="stylesheet" href="css/jquery-ui-1.11.4.custom/jquery-ui.min.css">	
-	
-	<!-- JSTREE -->
-	<link rel="stylesheet" href="js/jstree/themes/default/style.min.css" />
-	
+    <link type="text/css" rel="stylesheet" href="css/jquery-ui-1.13.0.custom/jquery-ui.min.css">
+
+
 	<!-- Hamburger Menu Icons -->
 	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
 	
 	
 <!-- SCRIPTS -->
-
-	<!-- DATEPICKER DEPRICATED WITH THE NEWER VERSION OF JQUERY-UI -->
-	<!-- <script type="text/javascript" src="js/datepicker/jquery.datepick.min.js"></script> -->
-	
 	<!-- DATATABLES -->
-	<script type="text/javascript" charset="utf8" src="js/DataTables-1.10.7/media/js/jquery.dataTables.min.js"></script>
-	
-	<!-- LIVEQUERY  -->
-	<script type="text/javascript" src="js/jquery.livequery.min.js"></script>
-	
-	
-	<!-- JSTREE -->
-	<script type="text/javascript" src="js/jstree/jstree.min.js"></script>
+    <script type="text/javascript" src="js/DataTables/datatables.min.js"></script>
+
 	
 	<!--  CUSTOM  -->
 	<script type="text/javascript" src="js/validate.js"></script>
 	<script type="text/javascript" src="js/datepicker.js"></script>
 	<script type="text/javascript" src="js/tabs.js"></script>
 	<script type="text/javascript" src="js/search-table.js"></script>
-	<script type="text/javascript" src="js/searchable-dropdown.js"></script>
-    <script type="text/javascript" src="js/dashboard.js"></script>
-	
+    <script type="text/javascript" src="js/util.js"></script>
+    
 	<title>MOBIUS Automated Record loads</title>
 	
 	</head>
