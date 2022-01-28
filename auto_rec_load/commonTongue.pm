@@ -62,6 +62,25 @@ sub parseJSON
     return $self;
 }
 
+sub calcSierraCheckDigit
+{
+    my $self = shift;
+    my $seed = shift;
+    $seed = reverse( $seed );
+    my @chars = split("", $seed);
+    my $checkDigit = 0;
+    for my $i (0.. $#chars)
+    {
+        $checkDigit += @chars[$i] * ($i+2);
+    }
+    $checkDigit = $checkDigit % 11;
+    if( $checkDigit > 9 )
+    {
+        $checkDigit = 'x';
+    }
+    return $checkDigit;
+}
+
 sub escapeData
 {
     my $self = shift;
@@ -89,8 +108,10 @@ sub getDataFromDB
 {
     my $self = shift;
     my $query = shift;
+    my $vars = shift;
     $self->{log}->addLine($query) if $self->{debug};
-    return $self->{dbHandler}->query($query);
+    $self->{log}->addLine(Dumper($vars)) if ($vars && $self->{debug});
+    return $self->{dbHandler}->query($query, $vars);
 }
 
 sub addTrace
@@ -222,6 +243,105 @@ sub entityize {
     $string =~ s/([\x{0080}-\x{fffd}])/sprintf('&#x%X;',ord($1))/sgoe;
 
     return $string;
+}
+
+sub mergeMARC856
+{
+    my $marc = @_[0];
+    my $marc2 = @_[1];
+    my @eight56s = $marc->field("856");
+    my @eight56s_2 = $marc2->field("856");
+    my @eights;
+    my $original856 = $#eight56s + 1;
+    @eight56s = (@eight56s,@eight56s_2);
+
+    my %urls;
+    foreach(@eight56s)
+    {
+        my $thisField = $_;
+        my $ind2 = $thisField->indicator(2);
+        # Just read the first $u and $z
+        my $u = $thisField->subfield("u");
+        my $z = $thisField->subfield("z");
+        my $s7 = $thisField->subfield("7");
+
+        if($u) #needs to be defined because its the key
+        {
+            if(!$urls{$u})
+            {
+                if($ind2 ne '0')
+                {
+                    $thisField->delete_subfields('9');
+                    $thisField->delete_subfields('z');
+                }
+                $urls{$u} = $thisField;
+            }
+            else
+            {
+                my @nines = $thisField->subfield("9");
+                my $otherField = $urls{$u};
+                my @otherNines = $otherField->subfield("9");
+                my $otherZ = $otherField->subfield("z");
+                my $other7 = $otherField->subfield("7");
+                if(!$otherZ)
+                {
+                    if($z)
+                    {
+                        $otherField->add_subfields('z'=>$z);
+                    }
+                }
+                if(!$other7)
+                {
+                    if($s7)
+                    {
+                        $otherField->add_subfields('7'=>$s7);
+                    }
+                }
+                foreach(@nines)
+                {
+                    my $looking = $_;
+                    my $found = 0;
+                    foreach(@otherNines)
+                    {
+                        if($looking eq $_)
+                        {
+                            $found=1;
+                        }
+                    }
+                    if($found==0 && $ind2 eq '0')
+                    {
+                        $otherField->add_subfields('9' => $looking);
+                    }
+                }
+                if($ind2 ne '0')
+                {
+                    $thisField->delete_subfields('9');
+                    $thisField->delete_subfields('z');
+                }
+
+                $urls{$u} = $otherField;
+            }
+        }
+
+    }
+
+    my $finalCount = scalar keys %urls;
+    if($original856 != $finalCount)
+    {
+        $log->addLine("There was $original856 and now there are $finalCount");
+    }
+
+    my $dump1=Dumper(\%urls);
+    my @remove = $marc->field('856');
+    #$log->addLine("Removing ".$#remove." 856 records");
+    $marc->delete_fields(@remove);
+
+
+    while ((my $internal, my $mvalue ) = each(%urls))
+    {
+        $marc->insert_grouped_field( $mvalue );
+    }
+    return $marc;
 }
 
 sub setError

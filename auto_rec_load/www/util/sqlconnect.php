@@ -142,7 +142,6 @@ class sqlconnect{
 			$this->mysqli = false;
 			return false;
 		}
-
 		if( $stmt = $this->mysqli->prepare( $query ))
 		{
 			# Bind the incoming parameters

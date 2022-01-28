@@ -653,7 +653,7 @@ input {
 }
 
 .dashboard_summary_container_child {
-    width: 100%;
+    width: 98%;
     text-align: center;
 }
 
@@ -665,6 +665,30 @@ input {
 #datecontrolpanel .controlpanel_child {
     width: 100%;
     text-align: center;
+}
+
+#dashboard_stat_panel {
+    display: flex;
+    flex-flow: row;
+    border: 1px solid black;
+    padding: 10px;
+    margin-top: 1%;
+    justify-content: space-evenly;
+}
+
+.dashboard_stat_panel_child {
+    width: 16%;
+    text-align: center;
+}
+
+.dashboard_stat_panel_child_title {
+    font-size: 17pt;
+    border-bottom: 1px solid black;
+}
+
+.dashboard_stat_panel_child_result {
+    font-size: 20pt;
+    font-weight: bold;
 }
 
 #overlaydialog {

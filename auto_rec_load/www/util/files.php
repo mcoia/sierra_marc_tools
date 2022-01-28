@@ -122,7 +122,7 @@ class filesUI
         $table = "
         ". $this->tablePrefix ."file_track aft
         JOIN ". $this->tablePrefix ."import_status ais ON (ais.file=aft.id)
-        LEFT JOIN ". $this->tablePrefix ."output_file_track aoft on(aoft.import_id=ais.id)
+        LEFT JOIN ". $this->tablePrefix ."output_file_track aoft on(aoft.id=ais.out_file)
         JOIN ". $this->tablePrefix ."client ac ON (ac.id=aft.client)
         JOIN ". $this->tablePrefix ."source	asource ON (asource.id=aft.source)
         JOIN ". $this->tablePrefix ."job aj ON aj.id=ais.job";

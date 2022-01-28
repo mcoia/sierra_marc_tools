@@ -631,7 +631,7 @@ sub createFileEntry
     my $self = shift;
     my $file = shift;
     my $key = shift;
-    $key = $self->escapeData( $key);
+    $key = $self->escapeData($key);
     my $query = "INSERT INTO 
     $self->{prefix}"."_file_track (fkey, filename, source, client)
     VALUES(?, ?, ?, ?)";
@@ -653,12 +653,12 @@ sub getFileID
     and client = " .$self->{clientID};
     if($file)
     {
-        $file = $self->escapeData( $file);
+        $file = $self->escapeData($file);
         $query .= " and filename = '$file'";
     }
     if($key)
     {
-        $key = $self->escapeData( $key);
+        $key = $self->escapeData($key);
         $query .= " and fkey = '$key'";
     }
     $self->{log}->addLine($query);
@@ -828,25 +828,6 @@ sub decideToProcessFile
         $ret = 1;
     }
     return $ret;
-}
-
-sub calcCheckDigit
-{
-    my $self = shift;
-    my $seed = shift;
-    $seed = reverse( $seed );
-    my @chars = split("", $seed);
-    my $checkDigit = 0;
-    for my $i (0.. $#chars)
-    {
-        $checkDigit += @chars[$i] * ($i+2);
-    }
-    $checkDigit = $checkDigit % 11;
-    if( $checkDigit > 9 )
-    {
-        $checkDigit = 'x';
-    }
-    return $checkDigit;
 }
 
 sub ensureFolderExists

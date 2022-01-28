@@ -35,6 +35,17 @@ class dashboardUI
             {
                 $ret = $this->getSearchTable($this->uri['fromdate'], $this->uri['todate']);
             }
+            else if(isset($this->uri['getstat']))
+            {
+                if($this->uri['statid'] == 'dashboard_stat_panel_total_records')
+                {
+                    $ret = $this->getTotalRecords($this->uri['fromdate'], $this->uri['todate']);
+                }
+                else if($this->uri['statid'] == 'dashboard_stat_panel_total_vendors')
+                {
+                    $ret = $this->getTotalVendors($this->uri['fromdate'], $this->uri['todate']);
+                }
+            }
 		}
         else if(isset($this->uri['getjson']))
         {
@@ -107,6 +118,25 @@ class dashboardUI
             <div id='dashboard_date_control_panel' class='dashboard_summary_container_child'>
             $dateControlPanel
             </div><!-- dashboard_date_control_panel -->
+            <div id='dashboard_stat_panel' class='dashboard_summary_container_child'>
+
+                <div id='dashboard_stat_panel_total_records' class='dashboard_stat_panel_child'>
+                    <div class='dashboard_stat_panel_child_title'>
+                     Total Records
+                    </div><!-- dashboard_stat_panel_child_title -->
+                    <div class='dashboard_stat_panel_child_result'>
+                    </div><!-- dashboard_stat_panel_child_result -->
+                </div><!-- dashboard_stat_panel_total_records -->
+
+                <div id='dashboard_stat_panel_total_vendors' class='dashboard_stat_panel_child'>
+                    <div class='dashboard_stat_panel_child_title'>
+                     Total Vendors
+                    </div><!-- dashboard_stat_panel_child_title -->
+                    <div class='dashboard_stat_panel_child_result'>
+                    </div><!-- dashboard_stat_panel_child_result -->
+                </div><!-- dashboard_stat_panel_total_vendors -->
+
+            </div><!-- dashboard_stat_panel -->
 
             <div id='dashboard_summary_pie_chart' class='dashboard_summary_container_child'>
             <div class='loader'></div>
@@ -155,6 +185,89 @@ class dashboardUI
 
         $query = preg_replace('/!!daterange!!/i', $daterange, $query);
 		$result = $this->sqlconnect->executeQuery($query,$vars);
+        return $result;
+    }
+
+    function getTotalVendors($fromDate, $toDate)
+    {
+        $vars = array();
+        $daterange = "";
+        $query = "
+        select autos.name \"source\", count(*) \"count\"
+        from
+        ". $this->tablePrefix ."import_status ais,
+        ". $this->tablePrefix ."file_track aft,
+        ". $this->tablePrefix ."source autos,
+        ". $this->tablePrefix ."client ac,
+        ". $this->tablePrefix ."job aj
+        where
+        aj.id=ais.job and
+        ac.id=aft.client and
+        autos.id=aft.source and
+        aft.id=ais.file
+        !!daterange!!
+        group by 1";
+        if($fromDate)
+        {
+            $daterange .= "
+            and aj.start_time > ?";
+            $vars[] = $fromDate;
+        }
+        if($toDate)
+        {
+            $daterange .= "
+            and aj.start_time < ?";
+            $vars[] = $toDate;
+        }
+
+        $query = preg_replace('/!!daterange!!/i', $daterange, $query);
+		$result = $this->sqlconnect->executeQuery($query,$vars);
+        if(count($result) > 0)
+        {
+            return count($result);
+        }
+        else
+        {
+            return "-";
+        }
+        return $result;
+    }
+
+    function getTotalRecords($fromDate, $toDate)
+    {
+        $vars = array();
+        $daterange = "";
+        $query = "
+        select count(*) \"count\"
+        from
+        ". $this->tablePrefix ."import_status ais,
+        ". $this->tablePrefix ."job aj
+        where
+        aj.id=ais.job
+        !!daterange!!";
+        if($fromDate)
+        {
+            $daterange .= "
+            and aj.start_time > ?";
+            $vars[] = $fromDate;
+        }
+        if($toDate)
+        {
+            $daterange .= "
+            and aj.start_time < ?";
+            $vars[] = $toDate;
+        }
+
+        $query = preg_replace('/!!daterange!!/i', $daterange, $query);
+		$result = $this->sqlconnect->executeQuery($query,$vars);
+        if(count($result) == 1)
+        {
+            return $result[0]["count"];
+        }
+        else
+        {
+            return "-";
+        }
         return $result;
     }
 

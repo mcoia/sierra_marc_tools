@@ -26,7 +26,7 @@ function marcFileDownloadClick(fileid, element)
         source = "&sourcefile=1";
     }
 
-    var url = path+"/index.php?getmarc=1&fileid=1"+source;
+    var url = path+"/index.php?getmarc=1&fileid="+fileid+source;
 
     console.log("Getting data: "+url);
     window.location.assign(url);

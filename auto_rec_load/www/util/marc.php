@@ -32,11 +32,14 @@ class marc
 		{
             if(isset($this->uri['fileid']))
             {
+// echo "<pre>";
                 $filename = $this->fileName($this->uri['fileid'], isset($this->uri['sourcefile']) );
                 header("Content-disposition: attachment; filename=\"$filename\"");
                 $offset = 0;
                 $records = 0;
+
                 echo '<?xml version="1.0" encoding="UTF-8" ?><collection xmlns="http://www.loc.gov/MARC21/slim">' . "\n";
+
                 while($data = $this->getFile($this->uri['fileid'], isset($this->uri['sourcefile']), $offset))
                 {
                     $offset += count($data);
@@ -47,6 +50,7 @@ class marc
                     flush();
                 }
                 echo '</collection>';
+// echo "</pre>";
            }
         }
 	}
@@ -60,9 +64,9 @@ class marc
             where ais.file = ? order by id limit $offset, $limit "
             :
             "select ais.record_tweaked \"record\" from ". $this->tablePrefix ."import_status ais
-            JOIN ". $this->tablePrefix ."output_file_track aoft ON (aoft.import_id=ais.id)
+            JOIN ". $this->tablePrefix ."output_file_track aoft ON (aoft.id=ais.out_file)
             where aoft.id = ? order by aoft.id limit $offset, $limit ";
-
+// echo $query;
             $vars = array($fileID);
             $result = $this->sqlconnect->executeQuery($query, $vars);
             return $result;
@@ -98,7 +102,7 @@ class marc
             "select substring_index(filename,'/',-1) \"filename\" from ". $this->tablePrefix ."file_track aft where aft.id = ?" :
             "select substring_index(filename,'/',-1) \"filename\" from ". $this->tablePrefix ."output_file_track aoft where aoft.id = ?";
             $vars = array($fileID);
-
+// echo $query;
             $result = $this->sqlconnect->executeQuery($query, $vars);
             if(count($result) == 1)
             {

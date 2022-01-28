@@ -205,6 +205,8 @@ $query = "
 update auto_job
 set
 status='ready',
+
+start_time=null,
 current_action_num=0";
 $dbHandler->update($query);
 
@@ -441,7 +443,7 @@ sub setupDownloadFolder
 
 sub setupDB
 {
-    eval{$dbHandler = new DBhandler($conf{"db"},$conf{"dbhost"},$conf{"dbuser"},$conf{"dbpass"},$conf{"port"}||"3306","mysql");};
+    eval{$dbHandler = new DBhandler($conf{"db"},$conf{"dbhost"},$conf{"dbuser"},$conf{"dbpass"},$conf{"port"}||"3306","mysql", 1);};
     if ($@)
     {
         print "Could not establish a connection to the database\n";
@@ -456,6 +458,13 @@ sub createDatabase
 
     if($recreateDB)
     {
+        print "Re-creting database\n";
+        my $query = "DROP TABLE $stagingTablePrefix"."_wwwpages";
+        $log->addLine($query);
+        $dbHandler->update($query);
+        my $query = "DROP TABLE $stagingTablePrefix"."_wwwusers ";
+        $log->addLine($query);
+        $dbHandler->update($query);
         my $query = "DROP TABLE $stagingTablePrefix"."_output_file_track ";
         $log->addLine($query);
         $dbHandler->update($query);
@@ -477,11 +486,6 @@ sub createDatabase
         my $query = "DROP TABLE $stagingTablePrefix"."_job ";
         $log->addLine($query);
         $dbHandler->update($query);
-    }
-
-    my @exists = @{$dbHandler->query("SELECT table_name FROM information_schema.tables WHERE table_schema RLIKE '$databaseName' AND table_name RLIKE '$stagingTablePrefix'")};
-    if(!$exists[0])
-    {
     
         ##################
         # TABLES
@@ -558,7 +562,16 @@ sub createDatabase
         ";
         $log->addLine($query) if $debug;
         $dbHandler->update($query);
-        
+
+        $query = "CREATE TABLE $stagingTablePrefix"."_output_file_track (
+        id int not null auto_increment,
+        filename varchar(1000),
+        PRIMARY KEY (id)
+        )
+        ";
+        $log->addLine($query) if $debug;
+        $dbHandler->update($query);
+
         $query = "CREATE TABLE $stagingTablePrefix"."_import_status (
         id int not null auto_increment,
         file int,
@@ -572,20 +585,11 @@ sub createDatabase
         itype varchar(10),
         insert_time datetime DEFAULT CURRENT_TIMESTAMP,
         job int,
+        out_file int,
         PRIMARY KEY (id),
         FOREIGN KEY (file) REFERENCES $stagingTablePrefix"."_file_track(id) ON DELETE CASCADE,
-        FOREIGN KEY (job) REFERENCES $stagingTablePrefix"."_job(id) ON DELETE CASCADE
-        )
-        ";
-        $log->addLine($query) if $debug;
-        $dbHandler->update($query);
-
-        $query = "CREATE TABLE $stagingTablePrefix"."_output_file_track (
-        id int not null auto_increment,
-        filename varchar(1000),
-        import_id int,
-        PRIMARY KEY (id),
-        FOREIGN KEY (import_id) REFERENCES $stagingTablePrefix"."_import_status(id) ON DELETE CASCADE
+        FOREIGN KEY (job) REFERENCES $stagingTablePrefix"."_job(id) ON DELETE CASCADE,
+        FOREIGN KEY (out_file) REFERENCES $stagingTablePrefix"."_output_file_track(id) ON DELETE CASCADE
         )
         ";
         $log->addLine($query) if $debug;
@@ -604,7 +608,7 @@ sub createDatabase
         $query = "INSERT INTO $stagingTablePrefix"."_wwwpages (name, class_name)
         values('Dashboard','dashboardUI')";
         $log->addLine($query) if $debug;
-        $dbHandler->update($query);
+        # $dbHandler->update($query);
 
 
         $query = "CREATE TABLE $stagingTablePrefix"."_wwwusers (
@@ -654,10 +658,7 @@ sub createDatabase
         seedDB($dbSeed) if $dbSeed;
 
     }
-    else
-    {
-        print "Staging table already exists\n";
-    }
+    
 }
 
 sub seedDB

@@ -357,7 +357,7 @@ function makeSearchTable($dbTable,$columnNames,$clickableIDPosition,$showColumns
 	$query="SELECT ";
 	foreach($columnNames as $internal => $value)
 	{
-		$query.="$value,";
+		$query.="\n$value,";
 	}
 	$query=substr($query,0,strlen($query)-1)." FROM $dbTable";
 	$vars = array();
@@ -401,6 +401,9 @@ function makeSearchTable($dbTable,$columnNames,$clickableIDPosition,$showColumns
     $ret.="<th>$humanColName</th>";
     $ret.="</tr></thead><tbody>";
     $i=0;
+    // echo "Result count: " . count($result) . "<br />";
+    // print_r($result);
+    // exit;
     foreach($result as $internal => $row)
     {
         $ret.="<tr>";
@@ -438,8 +441,6 @@ function makeSearchTable($dbTable,$columnNames,$clickableIDPosition,$showColumns
                         $additionURI=$additionalUri[$colName];
                         if(isset($additionalAnchorProperties[$colName]))
                             $additionalAnchorProps=$additionalAnchorProperties[$colName];
-                        
-                        
                     }
                     
                     #addDebug("$colName = $showPos");
