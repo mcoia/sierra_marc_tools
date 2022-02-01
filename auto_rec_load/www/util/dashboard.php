@@ -45,6 +45,14 @@ class dashboardUI
                 {
                     $ret = $this->getTotalVendors($this->uri['fromdate'], $this->uri['todate']);
                 }
+                else if($this->uri['statid'] == 'dashboard_stat_panel_total_unprocessed_records')
+                {
+                    $ret = $this->getTotalRecords($this->uri['fromdate'], $this->uri['todate'], 1);
+                }
+                else if($this->uri['statid'] == 'dashboard_stat_panel_waitingils_records')
+                {
+                    $ret = $this->getTotalRecords($this->uri['fromdate'], $this->uri['todate'], 0, 1);
+                }
             }
 		}
         else if(isset($this->uri['getjson']))
@@ -136,6 +144,22 @@ class dashboardUI
                     </div><!-- dashboard_stat_panel_child_result -->
                 </div><!-- dashboard_stat_panel_total_vendors -->
 
+                <div id='dashboard_stat_panel_waitingils_records' class='dashboard_stat_panel_child'>
+                    <div class='dashboard_stat_panel_child_title'>
+                     ILS Load Waiting
+                    </div><!-- dashboard_stat_panel_child_title -->
+                    <div class='dashboard_stat_panel_child_result'>
+                    </div><!-- dashboard_stat_panel_child_result -->
+                </div><!-- dashboard_stat_panel_total_records -->
+
+                <div id='dashboard_stat_panel_total_unprocessed_records' class='dashboard_stat_panel_child'>
+                    <div class='dashboard_stat_panel_child_title'>
+                     Unprocessed Records
+                    </div><!-- dashboard_stat_panel_child_title -->
+                    <div class='dashboard_stat_panel_child_result'>
+                    </div><!-- dashboard_stat_panel_child_result -->
+                </div><!-- dashboard_stat_panel_total_records -->
+
             </div><!-- dashboard_stat_panel -->
 
             <div id='dashboard_summary_pie_chart' class='dashboard_summary_container_child'>
@@ -182,13 +206,12 @@ class dashboardUI
             and aj.start_time < ?";
             $vars[] = $toDate;
         }
-
         $query = preg_replace('/!!daterange!!/i', $daterange, $query);
 		$result = $this->sqlconnect->executeQuery($query,$vars);
         return $result;
     }
 
-    function getTotalVendors($fromDate, $toDate)
+    function getTotalVendors($fromDate, $toDate, $nonStarted = null)
     {
         $vars = array();
         $daterange = "";
@@ -207,19 +230,26 @@ class dashboardUI
         aft.id=ais.file
         !!daterange!!
         group by 1";
-        if($fromDate)
+        if($nonStarted)
         {
             $daterange .= "
-            and aj.start_time > ?";
-            $vars[] = $fromDate;
+            and aj.start_time is null";
         }
-        if($toDate)
+        else
         {
-            $daterange .= "
-            and aj.start_time < ?";
-            $vars[] = $toDate;
+            if($fromDate)
+            {
+                $daterange .= "
+                and aj.start_time > ?";
+                $vars[] = $fromDate;
+            }
+            if($toDate)
+            {
+                $daterange .= "
+                and aj.start_time < ?";
+                $vars[] = $toDate;
+            }
         }
-
         $query = preg_replace('/!!daterange!!/i', $daterange, $query);
 		$result = $this->sqlconnect->executeQuery($query,$vars);
         if(count($result) > 0)
@@ -233,7 +263,7 @@ class dashboardUI
         return $result;
     }
 
-    function getTotalRecords($fromDate, $toDate)
+    function getTotalRecords($fromDate, $toDate, $nonStarted = null, $waitingForILS = null)
     {
         $vars = array();
         $daterange = "";
@@ -245,19 +275,32 @@ class dashboardUI
         where
         aj.id=ais.job
         !!daterange!!";
-        if($fromDate)
+        if($nonStarted)
         {
             $daterange .= "
-            and aj.start_time > ?";
-            $vars[] = $fromDate;
+            and aj.start_time is null";
         }
-        if($toDate)
+        else
+        {
+            if($fromDate)
+            {
+                $daterange .= "
+                and aj.start_time > ?";
+                $vars[] = $fromDate;
+            }
+            if($toDate)
+            {
+                $daterange .= "
+                and aj.start_time < ?";
+                $vars[] = $toDate;
+            }
+        }
+        if($waitingForILS)
         {
             $daterange .= "
-            and aj.start_time < ?";
-            $vars[] = $toDate;
+            and ais.loaded = ?";
+            $vars[] = 1;
         }
-
         $query = preg_replace('/!!daterange!!/i', $daterange, $query);
 		$result = $this->sqlconnect->executeQuery($query,$vars);
         if(count($result) == 1)

@@ -125,6 +125,8 @@ sub runJob
     my %fileOutput = ();
     my %fileOutputIDMap = ();
     # Convert the marc, store results in the DB, weeding out errors
+    my $before = new Loghandler("/mnt/evergreen/tmp/auto_rec_load/before.txt");
+    my $after = new Loghandler("/mnt/evergreen/tmp/auto_rec_load/after.txt");
     while($#importIDs > -1)
     {
         $recordTracker{"total"}++;
@@ -136,6 +138,8 @@ sub runJob
         my $sourceID = @values[3];
         my $z001 = @values[4];
         my $type = @values[5];
+        my $ilsRecordNum = @values[6];
+        my $ilsMARC = @values[7];
         if($type eq 'ignore')
         {
             $import->setItype($type);
@@ -151,6 +155,12 @@ sub runJob
                 %fileOutputIDMap = ();
                 $currentSource = $sourceID;
             }
+            elsif($recordTracker{"total"} % 20000 == 0 ) # break the output files up roughly every 20k
+            {
+                writeOutputMARC($self, \%fileOutput, \%fileOutputIDMap, $tag);
+                %fileOutput = ();
+                %fileOutputIDMap = ();
+            }
             my $import;
             my $perl = '$import = new importStatus($self->{log}, $self->{dbHandler}, $self->{prefix}, $self->{debug}, $iID);';
 
@@ -163,15 +173,15 @@ sub runJob
                     1;  # ok
                 } or do
                 {
-                    $self>{log}->addLogLine("\n\nError during Instantiating importStatus ID $iID - " .$@ . "\n\n");
+                    $self->{log}->addLogLine("\n\nError during Instantiating importStatus ID $iID - " .$@ . "\n\n");
                     updateImportError($self, $iID, "Couldn't read something correctly, error creating importStatus object");
                     $recordTracker{"convertedFailed"}++;
                 };
             }
             {
-                local $@;
-                eval
-                {
+                # local $@;
+                # eval
+                # {
                     updateJobStatus($self, "Converting MARC importID $iID");
                     print "Converting...\n" if $self->{debug};
                     $import->convertMARC($type);
@@ -187,6 +197,26 @@ sub runJob
                     }
 
                     my $marc = MARC::Record->new_from_xml($import->getTweakedRecord());
+                    if($ilsMARC)
+                    {
+                        print "There was an existing ILS record\nMerging some fields\n" if $self->{debug};
+                        $before->addLine($marc->as_formatted());
+
+                        # merge any and all 856 fields (special logic here)
+                        $marc = $self->mergeMARC856($marc, $ilsMARC);
+
+                        # merge any and all 890 fields
+                        $marc = $self->mergeMARCFields($marc, $ilsMARC, '890', 'a');
+
+                        # merge any and all 891 fields, keeping this record in the delete flag if we have deletes
+                        $marc = $self->mergeMARCFields($marc, $ilsMARC, '891', 'a') if($type eq 'deletes');
+
+                        # And if we have a non-delete record, be sure and remove the "delete" flag in the 891 for this one
+                        $marc = $self->mergeMARCFields($marc, $ilsMARC, '891', 'a', $import->getmarc_editor_name()) if($type ne 'deletes');
+
+                        $after->addLine($marc->as_formatted());
+                        $import->setILSID($ilsRecordNum . $self->calcSierraCheckDigit($ilsRecordNum)) if $ilsRecordNum;
+                    }
                     print "created marc object...\n" if $self->{debug};
                     if($self->{"outfile_$type"})
                     {
@@ -203,13 +233,13 @@ sub runJob
                         print "writing fail\n" if $self->{debug};
                     }
                     $import->writeDB();
-                    1;  # ok
-                } or do
-                {
-                    $self>{log}->addLogLine("Error during converting/writing MARC Status ID $iID - " .$@);
-                    updateImportError($self, $iID, "Couldn't manipulate the MARC: importStatus object");
-                    $recordTracker{"convertedFailed"}++;
-                };
+                    # 1;  # ok
+                # } or do
+                # {
+                    # $self->{log}->addLogLine("Error during converting/writing MARC Status ID $iID - " .$@);
+                    # updateImportError($self, $iID, "Couldn't manipulate the MARC: importStatus object");
+                    # $recordTracker{"convertedFailed"}++;
+                # };
             }
             undef $import;
         }
@@ -235,12 +265,6 @@ sub writeOutputMARC
     my $tag = shift;
     my %fileOutput = %{$outputRef};
     my %fileMap = %{$outputIDRef};
-    # print "Dumping vars from writeOutputMARC\n";
-    # print Dumper($outputIDRef);
-    # print Dumper($outputRef);
-    
-    # $self->{log}->addLine("Writing MARC data to disk");
-    # $self->{log}->addLine(Dumper(\%fileOutput));
 
     while ( (my $type, my $output) = each(%fileOutput) )
     {
@@ -249,7 +273,7 @@ sub writeOutputMARC
         {
             print "Writing to: " . $self->{"outfile_$type"} . "\n" if $self->{debug};
             my $outputFile = new Loghandler($self->{"outfile_$type"});
-            $outputFile->addLineRaw($output);
+            $outputFile->appendLine($output);
             if($fileMap{$type})
             {
                 my $outfileID = createOutFileEntry($self, $self->{"outfile_$type"} );
@@ -259,7 +283,7 @@ sub writeOutputMARC
                     my $ids = "";
                     $ids .= ' ? ,' foreach(@t);
                     $ids = substr($ids, 0, -1);
-                    my $query = "UPDATE 
+                    my $query = "UPDATE
                     ".$self->{prefix} ."_import_status ais
                     SET out_file = ?
                     WHERE ais.id in( $ids )";
@@ -272,6 +296,9 @@ sub writeOutputMARC
             }
         }
     }
+
+    undef %fileOutput;
+    undef %fileMap;
     setupSourceOutputFiles($self, $tag) if $tag;
 }
 
@@ -396,7 +423,7 @@ sub addsOrUpdates
         if($type eq 'adds') # We only care about distinguishing adds from "updates". deletes are ignoreed here
         {
             $self->{log}->addLine("Parsing addsorupdates");
-            $self->{log}->addLine(Dumper(\@ar));
+            $self->{log}->addLine(Dumper(\@ar)) if $self->{debug};
             my @empty = ();
             $z001Map{$z001} = \@empty if(!$z001Map{$z001});
             @empty = @{$z001Map{$z001}};
@@ -416,8 +443,8 @@ sub addsOrUpdates
             select vv.field_content,vv.record_id from
             sierra_view.bib_record br
             join sierra_view.bib_record_item_record_link brirl on (brirl.bib_record_id = br.record_id)
-            join sierra_view.item_record ir on (ir.record_id = brirl.item_record_id and ir.location_code ~'".$self->{locationCodeRegex}."')
-            join sierra_view.varfield_view vv on (vv.record_id=br.record_id and vv.marc_tag='001' and
+            join sierra_view.item_record ir on (ir.record_id = brirl.item_record_id and ir.location_code ~\$\$".$self->{locationCodeRegex}."\$\$)
+            join sierra_view.varfield_view vv on (vv.record_id=br.record_id and vv.marc_tag=\$\$001\$\$ and
             vv.field_content in($z001IDString))";
             $self->{log}->addLine($query);
             my @results = @{$self->{extPG}->query($query)};
@@ -428,7 +455,7 @@ sub addsOrUpdates
                 @ids = @{$z001Map{@row[0]}} if $z001Map{@row[0]};
                 foreach(@ids)
                 {
-                    print "Looping: $_\n" if $self->{debug};
+                    # print "Looping: $_\n" if $self->{debug};
                     if($imports{$_})
                     {
                         my @ar = @{$imports{$_}};
@@ -441,15 +468,216 @@ sub addsOrUpdates
             }
 
         }
-        # Follow up with another query to find non-library scoped bibs that match these 001's.
-        # This will get the 856's that already exist in the system, so that we can merge them onto our incoming record
+    }
+    # Follow up with another query to find non-library scoped bibs that match these 001's.
+    # This will get the 856's,890's,891's that already exist in the system, so that we can merge them onto our incoming record
+    # this query looks bad because Sierra uses Postgres Views, and to get the best, most efficient results, queries look crappy (nesting, etc)
+    my %z001Map = ();
+    my $z001IDString = "";
+    while ( (my $key, my $value) = each(%imports) )
+    {
+        my @ar = @{$value};
+        my $z001 = @ar[4];
+        my $type = @ar[5];
+        my @empty = ();
+        $z001Map{$z001} = \@empty if(!$z001Map{$z001});
+        @empty = @{$z001Map{$z001}};
+        push (@empty, $key);
+        $z001Map{$z001} = \@empty;
+        $z001IDString .= "\$ooone\$$z001\$ooone\$,";
+    }
+    $z001IDString = substr($z001IDString, 0, -1);
+    if($self->{extPG} && $z001IDString ne '')
+    {
+        my $query = "
+        select * from
+        (
+            select svvv.record_num,svvv.marc_tag,svvv.marc_ind1,svvv.marc_ind2,svvv.occ_num,svvv.field_content
+            from
+            sierra_view.varfield_view svvv
+
+            where
+            record_id in
+            (
+                select vv.record_id from
+                sierra_view.varfield_view vv
+                where
+                vv.marc_tag=\$\$001\$\$ and
+                vv.field_content in($z001IDString)
+            )
+        ) as a
+        where 
+        ( marc_tag=\$\$856\$\$ or marc_tag=\$\$890\$\$ or marc_tag=\$\$891\$\$ or marc_tag=\$\$001\$\$ )
+        order by 1,2,5";
+        $self->{log}->addLine($query);
+        my @results = @{$self->{extPG}->query($query)};
+        my $currentRecord = "";
+        my $marc_record = undef;
+        while($#results > -1)
+        {
+            my $r = shift @results;
+            my @row = @{$r};
+            my $record_num = @row[0];
+            my $marc_tag = @row[1];
+            my $marc_ind1 = @row[2] || ' '; # catch null -> ' ' 
+            my $marc_ind2 = @row[3] || ' ';
+            my $field_content = @row[5];
+            if( $currentRecord != $record_num )
+            {
+                if($marc_record && $marc_record->field('001') && $marc_record->field('001')->data()) #not the first time through, and we've created a marc record to save into the hash.
+                {
+                    %imports = %{addsOrUpdates_append($self, \%imports, $marc_record, \%z001Map, $currentRecord)};
+                }
+                $marc_record = MARC::Record->new();
+                $currentRecord = $record_num;
+            }
+            if($marc_tag+0 > 10)
+            {
+                # print "'$field_content'\n";
+                my @subs = split(/\|/, $field_content);
+                my @subs_pass = ();
+                foreach(@subs)
+                {
+                    if(length(substr($_, 0, 1)) > 0)
+                    {
+                        my $subfield = substr($_, 0, 1);
+                        $_ = substr($_, 1);
+                        push (@subs_pass, ($subfield, $_));
+                    }
+                }
+                $marc_ind1 = ' ' if length($marc_ind1) != 1;
+                $marc_ind2 = ' ' if length($marc_ind2) != 1;
+                my $field = MARC::Field->new($marc_tag, $marc_ind1, $marc_ind2, @subs_pass);
+                $marc_record->insert_grouped_field($field);
+            }
+            elsif($marc_tag+0 < 11)
+            {
+                my $field = MARC::Field->new($marc_tag, $field_content);
+                $marc_record->insert_grouped_field($field);
+            }
+            %imports = %{addsOrUpdates_append($self, \%imports, $marc_record, \%z001Map, $currentRecord)} if( $#results == -1 );
+        }
+    }
+
+    $self->{log}->addLine(Dumper(\%imports)) if $self->{debug};
+    return \%imports;
+}
+
+sub addsOrUpdates_append
+{
+    my $self = shift;
+    my $importRef = shift;
+    my $marc_record = shift;
+    my $z001MapRef = shift;
+    my $current_record = shift;
+    my %imports = %{$importRef};
+    my %z001Map = %{$z001MapRef};
+    my @ids = @{$z001Map{$marc_record->field('001')->data()}} if $z001Map{$marc_record->field('001')->data()};
+    foreach(@ids)
+    {
+        print "saving Sierra marc import ID: $_\n" if $self->{debug};
+        if($imports{$_})
+        {
+            my @ar = @{$imports{$_}};
+            $self->{log}->addLine(Dumper(\@ar)) if $self->{debug};
+            push (@ar, $currentRecord);
+            push (@ar, $marc_record);
+            $self->{log}->addLine(Dumper(\@ar)) if $self->{debug};
+            $imports{$_} = \@ar;
+        }
+    }
+    return \%imports;
+}
+
+sub runCheckILSLoaded
+{
+    my $self = shift;
+    my %imports = %{getImportIDsNotLoaded($self)}; # only "new" rows
+    my @importIDs = ( keys %imports );
+    my %importsWithGlue = %{fileILSLoaded($self, \%imports)};
+    my $maxID = 0;
+    while($#importIDs > -1)
+    {
+        my $iID = shift @importIDs;
+        my @values = @{$importsWithGlue{$iID}};
+        my $z001 = @values[0];
+        my $tag = @values[1];
+        my $filename = @values[2];
+        my $ILSID = @values[3];
+        $maxID = $iID if ($iID+0 > $maxID+0);
+
+        if($ILSID)
+        {
+            print "here\n";
+            my $import;
+            my $perl = '$import = new importStatus($self->{log}, $self->{dbHandler}, $self->{prefix}, $self->{debug}, $iID);';
+            # Instantiate the import
+            {
+                local $@;
+                eval
+                {
+                    eval $perl;
+                    1;  # ok
+                } or do
+                {
+                    $self->{log}->addLogLine("\n\nError during Instantiating importStatus ID $iID - " .$@ . "\n\n");
+                    updateImportError($self, $iID, "runCheckILSLoaded - Couldn't read something correctly, error creating importStatus object");
+                    $self->addTrace('runCheckILSLoaded',"Error during Instantiating importStatus ID $iID - " .$@);
+                };
+            }
+            {
+                # local $@;
+                # eval
+                # {
+                    print "setting stuff\n";
+                    $import->setLoaded(1);
+                    $import->setILSID($ILSID . $self->calcSierraCheckDigit($ILSID));
+                    print "writing\n";
+                    $import->writeDB();
+                    # 1;  # ok
+                # } or do
+                # {
+                    # $self->{log}->addLogLine("Error during updating import for ILS loaded ID $iID - " .$@);
+                    # updateImportError($self, $iID, "runCheckILSLoaded - Couldn't manipulate the MARC: importStatus object");
+                    # $self->addTrace('runCheckILSLoaded',"Error during updating import for ILS loaded ID $iID - " .$@);
+                # };
+            }
+        }
+        undef $import;
+        if($#importIDs == -1) # get more
+        {
+            %imports = undef; # Hopefully garbage collector comes :)
+            %importsWithGlue = undef;
+            %imports = %{getImportIDsNotLoaded($self, $maxID)}; # only "new" rows
+            @importIDs = ( keys %imports );
+            %importsWithGlue = %{fileILSLoaded($self, \%imports)};
+        }
+    }
+}
+
+sub fileILSLoaded
+{
+    my $self = shift;
+    my $importRef = shift;
+    my %imports = %{$importRef};
+    my $z001IDString = "";
+
+    while ( (my $key, my $value) = each(%imports) )
+    {
+        my @ar = @{$value};
+        my $z001 = @ar[0];
+        $z001IDString .= "\$ooone\$$z001\$ooone\$,";
+    }
+    $z001IDString = substr($z001IDString, 0, -1);
+    if($z001IDString ne '')
+    {
         # this query looks bad because Sierra uses Postgres Views, and to get the best, most efficient results, queries look crappy (nesting, etc)
         if($self->{extPG})
         {
             my $query = "
             select * from
             (
-                select svvv.record_num,svvv.marc_tag,svvv.marc_ind1,svvv.marc_ind2,svvv.occ_num,svvv.field_content
+                select svvv.record_num,svvv.marc_tag,svvv.occ_num,svvv.field_content
                 from
                 sierra_view.varfield_view svvv
 
@@ -464,45 +692,34 @@ sub addsOrUpdates
                 )
             ) as a
             where 
-            marc_tag='856' or marc_tag='001'
-            order by 1,2,5";
+            marc_tag='890' or marc_tag='001'
+            order by 1,2,3";
             $self->{log}->addLine($query);
             my @results = @{$self->{extPG}->query($query)};
             my $currentRecord = "";
-            my $marc_record;
-            foreach(@results)
+            my $marc_record = undef;
+            while($#results > -1)
             {
-                my @row = @{$_};
+                my $r = shift @results;
+                my @row = @{$r};
                 my $record_num = @row[0];
                 my $marc_tag = @row[1];
-                my $marc_ind1 = @row[2] || ' '; # catch null -> ' ' 
-                my $marc_ind2 = @row[3] || ' ';
-                my $field_content = @row[5];
-                if($currentRecord != $record_num)
+                my $field_content = @row[3];
+                if( ($currentRecord != $record_num) )
                 {
-                    if($marc_record && $marc_record->field('001')->data()) #not the first time through, and we've created a marc record to save into the hash.
+                    if($marc_record && $marc_record->field('001') && $marc_record->field('001')->data()) #not the first time through, and we've created a marc record to save into the hash.
                     {
-                        my @ids = @{$z001Map{$marc_record->field('001')->data()}} if $z001Map{marc_record->field('001')->data()};
-                        foreach(@ids)
-                        {
-                            print "saving Sierra marc import ID: $_\n" if $self->{debug};
-                            if($imports{$_})
-                            {
-                                my @ar = @{$imports{$_}};
-                                $self->{log}->addLine(Dumper(\@ar)) if $self->{debug};
-                                push (@ar, $currentRecord);
-                                push (@ar, $marc_record);
-                                $self->{log}->addLine(Dumper(\@ar)) if $self->{debug};
-                                $imports{$_} = \@ar;
-                            }
-                        }
+                        print Dumper(\%imports);
+                        %imports = %{fileILSLoaded_append($self, \%imports, $marc_record, $currentRecord)};
+                        print Dumper(\%imports);
                     }
+                    $marc_record = undef;
                     $marc_record = MARC::Record->new();
                     $currentRecord = $record_num;
                 }
-                if($marc_tag == '856')
+                if($marc_tag eq '890')
                 {
-                    print "'$field_content'\n";
+                    # print "'$field_content'\n";
                     my @subs = split(/\|/, $field_content);
                     my @subs_pass = ();
                     foreach(@subs)
@@ -514,20 +731,87 @@ sub addsOrUpdates
                             push (@subs_pass, ($subfield, $_));
                         }
                     }
-                    $marc_ind1 = ' ' if length($marc_ind1) != 1;
-                    $marc_ind2 = ' ' if length($marc_ind2) != 1;
-                    my $field = MARC::Field->new( '856', $marc_ind1, $marc_ind2, @subs_pass);
+                    my $field = MARC::Field->new($marc_tag, ' ', ' ', @subs_pass);
                     $marc_record->insert_grouped_field($field);
                 }
-                elsif($marc_tag == '001')
+                elsif($marc_tag eq '001')
                 {
-                    my $field = MARC::Field->new( '001', $field_content );
+                    my $field = MARC::Field->new($marc_tag, $field_content);
                     $marc_record->insert_grouped_field($field);
                 }
+                %imports = %{fileILSLoaded_append($self, \%imports, $marc_record, $currentRecord)} if( $#results == -1 );
             }
         }
     }
     $self->{log}->addLine(Dumper(\%imports)) if $self->{debug};
+    return \%imports;
+}
+
+sub fileILSLoaded_append
+{
+    my $self = shift;
+    my $importsRef = shift;
+    my $marc_record = shift;
+    my $currentRecord = shift;
+    my %imports = %{$importsRef};
+
+    my %z001Map = ();
+    my %z001TagMap = ();
+    my %importIDTagMap = ();
+    while ( (my $key, my $value) = each(%imports) )
+    {
+        my @ar = @{$value};
+        my $z001 = @ar[0];
+        my $tag = @ar[1];
+        my @empty = ();
+        $z001Map{$z001} = \@empty if(!$z001Map{$z001});
+        @empty = @{$z001Map{$z001}};
+        push (@empty, $key);
+        $z001Map{$z001} = \@empty;
+
+        my @empty = ();
+        $z001TagMap{$z001} = \@empty if(!$z001TagMap{$z001});
+        @empty = @{$z001TagMap{$z001}};
+        push (@empty, $tag);
+        $z001TagMap{$z001} = \@empty;
+
+        # There shouldn't be more than one import ID per tag (they should be unique) but we will allow for it
+        my @empty = ();
+        $importIDTagMap{$tag} = \@empty if(!$importIDTagMap{$tag});
+        @empty = @{$importIDTagMap{$tag}};
+        push (@empty, $key);
+        $importIDTagMap{$tag} = \@empty;
+    }
+
+    my @ids = @{$z001Map{$marc_record->field('001')->data()}} if $z001Map{$marc_record->field('001')->data()};
+    my @expectedTags = @{$z001TagMap{$marc_record->field('001')->data()}} if $z001TagMap{$marc_record->field('001')->data()};
+    my @e890a = $marc_record->field('890');
+    foreach(@e890a)
+    {
+        my @subs = $_->subfield('a');
+        print Dumper(\@subs);
+        foreach(@subs)
+        {
+            my $tSub = $_;
+            foreach(@expectedTags)
+            {
+                print "'$tSub'\n'$_'\n";
+                if( ($tSub eq $_) && $importIDTagMap{$_} )
+                {
+                    foreach(@{$importIDTagMap{$_}})
+                    {
+                        if($imports{$_})
+                        {
+                            my @ar = @{$imports{$_}};
+                            push (@ar, $currentRecord);
+                            $imports{$_} = \@ar;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    print Dumper(\%imports);
     return \%imports;
 }
 
@@ -541,11 +825,11 @@ sub setupSourceOutputFiles
         my $mobUtil = new Mobiusutil();
         while ( (my $key, my $value) = each(%{$self->{folders}}) )
         {
-            $self->{'outfile_'. $key} = $mobUtil->chooseNewFileName($value, $tag, "mrc");
+            $self->{'outfile_'. $key} = $mobUtil->chooseNewFileName($value, $tag . "_$key", "mrc");
         }
         undef $mobUtil;
     }
-    $self->{log}->addLine(Dumper($self));
+    $self->{log}->addLine(Dumper($self)) if $self->{debug};
 }
 
 sub setupExternalPGConnection
@@ -624,6 +908,35 @@ sub getImportIDs
     LIMIT $limit";
     $self->{log}->addLine($query) if $self->{debug};
     my @results = @{$self->getDataFromDB($query)};
+    foreach(@results)
+    {
+        my @row = @{$_};
+        my $id = shift @row;
+        $ret{$id} = \@row;
+    }
+    return \%ret;
+}
+
+sub getImportIDsNotLoaded
+{
+    my $self = shift;
+    my $minID = shift || 0;
+    my $limit = shift || 500;
+    my %ret = ();
+    my $query = "
+    SELECT
+    ais.id, ais.z001, concat(ais.tag,ais.id), aoft.filename
+    FROM
+    ".$self->{prefix} ."_import_status ais
+    LEFT JOIN ".$self->{prefix} ."_output_file_track aoft ON (aoft.id=ais.out_file)
+    where
+    ais.job = ?
+    and loaded = 0
+    and ais.id > ?
+    ORDER BY 1
+    LIMIT $limit";
+    my @vars = ($self->{job}, $minID);
+    my @results = @{$self->getDataFromDB($query, \@vars)};
     foreach(@results)
     {
         my @row = @{$_};

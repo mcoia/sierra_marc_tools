@@ -66,10 +66,11 @@ sub calcSierraCheckDigit
 {
     my $self = shift;
     my $seed = shift;
+    print "calculating checkdigit\n";
     $seed = reverse( $seed );
     my @chars = split("", $seed);
     my $checkDigit = 0;
-    for my $i (0.. $#chars)
+    for my $i (0..$#chars)
     {
         $checkDigit += @chars[$i] * ($i+2);
     }
@@ -78,6 +79,7 @@ sub calcSierraCheckDigit
     {
         $checkDigit = 'x';
     }
+    print "calculating checkdigit: $checkDigit\n";
     return $checkDigit;
 }
 
@@ -247,8 +249,9 @@ sub entityize {
 
 sub mergeMARC856
 {
-    my $marc = @_[0];
-    my $marc2 = @_[1];
+    my $self = shift;
+    my $marc = shift;
+    my $marc2 = shift;
     my @eight56s = $marc->field("856");
     my @eight56s_2 = $marc2->field("856");
     my @eights;
@@ -269,11 +272,6 @@ sub mergeMARC856
         {
             if(!$urls{$u})
             {
-                if($ind2 ne '0')
-                {
-                    $thisField->delete_subfields('9');
-                    $thisField->delete_subfields('z');
-                }
                 $urls{$u} = $thisField;
             }
             else
@@ -313,12 +311,6 @@ sub mergeMARC856
                         $otherField->add_subfields('9' => $looking);
                     }
                 }
-                if($ind2 ne '0')
-                {
-                    $thisField->delete_subfields('9');
-                    $thisField->delete_subfields('z');
-                }
-
                 $urls{$u} = $otherField;
             }
         }
@@ -328,12 +320,12 @@ sub mergeMARC856
     my $finalCount = scalar keys %urls;
     if($original856 != $finalCount)
     {
-        $log->addLine("There was $original856 and now there are $finalCount");
+        $self->{log}->addLine("There was $original856 and now there are $finalCount");
     }
 
     my $dump1=Dumper(\%urls);
     my @remove = $marc->field('856');
-    #$log->addLine("Removing ".$#remove." 856 records");
+    #$self->{log}->addLine("Removing ".$#remove." 856 records");
     $marc->delete_fields(@remove);
 
 
@@ -341,6 +333,56 @@ sub mergeMARC856
     {
         $marc->insert_grouped_field( $mvalue );
     }
+    return $marc;
+}
+
+sub mergeMARCFields
+{
+    my $self = shift;
+    my $marc = shift;
+    my $marc2 = shift;
+    my $fieldNumber = shift;
+    my $subfieldKey = shift;
+    my $keyRemoval = shift;
+    $keyRemoval = lc $keyRemoval;
+    
+    my @fields = $marc->field($fieldNumber);
+    my @fields_2 = $marc2->field($fieldNumber);
+    my %subfieldDedupe = ();
+    @fields = (@fields, @fields_2);
+
+    foreach(@fields)
+    {
+        my $thisField = $_;
+        my @subs = $thisField->subfield($subfieldKey);
+        foreach(@subs)
+        {
+            my $thisSubfield = $_;
+            $thisSubfield = lc $thisSubfield;
+            if( !( ($keyRemoval) && ($thisSubfield =~ m/$keyRemoval/)) )
+            {
+                $subfieldDedupe{$_} = 1;
+            }
+        }
+    }
+    print Dumper(\%subfieldDedupe);
+
+    my @remove = $marc->field($fieldNumber);
+    $marc->delete_fields(@remove) if $#remove > -1;
+
+    my $field = MARC::Field->new($fieldNumber+0, ' ', ' ', 'b' => 'temp');
+    $field->delete_subfield(code => 'b');
+    while ((my $internal, my $mvalue ) = each(%subfieldDedupe))
+    {
+        $field->add_subfields($subfieldKey, $internal)
+    }
+    print Dumper($field);
+    if( $field->subfield($subfieldKey) )
+    {   
+        $marc->insert_grouped_field( $field );
+    }
+    print Dumper($marc);
+    $self->{log}->addLine($marc->as_formatted());
     return $marc;
 }
 

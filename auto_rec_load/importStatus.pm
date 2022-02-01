@@ -184,6 +184,12 @@ sub getItype
     return $self->{itype};
 }
 
+sub getmarc_editor_name
+{
+    my $self = shift;
+    return $self->{marc_editor_name};
+}
+
 sub setStatus
 {
     my $self = shift;

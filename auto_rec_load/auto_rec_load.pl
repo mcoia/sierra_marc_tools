@@ -30,7 +30,7 @@ use job;
 # use sigtrap qw(handler cleanup normal-signals);
 
 our $stagingTablePrefix = "auto";
-our $pidfile = "/tmp/auto_rec_load.pl.pid";
+our $lockfile = "/tmp/auto_rec_load.pl.pid";
 
 
 our $driver;
@@ -50,6 +50,7 @@ our $jobid = -1;
 our $vendor = '';
 our $screenShotDIR;
 our $testMARC = '';
+our $checkILSLoaded;
 
 GetOptions (
 "config=s" => \$configFile,
@@ -61,14 +62,16 @@ GetOptions (
 "runAllScrapers" => \$runAllScrapers,
 "runAllJobs" => \$runAllJobs,
 "runJob" => \$runJobID,
-"pidfile" => \$pidfile,
 "testMARC=s" => \$testMARC,
+"lockfile=s" => \$lockfile,
+"checkILSLoaded" => \$checkILSLoaded,
 )
 or die("Error in command line arguments\nYou can specify
 --config                                      [Path to the config file]
 --debug                                       [Cause more log output]
 --recreateDB                                  [Deletes the tables and recreates them]
 --dbSeed                                      [DB Seed file - populating the base data]
+--lockfile                                    [Specific lockfile for this operation, allows for the script to run simultaneously with itself in different modes]
 --testMARC                                    [Expects to find test.mrc in working folder, pass the name of the MARC editor you want to test EG 'ebook_central_MWSU']
 \n");
 
@@ -99,7 +102,7 @@ if($conf)
 
         createDatabase();
 
-        my $writePid = new Loghandler($pidfile);
+        my $writePid = new Loghandler($lockfile);
         $writePid->truncFile("running");
 
         my $cwd = getcwd();
@@ -110,8 +113,10 @@ if($conf)
         
         runJobs() if($runAllJobs || ($runJobID));
 
+        runCheckILSLoaded() if($checkILSLoaded);
+
         undef $writePid;
-        unlink $pidFile;
+        unlink $lockfile;
 
         $log->addLogLine("****************** Ending ******************");
 
@@ -162,22 +167,22 @@ sub runScrapers
             }
             # Run the scrape function
             {
-                local $@;
-                eval
-                {
+                # local $@;
+                # eval
+                # {
                     # print "Executing special file parsing\n$folder\n";
 
                     # $source->processDownloadedFile("2021-09-28_0_1","/20210628_307429_missouriwestern_export.zip");
                     print "Scraping\n" if $debug;
                     $source->scrape();
-                    die if $source->getError();
-                    1;  # ok
-                } or do
-                {
-                    my $evalError = concatTrace( $@ || "error", $source->getTrace(), $source->getError());
-                    alertErrorEmail($evalError) if!$debug;
-                    next;
-                };
+                    # die if $source->getError();
+                    # 1;  # ok
+                # } or do
+                # {
+                    # my $evalError = concatTrace( $@ || "error", $source->getTrace(), $source->getError());
+                    # alertErrorEmail($evalError) if!$debug;
+                    # next;
+                # };
             }
             concatTrace('', $source->getTrace(), '');
             undef $source;
@@ -216,6 +221,7 @@ $dbHandler->update($query);
         my $thisJobID = $_;
         print "Working on: '$thisJobID'\n";
         my $tJob;
+        # $tJob = new job($log, $dbHandler, $stagingTablePrefix, $debug, $thisJobID);
         my $perl = '$tJob = new job($log, $dbHandler, $stagingTablePrefix, $debug, $thisJobID);';
         print $perl . "\n" if $debug;
         # Instantiate the Job
@@ -248,6 +254,53 @@ $dbHandler->update($query);
                 alertErrorEmail($evalError) if!$debug;
                 next;
             };
+        }
+        concatTrace('', $tJob->getTrace(), '');
+        undef $tJob;
+    }
+}
+
+sub runCheckILSLoaded
+{
+    my @jobs = @{getILSConfirmationJobs()};
+    foreach(@jobs)
+    {
+        my $thisJobID = $_;
+        print "Checking ILS Load for job: '$thisJobID'\n";
+        my $tJob;
+        $tJob = new job($log, $dbHandler, $stagingTablePrefix, $debug, $thisJobID);
+        my $perl = '$tJob = new job($log, $dbHandler, $stagingTablePrefix, $debug, $thisJobID);';
+        print $perl . "\n" if $debug;
+        # # Instantiate the Job
+        # {
+            # local $@;
+            # eval
+            # {
+                # eval $perl;
+                # die if $tJob->getError();
+                # 1;  # ok
+            # } or do
+            # {
+                # my $evalError = concatTrace( $@ || "error", $tJob->getTrace(), $tJob->getError());
+                # alertErrorEmail("Could not instanciate job: $thisJobID\r\n\r\n$perl\r\n\r\nerror:\r\n\r\n$evalError") if!$debug;
+                # next;
+            # };
+        # }
+        # Run the runCheckILSLoaded function
+        {
+            # local $@;
+            # eval
+            # {
+                print "Executing job: '$thisJobID'\n";
+                $tJob->runCheckILSLoaded();
+                die if $tJob->getError();
+                # 1;  # ok
+            # } or do
+            # {
+                # my $evalError = concatTrace( $@ || "error", $tJob->getTrace(), $tJob->getError());
+                # alertErrorEmail($evalError) if !$debug;
+                # next;
+            # };
         }
         concatTrace('', $tJob->getTrace(), '');
         undef $tJob;
@@ -304,6 +357,7 @@ sub runTest
 sub getReadyJobs
 {
     my @ret = ();
+    # return \@ret;
     my $query = "
     SELECT
     job.id
@@ -323,6 +377,31 @@ sub getReadyJobs
     $query =~ s/___specificJob___//g if !($runJobID && trim($runJobID) != '');
 
 
+    $log->addLogLine($query);
+    my @results = @{$dbHandler->query($query)};
+    foreach(@results)
+    {
+        my @row = @{$_};
+        push (@ret, @row[0]);
+    }
+    print Dumper(@ret) if $debug;
+    return \@ret;
+}
+
+sub getILSConfirmationJobs
+{
+    my @ret = (3);
+    return \@ret;
+    my $query = "
+    SELECT
+    distinct job.id
+    FROM
+    $stagingTablePrefix"."_job job
+    JOIN $stagingTablePrefix"."_import_status ais ON (ais.job=job.id)
+    where
+    ais.loaded = 0
+    order by 1
+    ";
     $log->addLogLine($query);
     my @results = @{$dbHandler->query($query)};
     foreach(@results)
@@ -465,10 +544,10 @@ sub createDatabase
         my $query = "DROP TABLE $stagingTablePrefix"."_wwwusers ";
         $log->addLine($query);
         $dbHandler->update($query);
-        my $query = "DROP TABLE $stagingTablePrefix"."_output_file_track ";
+        my $query = "DROP TABLE $stagingTablePrefix"."_import_status ";
         $log->addLine($query);
         $dbHandler->update($query);
-        my $query = "DROP TABLE $stagingTablePrefix"."_import_status ";
+        my $query = "DROP TABLE $stagingTablePrefix"."_output_file_track ";
         $log->addLine($query);
         $dbHandler->update($query);
         my $query = "DROP TABLE $stagingTablePrefix"."_file_track ";
@@ -486,7 +565,7 @@ sub createDatabase
         my $query = "DROP TABLE $stagingTablePrefix"."_job ";
         $log->addLine($query);
         $dbHandler->update($query);
-    
+
         ##################
         # TABLES
         ##################
@@ -526,7 +605,7 @@ sub createDatabase
         cluster int,
         PRIMARY KEY (id),
         UNIQUE INDEX (name),
-        FOREIGN KEY (cluster) REFERENCES $stagingTablePrefix"."_cluster(id) ON DELETE CASCADE
+        FOREIGN KEY (cluster) REFERENCES $stagingTablePrefix"."_cluster(id) ON DELETE RESTRICT
         )
         ";
         $log->addLine($query) if $debug;
@@ -540,7 +619,7 @@ sub createDatabase
         perl_mod varchar(50),
         json_connection_detail varchar(5000),
         PRIMARY KEY (id),
-        FOREIGN KEY (client) REFERENCES $stagingTablePrefix"."_client(id) ON DELETE CASCADE
+        FOREIGN KEY (client) REFERENCES $stagingTablePrefix"."_client(id) ON DELETE RESTRICT
         )
         ";
         $log->addLine($query) if $debug;
@@ -556,8 +635,8 @@ sub createDatabase
         grab_time datetime DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
         INDEX (fkey),
-        FOREIGN KEY (client) REFERENCES $stagingTablePrefix"."_client(id) ON DELETE CASCADE,
-        FOREIGN KEY (source) REFERENCES $stagingTablePrefix"."_source(id) ON DELETE CASCADE
+        FOREIGN KEY (client) REFERENCES $stagingTablePrefix"."_client(id) ON DELETE RESTRICT,
+        FOREIGN KEY (source) REFERENCES $stagingTablePrefix"."_source(id) ON DELETE RESTRICT
         )
         ";
         $log->addLine($query) if $debug;
@@ -587,9 +666,9 @@ sub createDatabase
         job int,
         out_file int,
         PRIMARY KEY (id),
-        FOREIGN KEY (file) REFERENCES $stagingTablePrefix"."_file_track(id) ON DELETE CASCADE,
-        FOREIGN KEY (job) REFERENCES $stagingTablePrefix"."_job(id) ON DELETE CASCADE,
-        FOREIGN KEY (out_file) REFERENCES $stagingTablePrefix"."_output_file_track(id) ON DELETE CASCADE
+        FOREIGN KEY (file) REFERENCES $stagingTablePrefix"."_file_track(id) ON DELETE RESTRICT,
+        FOREIGN KEY (job) REFERENCES $stagingTablePrefix"."_job(id) ON DELETE RESTRICT,
+        FOREIGN KEY (out_file) REFERENCES $stagingTablePrefix"."_output_file_track(id) ON DELETE RESTRICT
         )
         ";
         $log->addLine($query) if $debug;
@@ -905,24 +984,10 @@ sub concatTrace
 
 sub figurePIDFileStuff
 {
-    if (-e $pidfile)
-    {
-        #Check the processes and see if there is a copy running:
-        my $thisScriptName = $0;
-        my $numberOfNonMeProcesses = scalar grep /$thisScriptName/, (split /\n/, `ps -aef`);
-        print "$thisScriptName has $numberOfNonMeProcesses running\n" if $debug;
-        # The number of processes running in the grep statement will include this process,
-        # if there is another one the count will be greater than 1
-        if($numberOfNonMeProcesses > 1)
-        {
-            print "Sorry, it looks like I am already running.\nIf you know that I am not, please delete $pidfile\n";
-            exit;
-        }
-        else
-        {
-            #I'm really not running
-            unlink $pidFile;
-        }
+    if (-e $lockfile)
+    {   
+        print "Sorry, it looks like I am already running.\nIf you know that I am not, please delete $lockfile\n";
+        exit;
     }
 }
 
@@ -948,9 +1013,9 @@ sub cleanup
 
 sub DESTROY
 {
-    print "I'm dying, deleting PID file $pidFile\n";
+    print "I'm dying, deleting PID file $lockfile\n";
     closeBrowser();
-    unlink $pidFile;
+    unlink $lockfile;
 }
 
 exit;

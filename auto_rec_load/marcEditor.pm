@@ -57,7 +57,9 @@ sub manipulateMARC
             # print $@;
             # die;
         # };
-        $ret = tagMARC($self, $ret, $tag);
+        $ret = tagAddsMARC($self, $ret, $tag);
+        $ret = tagDeletesMARC($self, $ret, $key) if ($self->{type} eq 'deletes');
+        $ret = removeField($self, $ret, '856') if ($self->{type} eq 'deletes');
     }
     return $ret;
 }
@@ -87,18 +89,19 @@ sub ebook_central_MWSU
         );
         $marc->insert_grouped_field($field949);
     }
-    $marc = updateSubfields($marc, '856', 'u', 'https://login.ezproxy.missouriwestern.edu/login?url=', 1); # prepend
-    $marc = updateSubfields($marc, '856', 'z', 'MWSU E Book');
-    $marc = updateSubfields($marc, '856', '5', '6mwsu');
+    $marc = updateSubfields($self, $marc, '856', 'u', 'https://login.ezproxy.missouriwestern.edu/login?url=', 1); # prepend
+    $marc = updateSubfields($self, $marc, '856', 'z', 'MWSU E Book');
+    $marc = updateSubfields($self, $marc, '856', '5', '6mwsu');
 
     # Inject a 245$h after all a and p subfields
     my @prefields = ('a','p','n');
-    $marc = createSubfieldBetween($marc, '245', 'h', '[electronic resource (video)]', \@prefields, undef, undef);
+    $marc = createSubfieldBetween($self, $marc, '245', 'h', '[electronic resource (video)]', \@prefields, undef, undef);
     return $marc;
 }
 
 sub createSubfieldBetween
 {
+    my $self = shift;
     my $marc = shift;
     my $field = shift;
     my $subfield = shift;
@@ -113,7 +116,6 @@ sub createSubfieldBetween
     if($presubfieldsRef)
     {   
        @preSubfieldCodes = @{$presubfieldsRef};
-     
     }
     if($aftersubfieldsRef)
     {
@@ -164,21 +166,35 @@ sub createSubfieldBetween
     return $marc;
 }
 
-sub tagMARC
+sub tagAddsMARC
 {
     my $self = shift;
     my $marc = shift;
     my $tag = shift;
     if ($tag)
     {
-        my $field830 = MARC::Field->new( '830', ' ', ' ', 'a' => $tag);
-        $marc->insert_grouped_field($field830);
+        my $field890 = MARC::Field->new( '890', ' ', ' ', 'a' => $tag);
+        $marc->insert_grouped_field($field890);
+    }
+    return $marc;
+}
+
+sub tagDeletesMARC
+{
+    my $self = shift;
+    my $marc = shift;
+    my $tag = shift;
+    if ($tag)
+    {
+        my $field890 = MARC::Field->new( '891', ' ', ' ', 'a' => $tag);
+        $marc->insert_grouped_field($field890);
     }
     return $marc;
 }
 
 sub updateSubfields
 {
+    my $self = shift;
     my $marc = shift;
     my $field = shift;
     my $subfield = shift;
@@ -192,7 +208,7 @@ sub updateSubfields
         my @all = $thisfield->subfield($subfield);
         for my $i (0..$#all)
         {
-            @all[$i] = appendPrepend(@all[$i], $value, $prepend, $append);
+            @all[$i] = appendPrepend($self, @all[$i], $value, $prepend, $append);
         }
         if($#all > -1) # wipe em and make new ones
         {
@@ -204,7 +220,7 @@ sub updateSubfields
         }
         else
         {
-            $thisfield->update($subfield => $value );
+            $thisfield->update($subfield => $value);
         }
     }
     return $marc;
@@ -212,6 +228,7 @@ sub updateSubfields
 
 sub appendPrepend
 {
+    my $self = shift;
     my $og = shift;
     my $add = shift;
     my $prepend = shift || 0;
@@ -223,6 +240,7 @@ sub appendPrepend
 
 sub removeSubfield
 {
+    my $self = shift;
     my $marc = shift;
     my $field = shift;
     my $subfield = shift;
@@ -231,6 +249,16 @@ sub removeSubfield
     {
         $_->delete_subfield(code => $subfield);
     }
+    return $marc;
+}
+
+sub removeField
+{
+    my $self = shift;
+    my $marc = shift;
+    my $field = shift;
+    my @fields = $marc->field($field);
+    $marc->delete_fields(@fields);
     return $marc;
 }
 

@@ -611,7 +611,7 @@ sub getsubfield
     #print "Extracting $tag $subtag\n";
     if($marc->field($tag))
     {
-        if($tag<10)
+        if($tag+0 < 10)
         {
             #print "It was less than 10 so getting data\n";
             $ret = $marc->field($tag)->data();
@@ -723,7 +723,7 @@ sub createImportStatus
     my $query = shift;
     my $v = shift;
     my @vals = @{$v};
-    my $worked = $self->doUpdateQuery( $query, undef, \@vals);
+    my $worked = $self->doUpdateQuery( $query, undef, \@vals );
     return $worked;
 }
 

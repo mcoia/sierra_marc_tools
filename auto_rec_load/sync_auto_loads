@@ -1,0 +1,56 @@
+#!/bin/bash
+
+declare -A sync_array
+
+dst_chgroup="www-data"
+
+src_root="/dfsdump/Data Archive/auto_loads"
+dst_root="/jail"
+
+#############################################
+# Cluster: KC-Towers
+#############################################
+cluster_src_root=$src_root"/kctowers"
+cluster_dst_root=$dst_root"/kc-towers/home/kc-towers/incoming"
+dst_chuser="kc-towers"
+
+#############################################
+# Cluster: KC-Towers
+# Project: ebook_central
+#############################################
+
+project_src_root=$cluster_src_root"/ebook_central"
+
+#############################################
+# Cluster: KC-Towers
+# Project: ebook_central
+# Client: MWSU
+#############################################
+
+this_src_root=$project_src_root"/mwsu/"
+sync_array[$this_src_root]=$cluster_dst_root"/EBC/MWSU"
+
+
+
+
+
+
+
+
+
+
+
+
+
+#############################################
+# Run the rsync
+#############################################
+
+for key in "${!sync_array[@]}"
+do
+    echo "$key"
+    echo "${sync_array[$key]}"
+    rsync -av -W --chown $dst_chuser:$dst_chgroup --delete "$key" "${sync_array[$key]}"
+    chmod aug-x -R "${sync_array[$key]}"
+    chmod aug+Xrw -R "${sync_array[$key]}"
+done
