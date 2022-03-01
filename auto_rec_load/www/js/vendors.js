@@ -44,8 +44,20 @@ $("#jsoneditorerrorbox").html(data);
             {
                 $("#jsoneditorerrorbox").html("<span id='jsonsuccess' style='color:green;font-size: 12pt'>success</span>");
                 $("#jsonsuccess").fadeOut(5000);
+                writeBackSuccess(source, submitdata);
             }
             console.log(data);
     }, 'json');
 
+}
+
+function writeBackSuccess(source, jsontext)
+{
+    $("a").each(function(index)
+    {
+        if($(this).attr('source') && $(this).attr('source') == source)
+        {
+            $(this).html(jsontext);
+        }
+    });
 }
