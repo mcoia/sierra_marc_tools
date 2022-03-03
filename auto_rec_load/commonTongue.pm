@@ -386,6 +386,21 @@ sub mergeMARCFields
     return $marc;
 }
 
+sub countMARC856Fields
+{
+    my $self = shift;
+    my $marc = shift;
+    my @eights = $marc->field("856");
+    my $count = 0;
+    foreach(@eights)
+    {
+        my $thisField = $_;
+        my $ind2 = $thisField->indicator(2);
+        $count++ if ($ind2 ne'2') # Considered "real" when the second indicator is not 2
+    }
+    return $count;
+}
+
 sub setError
 {
     my $self = shift;

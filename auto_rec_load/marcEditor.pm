@@ -10,7 +10,8 @@ use Data::Dumper;
 
 our %map = 
 (
-    "ebook_central_MWSU" => "ebook_central_MWSU"
+    "ebook_central_MWSU" => "ebook_central_MWSU",
+    "ebook_central_SPST" => "ebook_central_SPST"
 );
 
 sub new
@@ -96,6 +97,38 @@ sub ebook_central_MWSU
     # Inject a 245$h after all a and p subfields
     my @prefields = ('a','p','n');
     $marc = createSubfieldBetween($self, $marc, '245', 'h', '[electronic resource (video)]', \@prefields, undef, undef);
+    return $marc;
+}
+
+sub ebook_central_SPST
+{
+    my $self = shift;
+    my $marc = shift;
+
+    if($self->{type} eq 'adds')
+    {
+        # Add 949
+        # \1$aEbook Central Electronic Book; click SPST link above to access$h060$i0$lsdebi$o-$rs$s-$t014$u-$z099
+        my $field949 = MARC::Field->new( '949', ' ', 1,
+        'a' => 'Ebook Central Electronic Book; click SPST link above to access',
+        'h' => '060',
+        'i' => '0',
+        'l' => 'sdebi',
+        'o' => '-',
+        'r' => 's',
+        's' => '-',
+        't' => '014',
+        'u' => '-',
+        'z' => '099'
+        );
+        $marc->insert_grouped_field($field949);
+    }
+    $marc = replaceStringFoundInTag($self, $marc, '856', 'ebookcentral.proquest.com', '0-ebookcentral.proquest.com.kc-towers.searchmobius.org');
+    # make it non-ssl
+    $marc = replaceStringFoundInTag($self, $marc, '856', 'https://', 'http://');
+    $marc = updateSubfields($self, $marc, '856', 'z', 'SPST electronic book; click here to access');
+    $marc = updateSubfields($self, $marc, '856', '5', '6spst');
+
     return $marc;
 }
 
@@ -192,6 +225,41 @@ sub tagDeletesMARC
     return $marc;
 }
 
+sub replaceStringFoundInTag
+{
+    my $self = shift;
+    my $marc = shift;
+    my $field = shift;
+    my $original = shift;
+    my $replace = shift || '';
+    my @fields = $marc->field($field);
+    $original = escapeRegexChars($self, $original);
+    foreach(@fields)
+    {
+        my $thisfield = $_;
+        my @allsubs = $thisfield->subfields();
+        my @all = ();
+        foreach(@allsubs)
+        {
+            my @pair = @{$_};
+            my $value = @pair[1];
+            if($value =~ /$original/)
+            {
+                $value =~ s/$original/$replace/g;
+                @pair[1] = $value;
+            }
+            push (@all, [@pair]);
+        }
+        $thisfield->delete_subfield(code => qr/[^.]/); # delete all subfields
+        foreach(@all)
+        {
+            my @pair = @{$_};
+            $thisfield->add_subfields(@pair[0] => @pair[1]);
+        }
+    }
+    return $marc;
+}
+
 sub updateSubfields
 {
     my $self = shift;
@@ -235,6 +303,7 @@ sub appendPrepend
     my $append = shift || 0;
     $og = $add.$og if $prepend;
     $og .= $add if $append;
+    return $add if(!$append && !$prepend); # if neither, then it's a replace
     return $og;
 }
 
@@ -260,6 +329,22 @@ sub removeField
     my @fields = $marc->field($field);
     $marc->delete_fields(@fields);
     return $marc;
+}
+
+sub escapeRegexChars
+{
+    my $self = shift;
+    my $txt = shift;
+    $txt =~ s/\\/\\\\/g;
+    $txt =~ s/\//\\\//g;
+    $txt =~ s/\(/\\(/g;
+    $txt =~ s/\)/\\)/g;
+    $txt =~ s/\?/\\?/g;
+    $txt =~ s/\+/\\+/g;
+    $txt =~ s/\[/\\[/g;
+    $txt =~ s/\]/\\]/g;
+    $txt =~ s/\-/\\-/g;
+    return $txt;
 }
 
 sub DESTROY

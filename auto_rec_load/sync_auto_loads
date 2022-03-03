@@ -30,6 +30,15 @@ project_src_root=$cluster_src_root"/ebook_central"
 this_src_root=$project_src_root"/mwsu/"
 sync_array[$this_src_root]=$cluster_dst_root"/EBC/MWSU"
 
+#############################################
+# Cluster: KC-Towers
+# Project: ebook_central
+# Client: Saint Paul
+#############################################
+
+this_src_root=$project_src_root"/SPST/"
+sync_array[$this_src_root]=$cluster_dst_root"/EBC/SPST"
+
 
 
 

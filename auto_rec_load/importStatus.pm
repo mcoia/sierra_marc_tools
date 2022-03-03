@@ -48,6 +48,7 @@ sub fillVars
     ais.tag,
     ais.z001,
     ais.loaded,
+    ais.no856s_remain,
     ais.ils_id,
     ais.itype,
     ais.job,
@@ -81,21 +82,23 @@ sub fillVars
     {
         my @row = @{$_};
         $self->{log}->addLine("Import status vals: ".Dumper(\@row)) if $self->{debug};
-        $self->{status} = @row[0];
-        $self->{record_raw} = @row[1];
-        $self->{record_tweaked} = @row[2];
-        $self->{tag} = @row[3] . $self->{importStatusID}; # The records are unique and get tagged with the seed plus the ID number
-        $self->{z001} = @row[4];
-        $self->{loaded} = @row[5];
-        $self->{ils_id} = @row[6];
-        $self->{itype} = @row[7];
-        $self->{job} = @row[8];
-        $self->{source} = @row[9];
-        $self->{client} = @row[10];
-        $self->{source_name} = @row[11];
-        $self->{client_name} = @row[12];
-        $self->{output_file_id} = @row[13];
-        $self->{output_filename_real} = @row[14];
+        $self->{status} = shift @row;
+        $self->{record_raw} = shift @row;
+        $self->{record_tweaked} = shift @row;
+        $self->{tag} = shift @row;
+        $self->{tag} .= $self->{importStatusID}; # The records are unique and get tagged with the seed plus the ID number
+        $self->{z001} = shift @row;
+        $self->{loaded} = shift @row;
+        $self->{no856s_remain} = shift @row;
+        $self->{ils_id} = shift @row;
+        $self->{itype} = shift @row;
+        $self->{job} = shift @row;
+        $self->{source} = shift @row;
+        $self->{client} = shift @row;
+        $self->{source_name} = shift @row;
+        $self->{client_name} = shift @row;
+        $self->{output_file_id} = shift @row;
+        $self->{output_filename_real} = shift @row;
         $self->{marc_editor_name} = $self->{source_name} . '_' . $self->{client_name};
     }
     $self->{error} = "Couldn't read import status data ID: ". $self->{importStatusID} if($#results == -1);
@@ -147,6 +150,7 @@ sub writeDB
     record_tweaked = ?,
     z001 = ?,
     loaded = ?,
+    no856s_remain = ?,
     ils_id = ?,
     itype = ?
     WHERE
@@ -158,6 +162,7 @@ sub writeDB
     $self->{record_tweaked},
     $self->{z001},
     $self->{loaded},
+    $self->{no856s_remain},
     $self->{ils_id},
     $self->{itype},
     $self->{importStatusID}
@@ -206,6 +211,12 @@ sub setLoaded
 {
     my $self = shift;
     $self->{loaded} = shift;
+}
+
+sub setNo856s
+{
+    my $self = shift;
+    $self->{no856s_remain} = shift;
 }
 
 sub setItype

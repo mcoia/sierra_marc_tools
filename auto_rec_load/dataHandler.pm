@@ -436,7 +436,7 @@ sub seeIfNewFile
         {
             # print "Detected new file: $_\n";
             checkFileReady($self, $self->{downloadDIR} ."/".$_);
-            return $self->{saveFolder} . "/" . $_;
+            return $self->{downloadDIR} . "/" . $_;
         }
     }
     return 0;
@@ -449,7 +449,7 @@ sub readSaveFolder
 
     %filesOnDisk = () if $init;
     my $pwd = $self->{downloadDIR};
-    # print "Opening '".$self->{saveFolder}."'\n";
+    # print "Opening '".$self->{downloadDIR}."'\n";
     opendir(DIR,$pwd) or die "Cannot open $pwd\n";
     my @thisdir = readdir(DIR);
     closedir(DIR);

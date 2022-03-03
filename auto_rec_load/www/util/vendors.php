@@ -37,8 +37,8 @@ class vendorsUI
             }
             else if(isset($this->uri['submitjson']) && isset($_POST['payload']))
             {
-// echo "<xmp>raw: " .  $_POST['payload'] ."</xmp>";
-// echo "<pre>" . htmlspecialchars_decode( $_POST['payload'])   ."</pre>";
+//echo "<xmp>raw: " .  $_POST['payload'] ."</xmp>";
+// echo "<pre>" . html_entity_decode(htmlspecialchars_decode($_POST['payload']))   ."</pre>";
 // $this->updateJSONDetails($this->uri['submitjson'], html_entity_decode(html_entity_decode(preg_replace('/%20/',' ', $_POST['payload']) ) ));
                echo $this->updateJSONDetails($this->uri['submitjson'], html_entity_decode(htmlspecialchars_decode($_POST['payload'])));
             }

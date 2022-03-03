@@ -94,8 +94,6 @@ sub fillVars
 
             setupExternalPGConnection($self) if(!$self->{extPG} && $self->{checkAddsVsUpdates});
 
-            $self->parseJSON($self->{json});
-
             last; # should only be one row returned
         }
     }
@@ -116,8 +114,8 @@ sub runJob
     $recordTracker{"total"} = 0;
     updateJobStatus($self, 'Job Started');
     markImportsAsWorking($self, \@importIDs, "processing");
-    my %fileOutPutDestination = %{outputFileRecordSortingHat($self, \%imports)};
-    %fileOutPutDestination = %{addsOrUpdates($self, \%fileOutPutDestination)};
+    my %fileOutPutDestination = %{outputFileRecordSortingHat($self, \%imports)}; # this routine appends "adds" "deletes" "updates" to each record in position 4
+    %fileOutPutDestination = %{addsOrUpdates($self, \%fileOutPutDestination)}; # this routine appends ILSID and a stripped ILSMARC Record in position 5 and 6
 
     startJob($self);
 
@@ -133,13 +131,12 @@ sub runJob
         my $iID = shift @importIDs;
         my @values = @{$fileOutPutDestination{$iID}};
         my $tag = @values[0];
-        my $marcXML = @values[1];
-        my $filename = @values[2];
-        my $sourceID = @values[3];
-        my $z001 = @values[4];
-        my $type = @values[5];
-        my $ilsRecordNum = @values[6];
-        my $ilsMARC = @values[7];
+        my $filename = @values[1];
+        my $sourceID = @values[2];
+        my $z001 = @values[3];
+        my $type = @values[4];
+        my $ilsRecordNum = @values[5];
+        my $ilsMARC = @values[6];
         if($type eq 'ignore')
         {
             $import->setItype($type);
@@ -166,17 +163,18 @@ sub runJob
 
             # Instantiate the import
             {
-                local $@;
-                eval
-                {
+                # local $@;
+                # eval
+                # {
                     eval $perl;
-                    1;  # ok
-                } or do
-                {
-                    $self->{log}->addLogLine("\n\nError during Instantiating importStatus ID $iID - " .$@ . "\n\n");
-                    updateImportError($self, $iID, "Couldn't read something correctly, error creating importStatus object");
-                    $recordTracker{"convertedFailed"}++;
-                };
+                    # 1;  # ok
+                # } or do
+                # {
+                    # print "*********************failed*************************";
+                    # $self->{log}->addLogLine("\n\nError during Instantiating importStatus ID $iID - " .$@ . "\n\n");
+                    # updateImportError($self, $iID, "Couldn't read something correctly, error creating importStatus object");
+                    # $recordTracker{"convertedFailed"}++;
+                # };
             }
             {
                 # local $@;
@@ -197,25 +195,38 @@ sub runJob
                     }
 
                     my $marc = MARC::Record->new_from_xml($import->getTweakedRecord());
+
+                    # count the remaining 856's (when we are processing a delete) - and set the flag in the database if none remain
+                    if($type eq 'deletes')
+                    {
+                        my $remaining856s = $self->countMARC856Fields($marc);
+                        $import->setNo856s(1) if ($remaining856s == 0);
+                    }
+
                     if($ilsMARC)
                     {
                         print "There was an existing ILS record\nMerging some fields\n" if $self->{debug};
-                        $before->addLine($marc->as_formatted());
+                        $before->addLine($marc->as_formatted());                        
 
                         # merge any and all 856 fields (special logic here)
                         $marc = $self->mergeMARC856($marc, $ilsMARC);
+                        print "Merged 856\n";   
 
                         # merge any and all 890 fields
                         $marc = $self->mergeMARCFields($marc, $ilsMARC, '890', 'a');
+                        print "Merged 890\n";
 
                         # merge any and all 891 fields, keeping this record in the delete flag if we have deletes
                         $marc = $self->mergeMARCFields($marc, $ilsMARC, '891', 'a') if($type eq 'deletes');
+                        print "Merged 891\n";
 
                         # And if we have a non-delete record, be sure and remove the "delete" flag in the 891 for this one
                         $marc = $self->mergeMARCFields($marc, $ilsMARC, '891', 'a', $import->getmarc_editor_name()) if($type ne 'deletes');
+                        print "Merged 891 again\n";
+
+                        $import->setILSID($ilsRecordNum) if $ilsRecordNum; #Turns out we don't need the checkdigit . $self->calcSierraCheckDigit($ilsRecordNum)) 
 
                         $after->addLine($marc->as_formatted());
-                        $import->setILSID($ilsRecordNum . $self->calcSierraCheckDigit($ilsRecordNum)) if $ilsRecordNum;
                     }
                     print "created marc object...\n" if $self->{debug};
                     if($self->{"outfile_$type"})
@@ -363,12 +374,11 @@ sub outputFileRecordSortingHat
     my $self = shift;
     my $importRef = shift;
     my %imports = %{$importRef};
-
     my %fileAnswers = ();
     while ( (my $key, my $value) = each(%imports) )
     {
         my @ar = @{$value};
-        my $sourceFileName = @ar[2];
+        my $sourceFileName = @ar[1];
         $sourceFileName = lc $sourceFileName;
         # print "Filename: $sourceFileName\n";
         my $answer = "adds";
@@ -418,19 +428,16 @@ sub addsOrUpdates
     while ( (my $key, my $value) = each(%imports) )
     {
         my @ar = @{$value};
-        my $z001 = @ar[4];
-        my $type = @ar[5];
-        if($type eq 'adds') # We only care about distinguishing adds from "updates". deletes are ignoreed here
-        {
-            $self->{log}->addLine("Parsing addsorupdates");
-            $self->{log}->addLine(Dumper(\@ar)) if $self->{debug};
-            my @empty = ();
-            $z001Map{$z001} = \@empty if(!$z001Map{$z001});
-            @empty = @{$z001Map{$z001}};
-            push (@empty, $key);
-            $z001Map{$z001} = \@empty;
-            $z001IDString .= "\$ooone\$$z001\$ooone\$,";
-        }
+        my $z001 = @ar[3];
+        my $type = @ar[4];
+        $self->{log}->addLine("Parsing addsorupdates");
+        $self->{log}->addLine(Dumper(\@ar)) if $self->{debug};
+        my @empty = ();
+        $z001Map{$z001} = \@empty if(!$z001Map{$z001});
+        @empty = @{$z001Map{$z001}};
+        push (@empty, $key);
+        $z001Map{$z001} = \@empty;
+        $z001IDString .= "\$ooone\$$z001\$ooone\$,";
     }
     $z001IDString = substr($z001IDString, 0, -1);
     if($z001IDString ne '')
@@ -460,7 +467,8 @@ sub addsOrUpdates
                     {
                         my @ar = @{$imports{$_}};
                         $self->{log}->addLine(Dumper(\@ar)) if $self->{debug};
-                        @ar[5] = "updates";
+                        my $type = @ar[4];
+                        @ar[4] = "updates" if ($type eq 'adds'); # We only care about distinguishing adds from "updates". deletes are ignoreed here;
                         $self->{log}->addLine(Dumper(\@ar)) if $self->{debug};
                         $imports{$_} = \@ar;
                     }
@@ -477,8 +485,8 @@ sub addsOrUpdates
     while ( (my $key, my $value) = each(%imports) )
     {
         my @ar = @{$value};
-        my $z001 = @ar[4];
-        my $type = @ar[5];
+        my $z001 = @ar[3];
+        my $type = @ar[4];
         my @empty = ();
         $z001Map{$z001} = \@empty if(!$z001Map{$z001});
         @empty = @{$z001Map{$z001}};
@@ -569,7 +577,7 @@ sub addsOrUpdates_append
     my $importRef = shift;
     my $marc_record = shift;
     my $z001MapRef = shift;
-    my $current_record = shift;
+    my $currentRecord = shift;
     my %imports = %{$importRef};
     my %z001Map = %{$z001MapRef};
     my @ids = @{$z001Map{$marc_record->field('001')->data()}} if $z001Map{$marc_record->field('001')->data()};
@@ -603,12 +611,13 @@ sub runCheckILSLoaded
         my $z001 = @values[0];
         my $tag = @values[1];
         my $filename = @values[2];
-        my $ILSID = @values[3];
+        my $loadType = @values[3];
+        my $ILSID = @values[4];
         $maxID = $iID if ($iID+0 > $maxID+0);
 
-        if($ILSID)
+        if($ILSID || (!$ILSID && $loadType eq 'deletes'))
         {
-            print "here\n";
+            $ILSID = -1 if(!$ILSID && $loadType eq 'deletes'); # it's considered loaded when the record is supposed to be deleted and we didn't find the record on the ILS
             my $import;
             my $perl = '$import = new importStatus($self->{log}, $self->{dbHandler}, $self->{prefix}, $self->{debug}, $iID);';
             # Instantiate the import
@@ -631,7 +640,7 @@ sub runCheckILSLoaded
                 # {
                     print "setting stuff\n";
                     $import->setLoaded(1);
-                    $import->setILSID($ILSID . $self->calcSierraCheckDigit($ILSID));
+                    $import->setILSID($ILSID); #. $self->calcSierraCheckDigit($ILSID)); #turns out, we don't need the check digit
                     print "writing\n";
                     $import->writeDB();
                     # 1;  # ok
@@ -653,6 +662,7 @@ sub runCheckILSLoaded
             %importsWithGlue = %{fileILSLoaded($self, \%imports)};
         }
     }
+    removeFilesFromDisk($self);
 }
 
 sub fileILSLoaded
@@ -703,7 +713,7 @@ sub fileILSLoaded
                 my $r = shift @results;
                 my @row = @{$r};
                 my $record_num = @row[0];
-                my $marc_tag = @row[1];
+                my $marcFieldNum = @row[1];
                 my $field_content = @row[3];
                 if( ($currentRecord != $record_num) )
                 {
@@ -717,7 +727,7 @@ sub fileILSLoaded
                     $marc_record = MARC::Record->new();
                     $currentRecord = $record_num;
                 }
-                if($marc_tag eq '890')
+                if($marcFieldNum eq '890')
                 {
                     # print "'$field_content'\n";
                     my @subs = split(/\|/, $field_content);
@@ -731,12 +741,12 @@ sub fileILSLoaded
                             push (@subs_pass, ($subfield, $_));
                         }
                     }
-                    my $field = MARC::Field->new($marc_tag, ' ', ' ', @subs_pass);
+                    my $field = MARC::Field->new($marcFieldNum, ' ', ' ', @subs_pass);
                     $marc_record->insert_grouped_field($field);
                 }
-                elsif($marc_tag eq '001')
+                elsif($marcFieldNum eq '001')
                 {
-                    my $field = MARC::Field->new($marc_tag, $field_content);
+                    my $field = MARC::Field->new($marcFieldNum, $field_content);
                     $marc_record->insert_grouped_field($field);
                 }
                 %imports = %{fileILSLoaded_append($self, \%imports, $marc_record, $currentRecord)} if( $#results == -1 );
@@ -813,6 +823,46 @@ sub fileILSLoaded_append
     }
     print Dumper(\%imports);
     return \%imports;
+}
+
+sub removeFilesFromDisk
+{
+    my $self = shift;
+    if($self->{folders})
+    {
+        while ( (my $key, my $value) = each(%{$self->{folders}}) )
+        {
+            my @files = ();
+            @files = @{$self->dirtrav(\@files, $value)};
+            foreach(@files)
+            {
+                my $done = seeIfFileIsCompletelyLoaded($self, $_);
+                print "Removing '$_'\n" if ($done && $self->{debug});
+                unlink $_ if $done; #delete the file from disk when all rows in the database claim to be loaded
+            }
+        }
+    }
+}
+
+sub seeIfFileIsCompletelyLoaded
+{
+    my $self = shift;
+    my $filename = shift;
+    my $ret = 1;
+    my $query = "
+    SELECT true
+    FROM
+    ".$self->{prefix} ."_import_status ais
+    JOIN ".$self->{prefix} ."_output_file_track oft on (oft.id=ais.out_file)
+    WHERE
+    ais.loaded = 0 AND
+    oft.filename = ?
+    GROUP BY 1";
+    my @vars = ($filename);
+    $self->{log}->addLine($query) if $self->{debug};
+    my @results = @{$self->getDataFromDB($query, \@vars)};
+    $ret = 0 if $#results > -1; #if any rows are returned, then there is at least one record that has not been loaded
+    return $ret;
 }
 
 sub setupSourceOutputFiles
@@ -898,7 +948,7 @@ sub getImportIDs
     my $limit = shift || 500;
     my %ret = ();
     my $query = "
-    SELECT ais.id, ais.tag, ais.record_tweaked, aft.filename, aft.source, ais.z001 FROM
+    SELECT ais.id, ais.tag, aft.filename, aft.source, ais.z001 FROM
     ".$self->{prefix} ."_import_status ais
     JOIN ".$self->{prefix} ."_file_track aft on (aft.id=ais.file)
     WHERE
@@ -925,7 +975,7 @@ sub getImportIDsNotLoaded
     my %ret = ();
     my $query = "
     SELECT
-    ais.id, ais.z001, concat(ais.tag,ais.id), aoft.filename
+    ais.id, ais.z001, concat(ais.tag,ais.id), aoft.filename, ais.itype
     FROM
     ".$self->{prefix} ."_import_status ais
     LEFT JOIN ".$self->{prefix} ."_output_file_track aoft ON (aoft.id=ais.out_file)

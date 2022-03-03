@@ -203,7 +203,10 @@ sub runJobs
 set
 status='new',
 record_tweaked=null,
-itype=null";
+itype=null,
+loaded=0,
+no856s_remain=0,
+out_file=null";
 $dbHandler->update($query);
 
 $query = "
@@ -268,39 +271,39 @@ sub runCheckILSLoaded
         my $thisJobID = $_;
         print "Checking ILS Load for job: '$thisJobID'\n";
         my $tJob;
-        $tJob = new job($log, $dbHandler, $stagingTablePrefix, $debug, $thisJobID);
+        # $tJob = new job($log, $dbHandler, $stagingTablePrefix, $debug, $thisJobID);
         my $perl = '$tJob = new job($log, $dbHandler, $stagingTablePrefix, $debug, $thisJobID);';
         print $perl . "\n" if $debug;
-        # # Instantiate the Job
-        # {
-            # local $@;
-            # eval
-            # {
-                # eval $perl;
-                # die if $tJob->getError();
-                # 1;  # ok
-            # } or do
-            # {
-                # my $evalError = concatTrace( $@ || "error", $tJob->getTrace(), $tJob->getError());
-                # alertErrorEmail("Could not instanciate job: $thisJobID\r\n\r\n$perl\r\n\r\nerror:\r\n\r\n$evalError") if!$debug;
-                # next;
-            # };
-        # }
+        # Instantiate the Job
+        {
+            local $@;
+            eval
+            {
+                eval $perl;
+                die if $tJob->getError();
+                1;  # ok
+            } or do
+            {
+                my $evalError = concatTrace( $@ || "error", $tJob->getTrace(), $tJob->getError());
+                alertErrorEmail("Could not instanciate job: $thisJobID\r\n\r\n$perl\r\n\r\nerror:\r\n\r\n$evalError") if!$debug;
+                next;
+            };
+        }
         # Run the runCheckILSLoaded function
         {
-            # local $@;
-            # eval
-            # {
+            local $@;
+            eval
+            {
                 print "Executing job: '$thisJobID'\n";
                 $tJob->runCheckILSLoaded();
                 die if $tJob->getError();
-                # 1;  # ok
-            # } or do
-            # {
-                # my $evalError = concatTrace( $@ || "error", $tJob->getTrace(), $tJob->getError());
-                # alertErrorEmail($evalError) if !$debug;
-                # next;
-            # };
+                1;  # ok
+            } or do
+            {
+                my $evalError = concatTrace( $@ || "error", $tJob->getTrace(), $tJob->getError());
+                alertErrorEmail($evalError) if !$debug;
+                next;
+            };
         }
         concatTrace('', $tJob->getTrace(), '');
         undef $tJob;
@@ -390,8 +393,8 @@ sub getReadyJobs
 
 sub getILSConfirmationJobs
 {
-    my @ret = (3);
-    return \@ret;
+    # my @ret = (3);
+    # return \@ret;
     my $query = "
     SELECT
     distinct job.id
@@ -660,6 +663,7 @@ sub createDatabase
         tag varchar(100),
         z001 varchar(100),
         loaded BOOLEAN DEFAULT FALSE,
+        no856s_remain BOOLEAN DEFAULT FALSE,
         ils_id varchar(100),
         itype varchar(10),
         insert_time datetime DEFAULT CURRENT_TIMESTAMP,
