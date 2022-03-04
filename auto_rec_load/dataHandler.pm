@@ -31,7 +31,7 @@ sub _init
     $self->{sourceID} = shift;
     $self->{name} = shift;
     $self->{driver} = shift;
-    $self->{screenshotDIR} = shift;
+    $self->{debugScreenshotDIR} = shift;
     $self->{downloadDIR} = shift;
     $self->{json} = shift;
     $self->{clientID} = shift;
@@ -46,6 +46,7 @@ sub _init
     $self->{clusterID} = -1;
     $self->{postgresConnector} = undef;
     $self->{screenShotStep} = -1;
+    $self->{screenShotDIR} = -1;
 
     if($self->{sourceID} && $self->{dbHandler} && $self->{prefix} && $self->{driver} && $self->{log})
     {
@@ -70,7 +71,8 @@ sub fillVars
     cluster.postgres_db,
     cluster.postgres_port,
     cluster.postgres_username,
-    cluster.postgres_password
+    cluster.postgres_password,
+    source.scrape_img_folder
     from
     ".$self->{prefix}.
     "_cluster cluster
@@ -94,6 +96,7 @@ sub fillVars
         $self->{dbport} = @row[3];
         $self->{dbuser} = @row[4];
         $self->{dbpass} = @row[5];
+        $self->{screenShotDIR} = @row[6];
     }
 
     $self->{error} = 1 if($#results == -1);
@@ -520,7 +523,7 @@ sub extractCompressedFile
     {
         # Read a Zip file
         my $zip = Archive::Zip->new();
-        unless ( $zip->read( $self->{downloadDIR} . $file ) == AZ_OK )
+        unless ( $zip->read( $file ) == AZ_OK )
         {
             $self->setError( "Could not open $file");
             $self->addTrace( "Could not open $file");
@@ -786,15 +789,18 @@ sub readyJob
     my $jobID = shift || $self->{job};
     my $query = "UPDATE $self->{prefix}"."_job SET status = 'ready' where id = $jobID";
     my @vars = ();
-    $self->doUpdateQuery( $query, undef, \@vars);
+    $self->doUpdateQuery( $query, undef, \@vars );
     undef @vars;
 }
 
-sub updateJob
+sub updateSourceScrapeDate
 {
     my $self = shift;
-    my $jobID = shift;
-    
+    my $sourceID = shift || $self->{sourceID};
+    my $query = "UPDATE $self->{prefix}"."_source SET last_scraped = now() where id = $sourceID";
+    my @vars = ();
+    $self->doUpdateQuery( $query, undef, \@vars );
+    undef @vars;
 }
 
 sub decideToProcessFile
@@ -847,14 +853,14 @@ sub cleanFolder
 {
     my $self = shift;
     my $folder = shift;
-    if(-d $folder)
+    if( (-d $folder) && ($folder ne '/') )
     {
         my @files = ();
         @files = @{$self->dirtrav(\@files,$folder)};
         foreach(@files)
         {
             print "Deleting: $_\n";
-            unlink $_;
+            unlink $_ if(-f $_);
         }
     }
 }
@@ -867,6 +873,14 @@ sub getHTMLBody
     return $body;
 }
 
+sub cleanScreenShotFolder
+{
+    my $self = shift;
+    print "creating: '" .$self->{screenShotDIR}. "'\n" unless -d $self->{screenShotDIR};
+    make_path($self->{screenShotDIR},  {chmod => 0755} )  unless -d $self->{screenShotDIR};
+    cleanFolder($self, $self->{screenShotDIR});
+}
+
 sub takeScreenShot
 {
     my $self = shift;
@@ -874,10 +888,20 @@ sub takeScreenShot
     $action =~ s/\s{1,1000}/_/g;
     $action =~ s/\/{1,1000}/_/g;
     $action =~ s/\\{1,1000}/_/g;
+    $action =~ s/&{1,1000}/_/g;
+    $action =~ s/\?{1,1000}/_/g;
+
+    # remove those high-chart utf8 characters
+    $action =~ s/[\x80-\x{FFFF}]//g;
+
+    # keep it reasonable please
+    $action = substr($action,0,30);
+
     $self->{screenShotStep}++;
     # $self->{log}->addLine("screenshot self: ".Dumper($self));
-    # print "ScreenShot: ".$self->{screenshotDIR}."/".$self->{name}."_".$self->{screenShotStep}."_".$action.".png\n";
-    $self->{driver}->capture_screenshot($self->{screenshotDIR}."/".$self->{name}."_".$self->{screenShotStep}."_".$action.".png", {'full' => 1});
+    # print "ScreenShot: ".$self->{debugScreenshotDIR}."/".$self->{name}."_".$self->{screenShotStep}."_".$action.".png\n";
+    $self->{driver}->capture_screenshot($self->{debugScreenshotDIR}."/".$self->{name}."_".$self->{screenShotStep}."_".$action.".png", {'full' => 1}) if($self->{debugScreenshotDIR});
+    $self->{driver}->capture_screenshot($self->{screenShotDIR}."/".$self->{name}."_".$self->{screenShotStep}."_".$action.".png", {'full' => 1});
 }
 
 sub DESTROY

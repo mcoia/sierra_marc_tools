@@ -61,3 +61,36 @@ function writeBackSuccess(source, jsontext)
         }
     });
 }
+
+function showScreenShots(element)
+{
+    var data = $(element).html();
+    var source = $(element).attr('source');
+    var pageID = "pageid="+$("#thisPageID").val();
+    var path = location.protocol+"//"+location.hostname;
+    var fromDate = '';
+    var url = path+"/index.php?getjson=1&sourceid=" + source + "&screenshotdiag=1&" + pageID;
+    console.log("Getting data: "+url);
+    $.get(url,
+        function(data){
+            var html = '';
+            if(data.status == 'success')
+            {
+                html = '<table class="screnshot_table">\n';
+                html += '<thead><th>Step</th><th>Action</th><th>Screenshot</th></thead>\n';
+                html += '<tbody>\n';
+                for (var d in data.images)
+                {
+                    html += '<tr>\n';
+                    html += '<td>'+d+'</td>';
+                    html += '<td>'+data.images_name[d]+'</td>';
+                    html += '<td><a href="'+data.images[d]+'"><img src="'+data.images[d]+'" /></a></td></tr>\n';
+                }
+            }
+            else
+            {
+                html = '<div class="screenshoterror">'+data.statuscode+'</div>';
+            }
+            $("#screenshotload").html(html);
+    });
+}

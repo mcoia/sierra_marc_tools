@@ -49,6 +49,10 @@ class vendorsUI
 			{	
 				$ret = $this->getSearchTable($this->uri['searchstring']);
 			}
+            else if(isset($this->uri['screenshotdiag']) && isset($this->uri['sourceid']))
+            {
+                $ret = $this->getScreenShotImages($this->uri['sourceid']);
+            }
         }
         else
 		{
@@ -72,6 +76,13 @@ class vendorsUI
             </div> <!-- vendor_datatable -->
 
         </div> <!-- vendor_container -->
+        </div><!-- regularBox -->
+
+        <div class='regularBox'>
+        <a id='screenshotanchor'></a>
+        <div id='screenshotload'>
+
+        </div><!-- screenshotload -->
         </div><!-- regularBox -->";
 		return $ret;
 	}
@@ -82,9 +93,16 @@ class vendorsUI
         $toDate = convertToDatabaseDate($toDate);
 		addDebug("getSearchTable called");
 		$anchorProps = array();
-		$selectCols = array("asource.name \"vname\"","ac.name \"clientname\"","asource.type \"type\"","asource.perl_mod \"perlmod\"",
+		$selectCols = array("asource.name \"vname\"","ac.name \"clientname\"",
+        "
+        CASE WHEN asource.type = 'web' THEN
+        concat('<a source=\"',asource.id,'\" onClick=\"showScreenShots(this)\" href=\"#screenshotanchor\">', asource.type, '</a>')
+        ELSE asource.type
+        END \"type\"",
+        "asource.perl_mod \"perlmod\"",
+        "asource.last_scraped \"last_scraped\"",
         "concat('<a source=\"',asource.id,'\" onClick=\"editJSONClick(this)\" href=\"#\">', asource.json_connection_detail, '</a>') \"conndetail\"");
-		$showCols = array("vname"=>"Vendor","clientname"=>"Institution","type"=>"Type","perlmod"=>"Perl Mod","conndetail"=>"Connection Detail");
+		$showCols = array("vname"=>"Vendor","clientname"=>"Institution","type"=>"Type","perlmod"=>"Perl Mod","last_scraped"=>"Last Scraped","conndetail"=>"Connection Detail");
 		$ClickPos=array();
 		$searchCols = array();
 		$tableID = "vendorSearchTable";
@@ -118,6 +136,90 @@ class vendorsUI
 		}
 	}
 
+    function getScreenShotImages($sourceID)
+    {
+        $vars = array();
+        $ret = array();
+        $allowedExt = array("png","jpg","jpeg");
+        $imagesFolder = "";
+        $query = "
+        select scrape_img_folder
+        from
+        ". $this->tablePrefix ."source source
+        where
+        source.id=?";
+        $vars[] = $sourceID;
+        $result = $this->sqlconnect->executeQuery($query,$vars);
+        if(count($result) == 1)
+        {
+            $imagesFolder = $result[0]["scrape_img_folder"];
+        }
+        else
+        {
+            $ret["status"] = "error";
+            $ret["statuscode"] = "Source folder not configured";
+            return json_encode($ret);
+        }
+        if(is_dir($imagesFolder))
+        {
+            $ret["trace"] = array();
+            $images = scandir($imagesFolder);
+            foreach($images as $internal => $filename)
+            {
+                $full = $imagesFolder . "/" . $filename;
+                $add = 0;
+                if(is_file($full))
+                {
+                    $ret["trace"][] = $full;
+                    foreach($allowedExt as $int => $ext)
+                    {
+                        $ext = strtolower($ext);
+                        $len = strlen($ext);
+                        $len = $len * -1;
+                        $fileExt = substr( $filename,strlen($filename) + $len );
+                        $fileExt = strtolower($fileExt);
+                        if(strcmp($ext, $fileExt) ==0)
+                        {
+                            $add = 1;
+                            $ret["trace"][] = $fileExt;
+                        }
+                    }
+                    $ret["trace"][] = $add;
+                }
+                if($add)
+                {
+                    if(!isset($ret["images"]))
+                    {
+                        $ret["images"] = array();
+                    }
+                    if(!isset($ret["images_name"]))
+                    {
+                        $ret["images"] = array();
+                    }
+                    $ret["trace"][] = $full;
+                    $ret["images"][] = convertToRelativePath($full);
+                    $ret["images_name"][] = $this->parseImageName($filename);
+                }
+            }
+            if($ret["images"])
+            {
+                $ret["status"] = "success";
+                $ret["statuscode"] = "Found images";
+            }
+            else
+            {
+                $ret["status"] = "error";
+                $ret["statuscode"] = "No images found";
+            }
+        }
+        else
+        {
+            $ret["status"] = "error";
+            $ret["statuscode"] = "Folder: $imagesFolder does not exist";
+        }
+        return json_encode($ret);
+    }
+
     function updateJSONDetails($sourceID, $json)
     {
         $ret = "";
@@ -135,4 +237,15 @@ class vendorsUI
         $ret .= "<pre>$json</pre>";
         return $ret;
     }
+
+    function parseImageName($filename)
+    {
+        $split = explode("_",$filename);
+        array_shift($split);
+        array_shift($split);
+        $split = explode(".",implode("_", $split));
+        array_pop($split);
+        return implode(".", $split);
+    }
+    
 }

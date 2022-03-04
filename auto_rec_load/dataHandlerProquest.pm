@@ -15,6 +15,7 @@ sub scrape
     my ($self) = shift;
     $self->{log}->addLine("Getting " . $self->{URL});
     $self->{driver}->get($self->{URL});
+    $self->cleanScreenShotFolder();
     $self->takeScreenShot('pageload');
     $self->addTrace("scrape","login");
     my $continue = $self->handleLoginPage("id","username","password","Incorrect username or password. Please try again.");
@@ -63,6 +64,9 @@ sub scrape
                 processDownloadedFile($self, $key, $filename);
             }
         }
+        # We've made it to the end of execution
+        # whether there were files or not, we need to mark this source as having had a successful scrape
+        $self->updateSourceScrapeDate();
     }
 }
 

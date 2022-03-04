@@ -39,8 +39,10 @@ global $uri;
 global $uriString;
 global $url;
 global $tablePrefix;
+global $rootWWW;
 
 $tablePrefix = "auto_";
+$rootWWW = getcwd();
 $debugOutput = array();
 $sqlconnect = new sqlconnect();
 
@@ -769,5 +771,19 @@ function getComebackURLString($tabInfo)
 	{
     	return (bool)strtotime($myDateString);
 	}
+
+    function convertToRelativePath($folderPath)
+    {
+        global $rootWWW;
+        $pattern = $rootWWW;
+        # escape forward slashes from the pattern
+        $pattern = preg_replace('/\//','\/',$pattern);
+        $ret = preg_replace('/' . $pattern . '/', '', $folderPath);
+        while(strcmp(substr($ret,0,1),'/') == 0) # remove any preceeding slash
+        {
+            $ret = substr($ret,1);
+        }
+        return $ret;
+    }
 	
 ?>

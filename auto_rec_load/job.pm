@@ -206,25 +206,23 @@ sub runJob
                     if($ilsMARC)
                     {
                         print "There was an existing ILS record\nMerging some fields\n" if $self->{debug};
-                        $before->addLine($marc->as_formatted());                        
+                        $before->addLine($marc->as_formatted());
 
                         # merge any and all 856 fields (special logic here)
                         $marc = $self->mergeMARC856($marc, $ilsMARC);
-                        print "Merged 856\n";   
 
                         # merge any and all 890 fields
                         $marc = $self->mergeMARCFields($marc, $ilsMARC, '890', 'a');
-                        print "Merged 890\n";
 
                         # merge any and all 891 fields, keeping this record in the delete flag if we have deletes
                         $marc = $self->mergeMARCFields($marc, $ilsMARC, '891', 'a') if($type eq 'deletes');
-                        print "Merged 891\n";
 
                         # And if we have a non-delete record, be sure and remove the "delete" flag in the 891 for this one
                         $marc = $self->mergeMARCFields($marc, $ilsMARC, '891', 'a', $import->getmarc_editor_name()) if($type ne 'deletes');
-                        print "Merged 891 again\n";
 
                         $import->setILSID($ilsRecordNum) if $ilsRecordNum; #Turns out we don't need the checkdigit . $self->calcSierraCheckDigit($ilsRecordNum)) 
+
+                        $import->setTweakedRecord($self->convertMARCtoXML($marc));
 
                         $after->addLine($marc->as_formatted());
                     }
@@ -296,12 +294,12 @@ sub writeOutputMARC
                     $ids = substr($ids, 0, -1);
                     my $query = "UPDATE
                     ".$self->{prefix} ."_import_status ais
-                    SET out_file = ?
+                    SET
+                    out_file = ?,
+                    status = ?
                     WHERE ais.id in( $ids )";
-                    my @vals = ($outfileID);
+                    my @vals = ($outfileID, "emitted to disk");
                     push (@vals, @t);
-                    $self->{log}->addLine($query);
-                    $self->{log}->addLine(Dumper(\@vals));
                     $self->doUpdateQuery($query, undef, \@vals);
                 }
             }
@@ -638,10 +636,8 @@ sub runCheckILSLoaded
                 # local $@;
                 # eval
                 # {
-                    print "setting stuff\n";
                     $import->setLoaded(1);
                     $import->setILSID($ILSID); #. $self->calcSierraCheckDigit($ILSID)); #turns out, we don't need the check digit
-                    print "writing\n";
                     $import->writeDB();
                     # 1;  # ok
                 # } or do
@@ -719,9 +715,7 @@ sub fileILSLoaded
                 {
                     if($marc_record && $marc_record->field('001') && $marc_record->field('001')->data()) #not the first time through, and we've created a marc record to save into the hash.
                     {
-                        print Dumper(\%imports);
                         %imports = %{fileILSLoaded_append($self, \%imports, $marc_record, $currentRecord)};
-                        print Dumper(\%imports);
                     }
                     $marc_record = undef;
                     $marc_record = MARC::Record->new();
@@ -799,7 +793,6 @@ sub fileILSLoaded_append
     foreach(@e890a)
     {
         my @subs = $_->subfield('a');
-        print Dumper(\@subs);
         foreach(@subs)
         {
             my $tSub = $_;
@@ -821,7 +814,6 @@ sub fileILSLoaded_append
             }
         }
     }
-    print Dumper(\%imports);
     return \%imports;
 }
 

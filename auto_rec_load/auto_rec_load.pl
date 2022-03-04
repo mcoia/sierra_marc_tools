@@ -106,6 +106,8 @@ if($conf)
         $writePid->truncFile("running");
 
         my $cwd = getcwd();
+        # This is for debugging, an additional screenshot folder
+        # for the devs to view the output easier than using the web UI
         $screenShotDIR = "$cwd/screenshots";
         mkdir $screenShotDIR unless -d $screenShotDIR;
 
@@ -143,6 +145,8 @@ sub runScrapers
         my %details = %{$value};
         if( checkFolders(\%details) ) # make sure that the output folders are pre-created. We expect that these are special and have external mechanism for them.
         {
+            # turn off local screenshots, and only write to the web screenshot folder
+            $screenShotDIR = null if !$debug;
             $vendor = $details{"sourcename"} . '_' . $details{"clientname"};
             print "Working on: '$vendor'\n";
             my $json = decode_json( $details{"json"} );
@@ -206,7 +210,11 @@ record_tweaked=null,
 itype=null,
 loaded=0,
 no856s_remain=0,
-out_file=null";
+out_file=null
+where file in(
+select id from auto_file_track
+where filename like '2022%'
+)";
 $dbHandler->update($query);
 
 $query = "
@@ -215,7 +223,8 @@ set
 status='ready',
 
 start_time=null,
-current_action_num=0";
+current_action_num=0
+where id in(select job from auto_import_status where status='new')";
 $dbHandler->update($query);
 
     my @jobs = @{getReadyJobs()};
@@ -401,7 +410,7 @@ sub getILSConfirmationJobs
     FROM
     $stagingTablePrefix"."_job job
     JOIN $stagingTablePrefix"."_import_status ais ON (ais.job=job.id)
-    where
+    WHERE
     ais.loaded = 0
     order by 1
     ";
@@ -423,15 +432,16 @@ sub getSources
     my @order = ();
     my $query = "
     SELECT
-    source.id,client.name,source.name,source.type,source.perl_mod,source.json_connection_detail,client.id
+    source.id,client.name,source.name,source.type,source.perl_mod,source.json_connection_detail,client.id,scrape_img_folder
     FROM
     $stagingTablePrefix"."_client client
-    join $stagingTablePrefix"."_source source on (source.client=client.id)
-    where
+    JOIN $stagingTablePrefix"."_source source ON (source.client=client.id)
+    WHERE
     client.id=client.id
+    AND source.enabled IS TRUE
     ___specificSource___
     ___specificClient___
-    order by 2 desc,1
+    ORDER BY 2 desc,1
     ";
 
     # defang
@@ -459,6 +469,7 @@ sub getSources
         $hash{"perl_mod"} = @row[4];
         $hash{"json"} = @row[5];
         $hash{"clientid"} = @row[6];
+        $hash{"scrape_img_folder"} = @row[7];
         $sources{@row[0]} = \%hash;
     }
     print Dumper(%sources) if $debug;
@@ -616,10 +627,13 @@ sub createDatabase
 
         $query = "CREATE TABLE $stagingTablePrefix"."_source (
         id int not null auto_increment,
+        enabled boolean default true,
+        last_scraped datetime,
         name varchar(100),
         type varchar(100),
         client int,
         perl_mod varchar(50),
+        scrape_img_folder varchar(1000),
         json_connection_detail varchar(5000),
         PRIMARY KEY (id),
         FOREIGN KEY (client) REFERENCES $stagingTablePrefix"."_client(id) ON DELETE RESTRICT

@@ -323,7 +323,6 @@ sub mergeMARC856
         $self->{log}->addLine("There was $original856 and now there are $finalCount");
     }
 
-    my $dump1=Dumper(\%urls);
     my @remove = $marc->field('856');
     #$self->{log}->addLine("Removing ".$#remove." 856 records");
     $marc->delete_fields(@remove);
@@ -365,7 +364,6 @@ sub mergeMARCFields
             }
         }
     }
-    print Dumper(\%subfieldDedupe);
 
     my @remove = $marc->field($fieldNumber);
     $marc->delete_fields(@remove) if $#remove > -1;
@@ -376,12 +374,11 @@ sub mergeMARCFields
     {
         $field->add_subfields($subfieldKey, $internal)
     }
-    print Dumper($field);
+
     if( $field->subfield($subfieldKey) )
     {   
         $marc->insert_grouped_field( $field );
     }
-    print Dumper($marc);
     $self->{log}->addLine($marc->as_formatted());
     return $marc;
 }

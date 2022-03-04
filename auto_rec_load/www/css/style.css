@@ -701,6 +701,35 @@ input {
     left: 0;
 }
 
+.screnshot_table {
+    padding: 1em;
+}
+
+.screnshot_table th {
+    font-size: 20pt;
+    font-weight: bold;
+    background-color: #c9d4ff;
+    color: black;
+    padding: 10px;
+    text-align: center;
+}
+
+.screnshot_table td {
+    font-size: 14pt;
+    font-weight: bold;
+    color: black;
+    padding: 10px;
+    text-align: center;
+}
+
+.screnshot_table img {
+    width: 800px;
+}
+.screenshoterror {
+    color: red;
+    font-size: 20pt;
+}
+
 #jsoneditorerrorbox {
     width: 100%;
     text-align: center;

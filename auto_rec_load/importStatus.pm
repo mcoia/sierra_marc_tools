@@ -177,6 +177,12 @@ sub getTweakedRecord
     return $self->{record_tweaked};
 }
 
+sub setTweakedRecord
+{
+    my $self = shift;
+    $self->{record_tweaked} = shift;
+}
+
 sub getSource
 {
     my $self = shift;
