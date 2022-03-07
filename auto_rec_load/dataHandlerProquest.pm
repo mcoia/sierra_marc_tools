@@ -13,23 +13,29 @@ use parent dataHandler;
 sub scrape
 {
     my ($self) = shift;
+    $self->startThisJob();
     $self->{log}->addLine("Getting " . $self->{URL});
     $self->{driver}->get($self->{URL});
     $self->cleanScreenShotFolder();
+    $self->updateThisJob("Cleaned Screen Shot Folder");
     $self->takeScreenShot('pageload');
     $self->addTrace("scrape","login");
+    $self->updateThisJob("Login Page");
     my $continue = $self->handleLoginPage("id","username","password","Incorrect username or password. Please try again.");
     print "Continue: $continue\n";
     if($continue)
     {
+        $self->updateThisJob("Login Page Worked");
         $continue = $self->handleAnchorClick("MARC Updates","MARC Record Set");
         print "Continue: $continue\n";
     }
     if($continue) # we're on the download page
     {
+        $self->updateThisJob("On Download Page");
         my @downloadPages = @{getDownloadPages($self)};
         my $startingPage = $self->{driver}->get_current_url();
         my $firstRun = 0;
+        my $fileCount = 0;
         foreach(@downloadPages)
         {
             if(!$firstRun)
@@ -43,10 +49,11 @@ sub scrape
             my %downloads = %{parseFinalDownloadGrid($self)};
             while ( (my $key, my $value) = each(%downloads) )
             {
-                print "looping $key\n";
+                $self->addTrace("scrape","checking $key");
                 if(decideDownload($self, $key))
                 {
-                    print "Decided to download\n";
+                    $self->updateThisJob("downloading $key");
+                    $self->addTrace("scrape","Decided to download");
                     $self->readSaveFolder(1); # read the contents of the download folder to get a baseline
                     $self->handleAnchorClick($value, 0, 1);
                     my $newFile = 0;
@@ -61,12 +68,17 @@ sub scrape
             }
             while ( (my $key, my $filename) = each(%downloaded) )
             {
+                $self->updateThisJob("processing $filename");
+                $self->addTrace("scrape","processing $filename");
                 processDownloadedFile($self, $key, $filename);
+                $self->addTrace("scrape","processed $filename");
+                $fileCount++;
             }
         }
         # We've made it to the end of execution
         # whether there were files or not, we need to mark this source as having had a successful scrape
         $self->updateSourceScrapeDate();
+        $self->finishThisJob("Downloaded $fileCount file(s)");
     }
 }
 
@@ -87,7 +99,6 @@ sub getDownloadPages
     {
         push(@ret, $key);
     }
-    print Dumper(\@ret);
     return \@ret;
 }
 

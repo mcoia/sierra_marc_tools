@@ -35,6 +35,7 @@ sub _init
     $self->{downloadDIR} = shift;
     $self->{json} = shift;
     $self->{clientID} = shift;
+    $self->{thisJobID} = shift;
     $self->{URL} = '';
     $self->{webuser} = '';
     $self->{webpass} = '';
@@ -48,7 +49,7 @@ sub _init
     $self->{screenShotStep} = -1;
     $self->{screenShotDIR} = -1;
 
-    if($self->{sourceID} && $self->{dbHandler} && $self->{prefix} && $self->{driver} && $self->{log})
+    if($self->{sourceID} && $self->{dbHandler} && $self->{prefix} && $self->{driver} && $self->{log} && $self->{thisJobID})
     {
         $self = fillVars($self);
         $self = $self->parseJSON($self->{json});
@@ -758,9 +759,9 @@ sub createJob
 {
     my $self = shift;
     my $query = "INSERT INTO 
-    $self->{prefix}"."_job (current_action)
-    VALUES(null)";
-    my @vals = ();
+    $self->{prefix}"."_job (current_action, type)
+    VALUES(null, ?)";
+    my @vals = ('processmarc');
     $self->doUpdateQuery( $query, undef, \@vals);
     return getJobID($self);
 }
@@ -772,7 +773,8 @@ sub getJobID
     my $ret = 0;
     my $query = "select max(id) from $self->{prefix}"."_job job
     where
-    status = 'new'";
+    status = 'new' and
+    type = 'processmarc'";
     $self->{log}->addLine($query);
     my @results = @{$self->getDataFromDB($query)};
     foreach(@results)
@@ -791,6 +793,40 @@ sub readyJob
     my @vars = ();
     $self->doUpdateQuery( $query, undef, \@vars );
     undef @vars;
+}
+
+sub startThisJob
+{
+    my $self = shift;
+    my $query = "UPDATE $self->{prefix}"."_job SET status = 'processing', start_time = NOW() WHERE id = $self->{thisJobID}";
+    my @vars = ();
+    $self->doUpdateQuery( $query, undef, \@vars );
+    undef @vars;
+}
+
+sub updateThisJobStatus
+{
+    my $self = shift;
+    my $action = shift;
+    my $status = shift || 'processing';
+    my $query =
+    "UPDATE
+    ".$self->{prefix}.
+    "_job
+    set
+    status = ?,
+    current_action = ?
+    where
+    id = ?";
+    my @vals = ($status, $action, $self->{thisJobID});
+    $self->doUpdateQuery($query, undef, \@vals);
+}
+
+sub finishThisJob
+{
+    my $self = shift;
+    my $finalString = shift;
+    updateThisJobStatus($self, $finalString, 'finished');
 }
 
 sub updateSourceScrapeDate

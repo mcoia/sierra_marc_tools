@@ -152,7 +152,7 @@ sub runScrapers
             my $json = decode_json( $details{"json"} );
             my $source;
             my $perl = '$source = new ' . $details{"perl_mod"} .'($log, $dbHandler, $stagingTablePrefix, $debug, '.
-                       '$key, "' . $vendor . '", $driver, $screenShotDIR, $folder, $json, ' . $details{"clientid"} .');';
+                       '$key, "' . $vendor . '", $driver, $screenShotDIR, $folder, $json, ' . $details{"clientid"} .', ' . $details{"jobid"} .');';
             print $perl . "\n" if $debug;
             # Instantiate the perl Module
             {
@@ -304,7 +304,8 @@ sub runCheckILSLoaded
             eval
             {
                 print "Executing job: '$thisJobID'\n";
-                $tJob->runCheckILSLoaded();
+                $tJob->queueNotice();
+                # $tJob->runCheckILSLoaded();
                 die if $tJob->getError();
                 1;  # ok
             } or do
@@ -425,17 +426,102 @@ sub getILSConfirmationJobs
     return \@ret;
 }
 
+sub createScraperJobs
+{
+    # gather up all of the enabled sources, ignoring those that already have a scraper job pending
+    my $query = "
+    SELECT
+    source.id,source.scrape_interval,max(job.run_time)
+    FROM
+    $stagingTablePrefix"."_source source
+    LEFT JOIN $stagingTablePrefix"."_job job on (job.source = source.id and job.type='scraper')
+    WHERE
+    source.enabled IS TRUE
+    AND source.id NOT IN
+    (
+    SELECT
+    source.id
+    FROM
+    $stagingTablePrefix"."_source source2
+    JOIN $stagingTablePrefix"."_job job2 on (job2.source = source2.id and job2.type='scraper' and job2.status='new')
+    WHERE
+    source.enabled IS TRUE
+    )
+    GROUP BY 1,2
+    ";
+    $log->addLogLine($query);
+    my @results = @{$dbHandler->query($query)};
+    my %creates = ();
+    foreach(@results)
+    {
+        my @row = @{$_};
+        my $sourceID = @row[0];
+        my $scrape_interval = @row[1];
+        my $last_run = @row[2];
+        $scrape_interval = '1 MONTH' if($scrape_interval eq '');
+        my $run_time = "'$last_run' + INTERVAL $scrape_interval AS DATETIME";
+        $run_time = 'NOW()' if($last_run eq ''); # set the job to run now if it's never been run before
+        $creates{@row[0]} = $run_time;
+    }
+    print Dumper(\%creates);
+    while ( (my $key, my $value) = each(%creates) )
+    {
+        my $query = "INSERT INTO $stagingTablePrefix"."_job (source, type)
+        VALUES(?,?)";
+        # my @vals = ($key, 'scraper');
+        # print "$query\n";
+        # print Dumper(\@vals);
+        # $dbHandler->updateWithParameters($query,\@vals);
+        my $id = getNewestJob($key, 'scraper');
+        if($id)
+        {
+            $query = "UPDATE $stagingTablePrefix"."_job
+            SET
+            run_time = ?
+            WHERE
+            id = ?";
+            @vals = ($value, $key);
+            print "$query\n";
+            print Dumper(\@vals);
+            $dbHandler->updateWithParameters($query, \@vals);
+        }
+    }
+    exit;
+}
+
+sub getNewestJob
+{
+    my $source = shift;
+    my $type = shift;
+    my $ret = 0;
+    my $query = "SELECT MAX(id) FROM $stagingTablePrefix"."_job
+    WHERE
+    source = ? AND
+    type = ? AND
+    status = 'new'";
+    my @vals = ($source, $type);
+    my @results = @{$dbHandler->query($query, \@vals)};
+    foreach(@results)
+    {
+        my @row = @{$_};
+        $ret = @row[0];
+    }
+    return $ret;
+}
+
 sub getSources
 {
+    createScraperJobs();
     my @ret = ();
     my %sources = ();
     my @order = ();
     my $query = "
     SELECT
-    source.id,client.name,source.name,source.type,source.perl_mod,source.json_connection_detail,client.id,scrape_img_folder
+    source.id,client.name,source.name,source.type,source.perl_mod,source.json_connection_detail,client.id,scrape_img_folder,job.id
     FROM
     $stagingTablePrefix"."_client client
     JOIN $stagingTablePrefix"."_source source ON (source.client=client.id)
+    LEFT JOIN $stagingTablePrefix"."_job job ON (job.source=source.id)
     WHERE
     client.id=client.id
     AND source.enabled IS TRUE
@@ -451,6 +537,16 @@ sub getSources
     undef $specificClient if($specificClient =~ m/[&'%\\\/]/);
     $specificClient = lc $specificClient if $specificClient;
 
+    if (!$specificSource && !$specificClient)
+    {
+        my $fill = "AND source.id IN (select source from $stagingTablePrefix"."_job WHERE status='new' AND type='scraper')";
+        $query =~ s/___specificClient___/$fill/g;
+    }
+    else
+    {
+        # remove enabled requirement when humans want to run it by hand
+        $query =~ s/AND source.enabled IS TRUE//g;
+    }
     $query =~ s/___specificSource___/AND LOWER(source.name) = '$specificSource'/g if $specificSource;
     $query =~ s/___specificSource___//g if !$specificSource;
 
@@ -470,6 +566,7 @@ sub getSources
         $hash{"json"} = @row[5];
         $hash{"clientid"} = @row[6];
         $hash{"scrape_img_folder"} = @row[7];
+        $hash{"jobid"} = @row[8];
         $sources{@row[0]} = \%hash;
     }
     print Dumper(%sources) if $debug;
@@ -522,6 +619,53 @@ sub closeBrowser
     $driver->quit if $driver;
 }
 
+sub writeTrace
+{
+    my $trace = shift;
+    my $job = shift;
+    my @traceRow = @{getTraceRow($job)};
+    my @vars = ();
+    my $query =
+    "UPDATE
+    $stagingTablePrefix"."_job_trace
+    set
+    trace = ?
+    where
+    id = ?";
+    if(!@traceRow[0])
+    {
+        $query = "INSERT INTO $stagingTablePrefix"."_job_trace (job,trace)
+        values(?,?)";
+        @vars = ($job, $trace);
+    }
+    else
+    {
+        @vars = ($trace, @traceRow[0]);
+    }
+    $dbHandler->updateWithParameters($query, undef, \@vals);
+}
+
+sub getTraceRow
+{
+    my $job = shift;
+    my @ret = ();
+    my $query = "
+    SELECT
+    id, trace
+    FROM
+    $stagingTablePrefix"."_job_trace 
+    job = ?";
+    my @vars = ($job);
+    my @results = $dbHandler->query($query, \@vars);
+    foreach(@results)
+    {
+        my @row = @{$_};
+        push @ret, @row[0];
+        push @ret, @row[1];
+    }
+    return \@ret;
+}
+
 sub setupDownloadFolder
 {
     my $subFolder = shift;
@@ -548,7 +692,6 @@ sub setupDB
 
 sub createDatabase
 {
-
     if($recreateDB)
     {
         print "Re-creting database\n";
@@ -556,6 +699,12 @@ sub createDatabase
         $log->addLine($query);
         $dbHandler->update($query);
         my $query = "DROP TABLE $stagingTablePrefix"."_wwwusers ";
+        $log->addLine($query);
+        $dbHandler->update($query);
+        my $query = "DROP TABLE $stagingTablePrefix"."_job_trace ";
+        $log->addLine($query);
+        $dbHandler->update($query);
+        my $query = "DROP TABLE $stagingTablePrefix"."_notice_template ";
         $log->addLine($query);
         $dbHandler->update($query);
         my $query = "DROP TABLE $stagingTablePrefix"."_import_status ";
@@ -583,19 +732,6 @@ sub createDatabase
         ##################
         # TABLES
         ##################
-        my $query = "CREATE TABLE $stagingTablePrefix"."_job (
-        id int not null auto_increment,
-        create_time datetime DEFAULT CURRENT_TIMESTAMP,
-        start_time datetime,
-        last_update_time datetime DEFAULT CURRENT_TIMESTAMP,
-        current_action varchar(1000),
-        status varchar(100) default 'new',
-        current_action_num int DEFAULT 0,
-        PRIMARY KEY (id)
-        )
-        ";
-        $log->addLine($query) if $debug;
-        $dbHandler->update($query);
 
         $query = "CREATE TABLE $stagingTablePrefix"."_cluster (
         id int not null auto_increment,
@@ -634,9 +770,28 @@ sub createDatabase
         client int,
         perl_mod varchar(50),
         scrape_img_folder varchar(1000),
+        scrape_interval varchar(100) DEFAULT '1 MONTH',
         json_connection_detail varchar(5000),
         PRIMARY KEY (id),
         FOREIGN KEY (client) REFERENCES $stagingTablePrefix"."_client(id) ON DELETE RESTRICT
+        )
+        ";
+        $log->addLine($query) if $debug;
+        $dbHandler->update($query);
+
+        my $query = "CREATE TABLE $stagingTablePrefix"."_job (
+        id int not null auto_increment,
+        type varchar(100) DEFAULT 'processmarc',
+        source int,
+        create_time datetime DEFAULT CURRENT_TIMESTAMP,
+        run_time datetime DEFAULT now(),
+        start_time datetime,
+        last_update_time datetime DEFAULT CURRENT_TIMESTAMP,
+        current_action varchar(1000),
+        status varchar(100) default 'new',
+        current_action_num int DEFAULT 0,
+        PRIMARY KEY (id),
+        FOREIGN KEY (source) REFERENCES $stagingTablePrefix"."_source(id) ON DELETE RESTRICT
         )
         ";
         $log->addLine($query) if $debug;
@@ -692,6 +847,48 @@ sub createDatabase
         $log->addLine($query) if $debug;
         $dbHandler->update($query);
 
+        $query = "CREATE TABLE $stagingTablePrefix"."_notice_template (
+        id int not null auto_increment,
+        name varchar(100),
+        source int,
+        type varchar(100) DEFAULT 'scraper',
+        upon_status varchar(100) DEFAULT 'success',
+        template text(60000),
+        CONSTRAINT single_template_per_source UNIQUE (source, type),
+        PRIMARY KEY (id),
+        FOREIGN KEY (source) REFERENCES $stagingTablePrefix"."_source(id) ON DELETE RESTRICT
+        )
+        ";
+        $log->addLine($query) if $debug;
+        $dbHandler->update($query);
+
+        $query = "CREATE TABLE $stagingTablePrefix"."_notice_history (
+        id int not null auto_increment,
+        notice_template int,
+        status varchar(100) DEFAULT 'pending',
+        job int,
+        create_time datetime DEFAULT CURRENT_TIMESTAMP,
+        send_time datetime DEFAULT NULL,
+        data text(65000),
+        PRIMARY KEY (id),
+        FOREIGN KEY (notice_template) REFERENCES $stagingTablePrefix"."_notice_template(id) ON DELETE RESTRICT,
+        FOREIGN KEY (job) REFERENCES $stagingTablePrefix"."_job(id) ON DELETE RESTRICT
+        )
+        ";
+        $log->addLine($query) if $debug;
+        $dbHandler->update($query);
+
+        $query = "CREATE TABLE $stagingTablePrefix"."_job_trace (
+        id int not null auto_increment,
+        job int,
+        trace text(65000) DEFAULT null,
+        PRIMARY KEY (id),
+        FOREIGN KEY (job) REFERENCES $stagingTablePrefix"."_job(id) ON DELETE RESTRICT
+        )
+        ";
+        $log->addLine($query) if $debug;
+        $dbHandler->update($query);
+
         $query = "CREATE TABLE $stagingTablePrefix"."_wwwpages (
         id int not null auto_increment,
         name varchar(1000),
@@ -740,11 +937,11 @@ sub createDatabase
         FOR EACH ROW
         BEGIN
             IF NEW.current_action != OLD.current_action THEN
-                SET NEW.last_update_time = CURRENT_DATE();
+                SET NEW.last_update_time = NOW();
                 SET NEW.current_action_num = OLD.current_action_num + 1;
             END IF;
             IF NEW.status != OLD.status THEN
-                SET NEW.last_update_time = CURRENT_DATE();
+                SET NEW.last_update_time = NOW();
                 SET NEW.current_action_num = OLD.current_action_num + 1;
             END IF;
         END;
