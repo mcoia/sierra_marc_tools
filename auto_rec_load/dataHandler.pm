@@ -759,9 +759,9 @@ sub createJob
 {
     my $self = shift;
     my $query = "INSERT INTO 
-    $self->{prefix}"."_job (current_action, type)
-    VALUES(null, ?)";
-    my @vals = ('processmarc');
+    $self->{prefix}"."_job (current_action, type, source)
+    VALUES(null, ?, ?)";
+    my @vals = ('processmarc', $self->{sourceID});
     $self->doUpdateQuery( $query, undef, \@vals);
     return getJobID($self);
 }

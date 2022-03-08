@@ -17,21 +17,21 @@ sub scrape
     $self->{log}->addLine("Getting " . $self->{URL});
     $self->{driver}->get($self->{URL});
     $self->cleanScreenShotFolder();
-    $self->updateThisJob("Cleaned Screen Shot Folder");
+    $self->updateThisJobStatus("Cleaned Screen Shot Folder");
     $self->takeScreenShot('pageload');
     $self->addTrace("scrape","login");
-    $self->updateThisJob("Login Page");
+    $self->updateThisJobStatus("Login Page");
     my $continue = $self->handleLoginPage("id","username","password","Incorrect username or password. Please try again.");
     print "Continue: $continue\n";
     if($continue)
     {
-        $self->updateThisJob("Login Page Worked");
+        $self->updateThisJobStatus("Login Page Worked");
         $continue = $self->handleAnchorClick("MARC Updates","MARC Record Set");
         print "Continue: $continue\n";
     }
     if($continue) # we're on the download page
     {
-        $self->updateThisJob("On Download Page");
+        $self->updateThisJobStatus("On Download Page");
         my @downloadPages = @{getDownloadPages($self)};
         my $startingPage = $self->{driver}->get_current_url();
         my $firstRun = 0;
@@ -52,7 +52,7 @@ sub scrape
                 $self->addTrace("scrape","checking $key");
                 if(decideDownload($self, $key))
                 {
-                    $self->updateThisJob("downloading $key");
+                    $self->updateThisJobStatus("downloading $key");
                     $self->addTrace("scrape","Decided to download");
                     $self->readSaveFolder(1); # read the contents of the download folder to get a baseline
                     $self->handleAnchorClick($value, 0, 1);
@@ -68,7 +68,7 @@ sub scrape
             }
             while ( (my $key, my $filename) = each(%downloaded) )
             {
-                $self->updateThisJob("processing $filename");
+                $self->updateThisJobStatus("processing $filename");
                 $self->addTrace("scrape","processing $filename");
                 processDownloadedFile($self, $key, $filename);
                 $self->addTrace("scrape","processed $filename");

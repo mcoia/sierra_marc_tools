@@ -609,51 +609,7 @@ function getComebackURLString($tabInfo)
 		}
 		return $relative;
 	}
-	
-	function makeLink($ID=null, $type, $uriString)
-	{	
-		global $currentURLBase;
-		$ret="";
-		$pageID="";
-		$privilegeDef = new privileges(null);
-		$tid = $privilegeDef->getPageID($privilegeDef->findID($type));
-		if(is_numeric($tid))
-		{
-			$pageID=$tid;
-			$uriname = "userid";
-			if(!isset($uriString))
-			{
-				switch($type)
-				{	
-					case "purchaseorders":
-						$uriname="purchaseorderid";
-						break;				
-					case "job":
-						$uriname="jobid";
-						break;
-					case "materials":
-						$uriname="materialid";
-						break;
-					default:
-					case "employee":
-						$uriname="userid";
-						break;
-				}
-			}
-			else
-				$uriname = $uriString;
 
-			if($pageID!==false)
-			{	
-				$ret=$currentURLBase."/index.php?pageid=$pageID&$uriname";
-				isset($ID) ? $ret.="=$ID" : '' ;
-				return $ret;
-			}
-			else return false;
-		}
-		return false;
-	}
-	
 	function drawHTMLTableFrom2DArray($array, $uiClass, $columnHeaders = array())
 	{	
 		$ret="<table class=\"$uiClass\"><thead><tr>";

@@ -26,11 +26,12 @@ use dataHandlerProquest;
 use commonTongue;
 use marcEditor;
 use job;
+use notice;
 
 # use sigtrap qw(handler cleanup normal-signals);
 
 our $stagingTablePrefix = "auto";
-our $lockfile = "/tmp/auto_rec_load.pl.pid";
+our $lockfile;
 
 
 our $driver;
@@ -51,6 +52,12 @@ our $vendor = '';
 our $screenShotDIR;
 our $testMARC = '';
 our $checkILSLoaded;
+
+# This doesn't work but whatever I guess, we'll just have to leave the lockfile on disk
+$SIG{INT} = 'DEFAULT';
+local $SIG{INT} = \&cleanup;
+
+# sub {print "dead\n";};
 
 GetOptions (
 "config=s" => \$configFile,
@@ -81,6 +88,9 @@ if(!$configFile || !(-e $configFile) )
     exit;
 }
 
+$lockfile = figureLockFile() if !$lockfile;
+
+
 our $mobUtil = new Mobiusutil();
 our $conf = $mobUtil->readConfFile($configFile);
 
@@ -108,8 +118,11 @@ if($conf)
         my $cwd = getcwd();
         # This is for debugging, an additional screenshot folder
         # for the devs to view the output easier than using the web UI
-        $screenShotDIR = "$cwd/screenshots";
-        mkdir $screenShotDIR unless -d $screenShotDIR;
+        if($debug)
+        {
+            $screenShotDIR = "$cwd/screenshots";
+            mkdir $screenShotDIR unless -d $screenShotDIR;
+        }
 
         runScrapers() if($runAllScrapers || ($specificSource && $specificClient));
         
@@ -148,7 +161,7 @@ sub runScrapers
             # turn off local screenshots, and only write to the web screenshot folder
             $screenShotDIR = null if !$debug;
             $vendor = $details{"sourcename"} . '_' . $details{"clientname"};
-            print "Working on: '$vendor'\n";
+            print "Scraping on: '$vendor'\n";
             my $json = decode_json( $details{"json"} );
             my $source;
             my $perl = '$source = new ' . $details{"perl_mod"} .'($log, $dbHandler, $stagingTablePrefix, $debug, '.
@@ -164,37 +177,39 @@ sub runScrapers
                     1;  # ok
                 } or do
                 {
-                    my $evalError = concatTrace( $@ || "error", $source->getTrace(), $source->getError());
-                    alertErrorEmail("Could not instanciate " .$details{"perl_mod"} . "\r\n\r\n$perl\r\n\r\nerror:\r\n\r\n$evalError") if!$debug;
+                    writeTrace( $@ || "instantiation error: " . $details{"perl_mod"}, $details{"jobid"} );
+                    queueNotice($details{"jobid"}, 'scraper', 'fail', $@ || "instantiation error");
                     next;
                 };
             }
             # Run the scrape function
             {
-                # local $@;
-                # eval
-                # {
-                    # print "Executing special file parsing\n$folder\n";
-
-                    # $source->processDownloadedFile("2021-09-28_0_1","/20210628_307429_missouriwestern_export.zip");
+                local $@;
+                eval
+                {
                     print "Scraping\n" if $debug;
                     $source->scrape();
-                    # die if $source->getError();
-                    # 1;  # ok
-                # } or do
-                # {
-                    # my $evalError = concatTrace( $@ || "error", $source->getTrace(), $source->getError());
-                    # alertErrorEmail($evalError) if!$debug;
-                    # next;
-                # };
+                    die if $source->getError();
+                    writeTrace( concatTrace('', $source->getTrace(), ''), $details{"jobid"} );
+                    queueNotice($details{"jobid"}, 'scraper', 'success');
+                    1;  # ok
+                } or do
+                {
+                    print "had error\n";
+                    print $@ . "\n";
+                    print $source->getError(). "\n";
+                    writeTrace( concatTrace('', $source->getTrace(), $source->getError()), $details{"jobid"});
+                    my $evalError = concatTrace( $@ || "error", $source->getTrace(), $source->getError());
+                    queueNotice($details{"jobid"}, 'scraper', 'fail', $evalError); # appending the error to the message in case the template doesn't utilize it
+                    next;
+                };
             }
             concatTrace('', $source->getTrace(), '');
             undef $source;
         }
         else
         {
-            print "Scheduler Output folder: '".$details{"outputfolder"}."' doesn't exist\n";
-            alertErrorEmail("Scheduler Output folder: '".$details{"outputfolder"}."' doesn't exist");
+            printError("Scheduler Output folder doesn't exist");
         }
     }
     closeBrowser();
@@ -202,31 +217,6 @@ sub runScrapers
 
 sub runJobs
 {
-    my $query = "
-    update auto_import_status
-set
-status='new',
-record_tweaked=null,
-itype=null,
-loaded=0,
-no856s_remain=0,
-out_file=null
-where file in(
-select id from auto_file_track
-where filename like '2022%'
-)";
-$dbHandler->update($query);
-
-$query = "
-update auto_job
-set
-status='ready',
-
-start_time=null,
-current_action_num=0
-where id in(select job from auto_import_status where status='new')";
-$dbHandler->update($query);
-
     my @jobs = @{getReadyJobs()};
     foreach(@jobs)
     {
@@ -246,8 +236,8 @@ $dbHandler->update($query);
                 1;  # ok
             } or do
             {
-                my $evalError = concatTrace( $@ || "error", $tJob->getTrace(), $tJob->getError());
-                alertErrorEmail("Could not instanciate job: $thisJobID\r\n\r\n$perl\r\n\r\nerror:\r\n\r\n$evalError") if!$debug;
+                writeTrace( $@ || "instantiation error", $thisJobID );
+                queueNotice($thisJobID, 'processmarc', 'fail', $@ || "instantiation error");
                 next;
             };
         }
@@ -259,15 +249,17 @@ $dbHandler->update($query);
                 print "Executing job: '$thisJobID'\n";
                 $tJob->runJob();
                 die if $tJob->getError();
+                writeTrace( concatTrace('', $tJob->getTrace(), ''), $thisJobID );
+                queueNotice($thisJobID, 'processmarc', 'success');
                 1;  # ok
             } or do
             {
+                writeTrace( concatTrace('', $tJob->getTrace(), $tJob->getError()), $thisJobID);
                 my $evalError = concatTrace( $@ || "error", $tJob->getTrace(), $tJob->getError());
-                alertErrorEmail($evalError) if!$debug;
+                queueNotice($thisJobID, 'processmarc', 'fail', $evalError); # appending the error to the message in case the template doesn't utilize it
                 next;
             };
         }
-        concatTrace('', $tJob->getTrace(), '');
         undef $tJob;
     }
 }
@@ -293,8 +285,8 @@ sub runCheckILSLoaded
                 1;  # ok
             } or do
             {
-                my $evalError = concatTrace( $@ || "error", $tJob->getTrace(), $tJob->getError());
-                alertErrorEmail("Could not instanciate job: $thisJobID\r\n\r\n$perl\r\n\r\nerror:\r\n\r\n$evalError") if!$debug;
+                writeTrace( $@ || "instantiation error", $thisJobID );
+                queueNotice($thisJobID, 'ilsload', 'fail', $@ || "instantiation error");
                 next;
             };
         }
@@ -304,14 +296,16 @@ sub runCheckILSLoaded
             eval
             {
                 print "Executing job: '$thisJobID'\n";
-                $tJob->queueNotice();
-                # $tJob->runCheckILSLoaded();
+                $tJob->runCheckILSLoaded();
                 die if $tJob->getError();
+                writeTrace( concatTrace('', $tJob->getTrace(), ''), $thisJobID );
+                queueNotice($thisJobID, 'ilsload', 'success');
                 1;  # ok
             } or do
             {
+                writeTrace( concatTrace('', $tJob->getTrace(), $tJob->getError()), $thisJobID);
                 my $evalError = concatTrace( $@ || "error", $tJob->getTrace(), $tJob->getError());
-                alertErrorEmail($evalError) if !$debug;
+                queueNotice($thisJobID, 'ilsload', 'fail', $evalError); # appending the error to the message in case the template doesn't utilize it
                 next;
             };
         }
@@ -370,15 +364,49 @@ sub runTest
 sub getReadyJobs
 {
     my @ret = ();
-    # return \@ret;
-    my $query = "
+    my $query = "";
+    if($runJobID && trim($runJobID) != '')
+    {
+        # When the user wants us to run a specific job, we need to reset it
+        $query = "
+        UPDATE auto_import_status
+        SET
+        status='new',
+        record_tweaked = NULL,
+        itype = NULL,
+        loaded = 0,
+        no856s_remain = 0,
+        out_file = NULL
+        WHERE job = ?";
+        my @vals = ($runJobID);
+        $log->addLogLine($query);
+        $log->addLogLine(Dumper(\@vals));
+        $dbHandler->updateWithParameters($query, \@vals);
+
+        $query = "
+        UPDATE $stagingTablePrefix"."_job
+        SET
+        start_time = null,
+        status = 'ready',
+        current_action_num = 0,
+        current_action = ''
+        WHERE
+        id = ?
+        ";
+        $log->addLogLine($query);
+        $log->addLogLine(Dumper(\@vals));
+        $dbHandler->updateWithParameters($query, \@vals);
+        undef @vals;
+    }
+    $query = "
     SELECT
     job.id
     FROM
     $stagingTablePrefix"."_job job
     where
     job.status = 'ready'
-    and job.start_time is null
+    AND type = 'processmarc'
+    AND job.start_time is null
     ___specificJob___
     order by 1
     ";
@@ -449,7 +477,7 @@ sub createScraperJobs
     )
     GROUP BY 1,2
     ";
-    $log->addLogLine($query);
+    $log->addLogLine($query) if $debug;
     my @results = @{$dbHandler->query($query)};
     my %creates = ();
     foreach(@results)
@@ -459,34 +487,33 @@ sub createScraperJobs
         my $scrape_interval = @row[1];
         my $last_run = @row[2];
         $scrape_interval = '1 MONTH' if($scrape_interval eq '');
-        my $run_time = "'$last_run' + INTERVAL $scrape_interval AS DATETIME";
+        my $run_time = "'$last_run' + INTERVAL $scrape_interval";
         $run_time = 'NOW()' if($last_run eq ''); # set the job to run now if it's never been run before
         $creates{@row[0]} = $run_time;
     }
-    print Dumper(\%creates);
+    $log->addLogLine("Creating new scraper jobs:\n" . Dumper(\%creates));
     while ( (my $key, my $value) = each(%creates) )
     {
         my $query = "INSERT INTO $stagingTablePrefix"."_job (source, type)
         VALUES(?,?)";
-        # my @vals = ($key, 'scraper');
-        # print "$query\n";
-        # print Dumper(\@vals);
-        # $dbHandler->updateWithParameters($query,\@vals);
+        my @vals = ($key, 'scraper');
+        $log->addLogLine($query) if $debug;
+        $log->addLogLine(Dumper(\@vals)) if $debug;
+        $dbHandler->updateWithParameters($query, \@vals);
         my $id = getNewestJob($key, 'scraper');
         if($id)
         {
             $query = "UPDATE $stagingTablePrefix"."_job
             SET
-            run_time = ?
+            run_time = $value
             WHERE
             id = ?";
-            @vals = ($value, $key);
-            print "$query\n";
-            print Dumper(\@vals);
+            @vals = ($id);
+            $log->addLogLine($query) if $debug;
+            $log->addLogLine(Dumper(\@vals)) if $debug;
             $dbHandler->updateWithParameters($query, \@vals);
         }
     }
-    exit;
 }
 
 sub getNewestJob
@@ -521,7 +548,7 @@ sub getSources
     FROM
     $stagingTablePrefix"."_client client
     JOIN $stagingTablePrefix"."_source source ON (source.client=client.id)
-    LEFT JOIN $stagingTablePrefix"."_job job ON (job.source=source.id)
+    JOIN $stagingTablePrefix"."_job job ON (job.source=source.id)
     WHERE
     client.id=client.id
     AND source.enabled IS TRUE
@@ -539,7 +566,7 @@ sub getSources
 
     if (!$specificSource && !$specificClient)
     {
-        my $fill = "AND source.id IN (select source from $stagingTablePrefix"."_job WHERE status='new' AND type='scraper')";
+        my $fill = "AND source.id IN (select source from $stagingTablePrefix"."_job WHERE status='new' AND type='scraper' AND run_time < (NOW() + INTERVAL 1 MINUTE) )";
         $query =~ s/___specificClient___/$fill/g;
     }
     else
@@ -623,8 +650,10 @@ sub writeTrace
 {
     my $trace = shift;
     my $job = shift;
+    print "Writing trace: $job\n";
+    return unless $job;
     my @traceRow = @{getTraceRow($job)};
-    my @vars = ();
+    my @vars = ($trace, $job);
     my $query =
     "UPDATE
     $stagingTablePrefix"."_job_trace
@@ -634,26 +663,23 @@ sub writeTrace
     id = ?";
     if(!@traceRow[0])
     {
-        $query = "INSERT INTO $stagingTablePrefix"."_job_trace (job,trace)
+        $query = "INSERT INTO $stagingTablePrefix"."_job_trace (trace, job)
         values(?,?)";
-        @vars = ($job, $trace);
     }
-    else
-    {
-        @vars = ($trace, @traceRow[0]);
-    }
-    $dbHandler->updateWithParameters($query, undef, \@vals);
+    $dbHandler->updateWithParameters($query, \@vars);
 }
 
 sub getTraceRow
 {
     my $job = shift;
     my @ret = ();
+    print "Getting trace Row\n";
     my $query = "
     SELECT
     id, trace
     FROM
     $stagingTablePrefix"."_job_trace 
+    WHERE
     job = ?";
     my @vars = ($job);
     my @results = $dbHandler->query($query, \@vars);
@@ -663,7 +689,31 @@ sub getTraceRow
         push @ret, @row[0];
         push @ret, @row[1];
     }
+    print "Got trace Row\n";
     return \@ret;
+}
+
+sub queueNotice
+{
+    my $job = shift;
+    my $type = shift;
+    my $upon_status = shift;
+    my $notice = new notice($log, $dbHandler, $stagingTablePrefix, $debug);
+    $notice->queueNotice($thisJobID, $type, $upon_status);
+}
+
+sub failJob
+{
+    my $job = shift;
+    my $query = "UPDATE $stagingTablePrefix"."_job
+    SET
+    status = 'failed'
+    WHERE
+    id = ?";
+    my @vars = ($job);
+    $log->addLogLine($query);
+    $log->addLogLine(Dumper(\@vals));
+    $dbHandler->updateWithParameters($query, \@vals);
 }
 
 sub setupDownloadFolder
@@ -684,7 +734,7 @@ sub setupDB
     if ($@)
     {
         print "Could not establish a connection to the database\n";
-        alertErrorEmail("Could not establish a connection to the database");
+        printError("Could not establish a connection to the database");
         exit 1;
     }
     $databaseName = $conf{"db"};
@@ -704,6 +754,9 @@ sub createDatabase
         my $query = "DROP TABLE $stagingTablePrefix"."_job_trace ";
         $log->addLine($query);
         $dbHandler->update($query);
+        my $query = "DROP TABLE $stagingTablePrefix"."_notice_history ";
+        $log->addLine($query);
+        $dbHandler->update($query);
         my $query = "DROP TABLE $stagingTablePrefix"."_notice_template ";
         $log->addLine($query);
         $dbHandler->update($query);
@@ -716,6 +769,9 @@ sub createDatabase
         my $query = "DROP TABLE $stagingTablePrefix"."_file_track ";
         $log->addLine($query);
         $dbHandler->update($query);
+        my $query = "DROP TABLE $stagingTablePrefix"."_job ";
+        $log->addLine($query);
+        $dbHandler->update($query);
         my $query = "DROP TABLE $stagingTablePrefix"."_source ";
         $log->addLine($query);
         $dbHandler->update($query);
@@ -725,10 +781,7 @@ sub createDatabase
         my $query = "DROP TABLE $stagingTablePrefix"."_cluster ";
         $log->addLine($query);
         $dbHandler->update($query);
-        my $query = "DROP TABLE $stagingTablePrefix"."_job ";
-        $log->addLine($query);
-        $dbHandler->update($query);
-
+        
         ##################
         # TABLES
         ##################
@@ -854,7 +907,7 @@ sub createDatabase
         type varchar(100) DEFAULT 'scraper',
         upon_status varchar(100) DEFAULT 'success',
         template text(60000),
-        CONSTRAINT single_template_per_source UNIQUE (source, type),
+        CONSTRAINT single_template_per_source UNIQUE (source, type, upon_status),
         PRIMARY KEY (id),
         FOREIGN KEY (source) REFERENCES $stagingTablePrefix"."_source(id) ON DELETE RESTRICT
         )
@@ -900,10 +953,14 @@ sub createDatabase
         $dbHandler->update($query);
 
         $query = "INSERT INTO $stagingTablePrefix"."_wwwpages (name, class_name)
-        values('Dashboard','dashboardUI')";
+        values
+        ('Dashboard','dashboardUI'),
+        ('Files','filesUI'),
+        ('Vendors','vendorsUI')
+        ";
         $log->addLine($query) if $debug;
+        # This table has it's seed data in db_seed.db
         # $dbHandler->update($query);
-
 
         $query = "CREATE TABLE $stagingTablePrefix"."_wwwusers (
         id int not null auto_increment,
@@ -1072,7 +1129,7 @@ sub getForignKey
     "import_status_0" => {"table" => "file_track", "colname" => "name"},
     "file_track_1" => {"table" => "client", "colname" => "name"},
     "file_track_2" => {"table" => "source", "colname" => "name"},
-    "source_2" => {"table" => "client", "colname" => "name"},
+    "source_4" => {"table" => "client", "colname" => "name"},
     "client_1" => {"table" => "cluster", "colname" => "name"},
     );
     my $key = $table."_".$colPos;
@@ -1171,7 +1228,7 @@ sub checkFolders
     {
         while ( (my $key, my $folder) = each(%{$json->{"folders"}}) )
         {
-            print "Checking '$key' = '$folder'\n";
+            print "error '$key' : '$folder' doesn't exist\n" if( !(-d $folder));
             $ret = 0 if( !(-d $folder));
         }
     }
@@ -1197,40 +1254,54 @@ sub concatTrace
     return $ret;
 }
 
+sub figureLockFile
+{
+    my $ret = "/tmp/auto_rec_load-";
+    $ret .= "scraper" if $runAllScrapers;
+    $ret .= "scraper-client$specificClient" if $specificClient;
+    $ret .= "-source$specificSource" if $specificSource;
+
+    $ret .= "processmarc" if $runAllJobs;
+    $ret .= "processmarc-job$runJobID" if $runJobID;
+
+    $ret .= "testmarc" if $testMARC;
+
+    $ret .= "ilsload" if $checkILSLoaded;
+    $ret .= ".LOCK";
+    return $ret;
+}
+
 sub figurePIDFileStuff
 {
+    print "Looking for: $lockfile\n";
     if (-e $lockfile)
-    {   
+    {
         print "Sorry, it looks like I am already running.\nIf you know that I am not, please delete $lockfile\n";
         exit;
     }
 }
 
-sub alertErrorEmail
+sub printError
 {
     my $error = shift;
-    my @tolist = ($conf{"alwaysemail"});
-    my $email = new email($conf{"fromemail"},\@tolist,1,0,\%conf);
-    print "Sending an Error email:
+    print "
     Automatic Record Load Utility - $vendor Import Report Job # $jobid - ERROR
     $error
     
     -Friendly MOBIUS Server-
     ";
-
-    # $email->send("Automatic Record Load Utility - $vendor Import Report Job # $jobid - ERROR","$error\r\n\r\n-Friendly MOBIUS Server-");
 }
 
 sub cleanup
 {
-    DESTROY();
-}
-
-sub DESTROY
-{
-    print "I'm dying, deleting PID file $lockfile\n";
+    # my $lockfile = shift;
+    if(-e $lockfile)
+    {
+        print "I'm dying, deleting PID file $lockfile\n";
+        unlink $lockfile;
+        print "Deleted '$lockfile'\n";
+    }
     closeBrowser();
-    unlink $lockfile;
 }
 
 exit;

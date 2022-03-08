@@ -93,7 +93,10 @@ class vendorsUI
         $toDate = convertToDatabaseDate($toDate);
 		addDebug("getSearchTable called");
 		$anchorProps = array();
-		$selectCols = array("asource.name \"vname\"","ac.name \"clientname\"",
+		$selectCols = array(
+        "CASE WHEN asource.enabled IS TRUE THEN 'Enabled' ELSE 'Disabled' END \"enabled\"",
+        "asource.name \"vname\"",
+        "ac.name \"clientname\"",
         "
         CASE WHEN asource.type = 'web' THEN
         concat('<a source=\"',asource.id,'\" onClick=\"showScreenShots(this)\" href=\"#screenshotanchor\">', asource.type, '</a>')
@@ -101,8 +104,8 @@ class vendorsUI
         END \"type\"",
         "asource.perl_mod \"perlmod\"",
         "asource.last_scraped \"last_scraped\"",
-        "concat('<a source=\"',asource.id,'\" onClick=\"editJSONClick(this)\" href=\"#\">', asource.json_connection_detail, '</a>') \"conndetail\"");
-		$showCols = array("vname"=>"Vendor","clientname"=>"Institution","type"=>"Type","perlmod"=>"Perl Mod","last_scraped"=>"Last Scraped","conndetail"=>"Connection Detail");
+        "concat('<a  json =\"1\" source=\"',asource.id,'\" onClick=\"editJSONClick(this)\" href=\"#\">', asource.json_connection_detail, '</a>') \"conndetail\"");
+		$showCols = array("enabled"=>"Enabled","vname"=>"Vendor","clientname"=>"Institution","type"=>"Type","perlmod"=>"Perl Mod","last_scraped"=>"Last Scraped","conndetail"=>"Connection Detail");
 		$ClickPos=array();
 		$searchCols = array();
 		$tableID = "vendorSearchTable";

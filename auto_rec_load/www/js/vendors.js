@@ -55,7 +55,7 @@ function writeBackSuccess(source, jsontext)
 {
     $("a").each(function(index)
     {
-        if($(this).attr('source') && $(this).attr('source') == source)
+        if($(this).attr('source') && $(this).attr('source') == source && $(this).attr('json'))
         {
             $(this).html(jsontext);
         }

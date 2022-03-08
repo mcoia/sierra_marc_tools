@@ -24,7 +24,6 @@ sub _init
 {
     my $self = shift;
     $self->{job} = shift;
-    $self->{status} = undef;
  
     if($self->{job} && $self->{dbHandler} && $self->{prefix} && $self->{log})
     {
@@ -173,6 +172,8 @@ sub runJob
                     # print "*********************failed*************************";
                     # $self->{log}->addLogLine("\n\nError during Instantiating importStatus ID $iID - " .$@ . "\n\n");
                     # updateImportError($self, $iID, "Couldn't read something correctly, error creating importStatus object");
+                    # $self->addTrace("runJob","Error creating importStatus $iID");
+                    # $self->setError("One or more import objects failed");
                     # $recordTracker{"convertedFailed"}++;
                 # };
             }
@@ -247,6 +248,8 @@ sub runJob
                 # {
                     # $self->{log}->addLogLine("Error during converting/writing MARC Status ID $iID - " .$@);
                     # updateImportError($self, $iID, "Couldn't manipulate the MARC: importStatus object");
+                    # $self->addTrace("runJob","Error performing conversion importStatus $iID");
+                    # $self->setError("One or more import objects failed to perform");
                     # $recordTracker{"convertedFailed"}++;
                 # };
             }
@@ -263,7 +266,7 @@ sub runJob
     }
     writeOutputMARC($self, \%fileOutput, \%fileOutputIDMap);
     my $totalLine = "Job's Done; Total: " . $recordTracker{"total"} . " success: " . $recordTracker{"convertedSuccess"} . " fail: " . $recordTracker{"convertedFailed"};
-    finishJob($self, $totalLine)
+    finishJob($self, $totalLine);
 }
 
 sub writeOutputMARC
@@ -896,315 +899,6 @@ sub setupExternalPGConnection
 
     }
     print "done externalPGConnection\n";
-}
-
-sub queueNotice
-{
-    my $self = shift;
-    my %stats = %{getJobStats($self)};
-    my @possibleVars = qw/totalrecords numberoffiles filenames filecounts jobid jobcreated jobstarted jobfinished typetotalcounts typeloaded jobtrace/;
-    my @template = @{getNoticeTemplate($self)};
-    if(@template[1] && @template[1] ne '')
-    {
-        # flatten the string to one line so we can do some regex
-        @template[1] =~ s/\n/!!!!!!!/g;
-        @template[1] =~ s/\r/_______________/g;
-        foreach(@possibleVars)
-        {
-            if(@template[1] =~ /\$$_/)
-            {
-                print "replacing $_\n";
-                my $flat = 0;
-                my $truncate = 0;
-                my $vars = @template[1];
-                # Figure out if the template has flat and truncate requests
-                # format is: $type($flat,$truncate)
-                my $before = $vars;
-                $vars =~ s/^(.*?)\$$_\(([^\)]*)\)(.*)$/$2/;
-                if($vars ne $before) # it got updated
-                {
-                    my @vals = split(/,/, $vars);
-                    for my $i (0..$#vals)
-                    {
-                        # trim spaces
-                        @vals[$i] =~ s/^\s*//g;
-                        @vals[$i] =~ s/\s*$//g;
-                    }
-                    $flat = @vals[0];
-                    $truncate = @vals[1] || 0;
-                    $flat = 0 if $flat eq '';
-                    $truncate = 0 if $truncate eq '';
-                    @template[1] =~ s/^(.*?\$$_)\([^\)]*?\)(.*)$/$1$2/g
-                }
-                my $replacement = dataToString($self, \%stats, $_, $flat, $truncate);
-                $replacement =~ s/\n/!!!!!!!/g;
-                $replacement =~ s/\r/_______________/g;
-                @template[1] =~ s/\$$_/$replacement/g;
-            }
-        }
-        # unflatten
-        @template[1] =~ s/!!!!!!!/\n/g;
-        @template[1] =~ s/_______________/\r/g;
-        print "template: " . @template[1] ."\n";
-        insertNotice($self, @template[0], 0, @template[1]);
-    }
-}
-
-sub insertNotice
-{
-    my $self = shift;
-    my $noticeID = shift;
-    my $job = shift || $self->{job};
-    my $data = shift;
-    my $query = "INSERT INTO
-    ".$self->{prefix} ."_notice_history (notice_template,job,data)
-    values(?,?,?)";
-    my @vars = ($noticeID, $job, $data);
-    $self->doUpdateQuery($query, undef, \@vars);
-}
-
-sub getNoticeTemplate
-{
-    my $self = shift;
-    my @ret = ();
-    my $query = "
-    SELECT distinct nt.id,nt.template
-    FROM
-    ".$self->{prefix} ."_import_status ais
-    JOIN ".$self->{prefix} ."_file_track ft on (ft.id=ais.file)
-    JOIN ".$self->{prefix} ."_job aj on (aj.id=ais.job)
-    JOIN ".$self->{prefix} ."_notice_template nt on (nt.source=ft.source)
-    WHERE
-    aj.id = ?
-    ";
-    my @vars = ($self->{job});
-    my @results = @{$self->getDataFromDB($query, \@vars)};
-    foreach(@results)
-    {
-        my @row = @{$_};
-        push(@ret, @row[0]);
-        push(@ret, @row[1]);
-    }
-    return \@ret;
-}
-
-sub dataToString
-{
-    my $self = shift;
-    my $statsRef = shift;
-    my $type = shift;
-    my $flat = shift || 0;
-    my $truncateLength = shift || 0;
-    my %stats = %{$statsRef};
-    my $ret = "";
-    if($type eq 'numberoffiles')
-    {
-        $ret = 0;
-        while ( (my $filename, my $value) = each(%{$stats{'filecounts'}}) )
-        {
-            $ret++;
-        }
-        $ret .= ''; # make it a string
-    }
-    if($type eq 'filenames')
-    {
-        while ( (my $filename, my $value) = each(%{$stats{'filecounts'}}) )
-        {
-            $ret .= "$filename,\n";
-        }
-        $ret = substr($ret,0,-2);
-    }
-    if($type eq 'filecounts' || $type eq 'totalrecords')
-    {
-        my $gtotal = 0;
-        while ( (my $filename, my $value) = each(%{$stats{'filecounts'}}) )
-        {
-            $ret .= "$filename:\n";
-            my @order = ();
-            while ( (my $ftype, my $count) = each(%{$value}) )
-            {
-                push @order, $ftype if($ftype ne 'total');
-            }
-            @order = sort @order;
-            foreach(@order)
-            {
-                $ret .= "\t$_: " . $value->{$_} . "\n";
-                $gtotal += $value->{$_};
-            }
-            $ret .= "\tTotal: " . $value->{'total'} . "\n" if($value->{'total'});
-        }
-        $ret = substr($ret,0,-1);
-        $ret = $gtotal if($type eq 'totalrecords');
-    }
-    if($type =~ /^job/)
-    {
-        my %jobstats = %{$stats{"jobstats"}};
-        $ret = $jobstats{'create_time'} if($type =~ /created/);
-        $ret = $jobstats{'start_time'} if($type =~ /started/);
-        $ret = $jobstats{'last_update_time'} if($type =~ /finished/);
-        $ret = $jobstats{'trace'} if($type =~ /trace/);
-    }
-    if($type eq 'typetotalcounts')
-    {
-        my @order = ();
-        while ( (my $itype, my $count) = each(%{$stats{'typetotalcounts'}}) )
-        {
-            push @order, $itype;
-        }
-        @order = sort @order;
-        foreach(@order)
-        {
-            my $v = $stats{'typetotalcounts'}{$_};
-            $ret .= "$_: $v\n";
-        }
-        $ret = substr($ret,0,-1);
-    }
-    if($type eq 'typeloaded')
-    {
-        my @order = ();
-        my @suborder = ();
-        my %uniqSubOrder = ();
-        while ( (my $itype, my $value) = each(%{$stats{'typeloaded'}}) )
-        {
-            push @order, $itype;
-            while ( (my $loaded, my $count) = each(%{$value}) )
-            {
-                push @suborder, $loaded if(!$uniqSubOrder{$loaded});
-                $uniqSubOrder{$loaded} = 1 if(!$uniqSubOrder{$loaded});
-            }
-        }
-        @order = sort @order;
-        @suborder = sort @suborder;
-        foreach(@order)
-        {
-            my $thisType = $_;
-            $ret .= "$thisType:\n";
-            foreach(@suborder)
-            {
-                $ret .= "\t$_: " . $stats{'typeloaded'}{$thisType}{$_} . "\n";
-            }
-        }
-        $ret = substr($ret,0,-1);
-    }
-    
-
-    # remove line returns when requested to be flat
-    $ret =~ s/\n//g if($flat);
-
-    if($truncateLength && length($ret) > $truncateLength)
-    {
-        $ret = substr($ret,0,$truncateLength);
-        $ret .= '...truncated';
-    }
-
-    return $ret;
-}
-
-sub getJobStats
-{
-    my $self = shift;
-    my %ret = ();
-    my $query = "
-    SELECT aj.create_time,aj.start_time,aj.last_update_time,ft.filename,ais.loaded,ais.itype,ajt.trace,count(*)
-    FROM
-    ".$self->{prefix} ."_job_trace ajt
-    LEFT JOIN ".$self->{prefix} ."_job aj on (aj.id=ajt.job)
-    LEFT JOIN ".$self->{prefix} ."_import_status ais on (aj.id=ais.job)
-    LEFT JOIN ".$self->{prefix} ."_file_track ft on (ft.id=ais.file)
-    WHERE
-    ajt.id = ?
-    GROUP BY 1,2,3,4,5,6";
-    my @vars = ($self->{job});
-    my @results = @{$self->getDataFromDB($query, \@vars)};
-    foreach(@results)
-    {
-        my @row = @{$_};
-        my $create_time = @row[0];
-        my $start_time = @row[1];
-        my $last_update_time = @row[2];
-        my $filename = @row[3];
-        my $loaded = @row[4] ? 'loaded' : 'not loaded';
-        my $itype = @row[5];
-        my $jtrace = @row[6];
-        my $count = @row[7];
-
-        # jobstats
-        if(!$ret{'jobstats'}) # all rows will have this same data, because there is only one job row (repeated)
-        {
-            my %f = (
-            'create_time' => $create_time,
-            'start_time' => $start_time,
-            'last_update_time' => $last_update_time,
-            'trace' => $jtrace
-            );
-            $ret{'jobstats'} = \%f;
-        }
-
-        # typetotalcounts
-        if(!$ret{'typetotalcounts'})
-        {
-            my %f = ();
-            $ret{'typetotalcounts'} = \%f;
-        }
-        if(!$ret{'typetotalcounts'}{$itype})
-        {
-            $ret{'typetotalcounts'}{$itype} = $count;
-        }
-        else
-        {
-            $ret{'typetotalcounts'}{$itype} += $count;
-        }
-
-        # filecounts
-        if(!$ret{'filecounts'})
-        {
-            my %f = ();
-            $ret{'filecounts'} = \%f;
-        }
-        if(!$ret{'filecounts'}{$filename})
-        {
-            my %f = ();
-            $ret{'filecounts'}{$filename} = \%f;
-        }
-        if(!$ret{'filecounts'}{$filename}{'total'})
-        {
-            $ret{'filecounts'}{$filename}{'total'} = $count;
-        }
-        else
-        {
-            $ret{'filecounts'}{$filename}{'total'} += $count;
-        }
-        if(!$ret{'filecounts'}{$filename}{$itype})
-        {
-            $ret{'filecounts'}{$filename}{$itype} = $count;
-        }
-        else
-        {
-            $ret{'filecounts'}{$filename}{$itype} += $count;
-        }
-
-        # typeloaded
-        if(!$ret{'typeloaded'})
-        {
-            my %f = ();
-            $ret{'typeloaded'} = \%f;
-        }
-        if(!$ret{'typeloaded'}{$itype})
-        {
-            my %f = ();
-            $ret{'typeloaded'}{$itype} = \%f;
-        }
-        if(!$ret{'typeloaded'}{$itype}{$loaded})
-        {
-            $ret{'typeloaded'}{$itype}{$loaded} = $count;
-        }
-        else
-        {
-            $ret{'typeloaded'}{$itype}{$loaded} += $count;
-        }
-
-    }
-    return \%ret;
 }
 
 sub updateImportError
