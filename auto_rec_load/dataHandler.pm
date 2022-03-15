@@ -524,6 +524,14 @@ sub extractCompressedFile
     {
         # Read a Zip file
         my $zip = Archive::Zip->new();
+        my $tries = 0;
+        my $giveUpAfter = 10; # I think 10 seconds is enough waiting
+        while( !($zip->read( $file ) == AZ_OK) && ($tries < $giveUpAfter) )
+        {
+            $tries++;
+            # sometimes the zip file is too fresh, and we need to let the file system to do whatever it does.
+            sleep 1;
+        }
         unless ( $zip->read( $file ) == AZ_OK )
         {
             $self->setError( "Could not open $file");
@@ -557,7 +565,7 @@ sub extractCompressedFile
     }
     else
     {
-        push (@ret, $self->{downloadDIR} . $file);
+        push (@ret, $file);
     }
     return \@ret;
 }
@@ -569,8 +577,8 @@ sub readMARCFile
     my $fExtension = getFileExt($self, $marcFile);
     my $file;
     $self->{log}->addLine("Reading $marcFile");
-    $file = MARC::File::USMARC->in($marcFile) if $fExtension !=~ m/xml/;
-    $file = MARC::File::XML->in($marcFile) if $fExtension =~ m/xml/;
+    $file = MARC::File::USMARC->in($marcFile) if lc $fExtension !=~ m/xml/;
+    $file = MARC::File::XML->in($marcFile) if lc $fExtension =~ m/xml/;
     my @ret;
     local $@;
     eval
@@ -580,10 +588,48 @@ sub readMARCFile
             push (@ret, $marc);
         }
         1;  # ok
+    } or do
+    {
+        $file->close();
+        @ret = @{readMARCFileRaw($self, $marcFile)};
     };
 
     $file->close();
     undef $file;
+    return \@ret;
+}
+
+sub readMARCFileRaw
+{
+    my $self = shift;
+    my $marcFile = shift;
+
+    use IO::File;
+    IO::File->input_record_separator("\x1E\x1D");
+
+    my $file = IO::File->new("< $marcFile");
+
+    $self->{log}->addLine("Reading RAW $marcFile");
+
+    my @ret;
+    my $count = 0;
+    while (my $raw = <$file>)
+    {
+        $count++;
+        my $marc = MARC::Record->new_from_usmarc($raw);
+        my @warnings = $marc->warnings();
+        if (@warnings)
+        {
+            $self->addTrace("readMARCFileRaw", "$marcFile could not be fully read. Record $count had warnings");
+            $self->setError("$marcFile could not be fully read. Record $count had warnings");
+        }
+        push (@ret, $marc);
+    }
+
+    $file->close();
+    IO::File->input_record_separator("\n");
+    undef $file;
+    undef $count;
     return \@ret;
 }
 
@@ -896,7 +942,7 @@ sub cleanFolder
         foreach(@files)
         {
             print "Deleting: $_\n";
-            unlink $_ if(-f $_);
+            # unlink $_ if(-f $_);
         }
     }
 }

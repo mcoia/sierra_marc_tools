@@ -3,7 +3,6 @@
 require_once ("sqlconnect.php");
 require_once ("loginclass.php");
 require_once ("session.php");
-require_once ("trackingclass.php");
 require_once ("job.php");
 require_once ("user.php");
 require_once ("dashboard.php");
@@ -11,6 +10,7 @@ require_once ("control_panel.php");
 require_once ("files.php");
 require_once ("marc.php");
 require_once ("vendors.php");
+require_once ("notice.php");
 require_once ("ui/dbfieldclass.php");
 require_once ("ui/tabs.php");
 

@@ -208,7 +208,21 @@ sub convertMARCtoXML
 {
     my $self = shift;
     my $marc = shift;
-    my $thisXML =  $marc->as_xml(); #decode_utf8();
+
+    my $thisXML = '';
+    local $@;
+    eval
+    {
+        # Turn on dying from warnings
+        # MARC::Charset can throw warnings here, and we don't want to continue if we get some
+        local $SIG{__WARN__} = sub { die @_; };
+        $thisXML = $marc->as_xml();
+        1;
+    } or do
+    {
+        $marc->encoding('UTF-8');
+        $thisXML = $marc->as_xml();
+    };
 
     $thisXML =~ s/\n//sog;
     $thisXML =~ s/^<\?xml.+\?\s*>//go;
@@ -225,7 +239,8 @@ sub convertMARCtoXML
     return $thisXML;
 }
 
-sub entityize { 
+sub entityize
+{ 
     my($self, $string, $form) = @_;
     $form ||= "";
 

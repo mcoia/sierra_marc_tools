@@ -42,7 +42,7 @@ function setupDataTables()
                     var path = location.protocol+"//"+location.hostname;
                     var uri = $("#thisURI").val();
                     var returnURL = path+"/index.php?getjson=1&"+uri;
-                    var moreURI = "&additionalsearch=1&searchstring="+text;
+                    var moreURI = "&searchtable="+thisID+"&additionalsearch=1&searchstring="+text;
                     console.log("sending search "+returnURL+moreURI);
                     dataTableSearchText[thisID]=text;
                     dataTableOnAQuest[thisID] = 1;

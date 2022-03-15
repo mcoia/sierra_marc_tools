@@ -21,6 +21,7 @@ use Getopt::Long;
 use Cwd;
 use email;
 
+
 use dataHandler;
 use dataHandlerProquest;
 use commonTongue;
@@ -106,6 +107,10 @@ if($conf)
         $log->truncFile("");
         $log->addLogLine("****************** Starting ******************");
 
+        # defang
+        undef $runJobID if($runJobID =~ m/[&'%\\\/]/);
+        $runJobID =~ s/\D//g if $runJobID; #remove non-numeric values. We expect and ID number here
+
         runTest() if($testMARC);
 
         setupDB();
@@ -124,9 +129,9 @@ if($conf)
             mkdir $screenShotDIR unless -d $screenShotDIR;
         }
 
-        runScrapers() if($runAllScrapers || ($specificSource && $specificClient));
+        runScrapers() if($runAllScrapers);
         
-        runJobs() if($runAllJobs || ($runJobID));
+        runJobs() if($runAllJobs);
 
         runCheckILSLoaded() if($checkILSLoaded);
 
@@ -159,7 +164,7 @@ sub runScrapers
         if( checkFolders(\%details) ) # make sure that the output folders are pre-created. We expect that these are special and have external mechanism for them.
         {
             # turn off local screenshots, and only write to the web screenshot folder
-            $screenShotDIR = null if !$debug;
+            $screenShotDIR = undef if !$debug;
             $vendor = $details{"sourcename"} . '_' . $details{"clientname"};
             print "Scraping on: '$vendor'\n";
             my $json = decode_json( $details{"json"} );
@@ -189,6 +194,7 @@ sub runScrapers
                 {
                     print "Scraping\n" if $debug;
                     $source->scrape();
+                    # $source->processDownloadedFile('test','/mnt/evergreen/tmp/auto_rec_load/tmp/2/extract/20210928_331263_spst-ebooks_Express-MARC8_Add.mrc');
                     die if $source->getError();
                     writeTrace( concatTrace('', $source->getTrace(), ''), $details{"jobid"} );
                     queueNotice($details{"jobid"}, 'scraper', 'success');
@@ -407,12 +413,10 @@ sub getReadyJobs
     job.status = 'ready'
     AND type = 'processmarc'
     AND job.start_time is null
+    AND job.run_time < NOW()
     ___specificJob___
     order by 1
     ";
-    # defang
-    undef $runJobID if($runJobID =~ m/[&'%\\\/]/);
-    $runJobID =~ s/\D//g if $runJobID; #remove non-numeric values. We expect and ID number here
 
     $query =~ s/___specificJob___/AND job.id = $runJobID/g if ($runJobID && trim($runJobID) != '');
     $query =~ s/___specificJob___//g if !($runJobID && trim($runJobID) != '');
@@ -423,7 +427,7 @@ sub getReadyJobs
     foreach(@results)
     {
         my @row = @{$_};
-        push (@ret, @row[0]);
+        push (@ret, $row[0]);
     }
     print Dumper(@ret) if $debug;
     return \@ret;
@@ -448,7 +452,7 @@ sub getILSConfirmationJobs
     foreach(@results)
     {
         my @row = @{$_};
-        push (@ret, @row[0]);
+        push (@ret, $row[0]);
     }
     print Dumper(@ret) if $debug;
     return \@ret;
@@ -483,13 +487,13 @@ sub createScraperJobs
     foreach(@results)
     {
         my @row = @{$_};
-        my $sourceID = @row[0];
-        my $scrape_interval = @row[1];
-        my $last_run = @row[2];
+        my $sourceID = $row[0];
+        my $scrape_interval = $row[1];
+        my $last_run = $row[2];
         $scrape_interval = '1 MONTH' if($scrape_interval eq '');
         my $run_time = "'$last_run' + INTERVAL $scrape_interval";
         $run_time = 'NOW()' if($last_run eq ''); # set the job to run now if it's never been run before
-        $creates{@row[0]} = $run_time;
+        $creates{$row[0]} = $run_time;
     }
     $log->addLogLine("Creating new scraper jobs:\n" . Dumper(\%creates));
     while ( (my $key, my $value) = each(%creates) )
@@ -531,7 +535,7 @@ sub getNewestJob
     foreach(@results)
     {
         my @row = @{$_};
-        $ret = @row[0];
+        $ret = $row[0];
     }
     return $ret;
 }
@@ -554,14 +558,15 @@ sub getSources
     AND source.enabled IS TRUE
     ___specificSource___
     ___specificClient___
+    ___specificJob___
     ORDER BY 2 desc,1
     ";
 
     # defang
-    undef $specificSource if($specificSource =~ m/[&'%\\\/]/);
+    undef $specificSource if( ($specificSource) && ($specificSource  =~ m/[&'%\\\/]/) );
     $specificSource = lc $specificSource if $specificSource;
 
-    undef $specificClient if($specificClient =~ m/[&'%\\\/]/);
+    undef $specificClient if( ($specificClient) && ($specificClient =~ m/[&'%\\\/]/) );
     $specificClient = lc $specificClient if $specificClient;
 
     if (!$specificSource && !$specificClient)
@@ -580,21 +585,24 @@ sub getSources
     $query =~ s/___specificClient___/AND LOWER(client.name) = '$specificClient'/g if $specificClient;
     $query =~ s/___specificClient___//g if !$specificClient;
 
+    $query =~ s/___specificJob___/AND job.id = $runJobID/g if $runJobID;
+    $query =~ s/___specificJob___//g if !$runJobID;
+
     $log->addLogLine($query);
     my @results = @{$dbHandler->query($query)};
     foreach(@results)
     {
         my @row = @{$_};
         my %hash = ();
-        $hash{"clientname"} = @row[1];
-        $hash{"sourcename"} = @row[2];
-        $hash{"type"} = @row[3];
-        $hash{"perl_mod"} = @row[4];
-        $hash{"json"} = @row[5];
-        $hash{"clientid"} = @row[6];
-        $hash{"scrape_img_folder"} = @row[7];
-        $hash{"jobid"} = @row[8];
-        $sources{@row[0]} = \%hash;
+        $hash{"clientname"} = $row[1];
+        $hash{"sourcename"} = $row[2];
+        $hash{"type"} = $row[3];
+        $hash{"perl_mod"} = $row[4];
+        $hash{"json"} = $row[5];
+        $hash{"clientid"} = $row[6];
+        $hash{"scrape_img_folder"} = $row[7];
+        $hash{"jobid"} = $row[8];
+        $sources{$row[0]} = \%hash;
     }
     print Dumper(%sources) if $debug;
     return \%sources;
@@ -661,7 +669,7 @@ sub writeTrace
     trace = ?
     where
     id = ?";
-    if(!@traceRow[0])
+    if(!$traceRow[0])
     {
         $query = "INSERT INTO $stagingTablePrefix"."_job_trace (trace, job)
         values(?,?)";
@@ -686,8 +694,8 @@ sub getTraceRow
     foreach(@results)
     {
         my @row = @{$_};
-        push @ret, @row[0];
-        push @ret, @row[1];
+        push @ret, $row[0];
+        push @ret, $row[1];
     }
     print "Got trace Row\n";
     return \@ret;
@@ -699,7 +707,7 @@ sub queueNotice
     my $type = shift;
     my $upon_status = shift;
     my $notice = new notice($log, $dbHandler, $stagingTablePrefix, $debug);
-    $notice->queueNotice($thisJobID, $type, $upon_status);
+    $notice->queueNotice($job, $type, $upon_status);
 }
 
 sub failJob
@@ -720,11 +728,18 @@ sub setupDownloadFolder
 {
     my $subFolder = shift;
     my $folder = $conf{"tmpspace"}."/$subFolder";
-    print "Folder: $folder\n";
+    print "Creating Folder: $folder\n";
     remove_tree($folder) if(-d $folder); #reset folder
-    make_path($folder, {
-        chmod => 0777,
-    });
+    my $tries = 0;
+    my $giveUpAfter = 10;
+    while(!(-d $folder) && ($tries < $giveUpAfter))
+    {
+        make_path($folder, {
+            chmod => 0777,
+        });
+        $tries++;
+        sleep 1;
+    }
     return $folder;
 }
 
@@ -745,40 +760,46 @@ sub createDatabase
     if($recreateDB)
     {
         print "Re-creting database\n";
-        my $query = "DROP TABLE $stagingTablePrefix"."_wwwpages";
+        my $query = "DROP TRIGGER IF EXISTS $stagingTablePrefix"."_job_update";
         $log->addLine($query);
         $dbHandler->update($query);
-        my $query = "DROP TABLE $stagingTablePrefix"."_wwwusers ";
+        $query = "DROP TRIGGER IF EXISTS $stagingTablePrefix"."_import_status_update_deleted";
         $log->addLine($query);
         $dbHandler->update($query);
-        my $query = "DROP TABLE $stagingTablePrefix"."_job_trace ";
+        $query = "DROP TABLE IF EXISTS $stagingTablePrefix"."_wwwpages";
         $log->addLine($query);
         $dbHandler->update($query);
-        my $query = "DROP TABLE $stagingTablePrefix"."_notice_history ";
+        $query = "DROP TABLE IF EXISTS $stagingTablePrefix"."_wwwusers";
         $log->addLine($query);
         $dbHandler->update($query);
-        my $query = "DROP TABLE $stagingTablePrefix"."_notice_template ";
+        $query = "DROP TABLE IF EXISTS $stagingTablePrefix"."_job_trace";
         $log->addLine($query);
         $dbHandler->update($query);
-        my $query = "DROP TABLE $stagingTablePrefix"."_import_status ";
+        $query = "DROP TABLE IF EXISTS $stagingTablePrefix"."_notice_history";
         $log->addLine($query);
         $dbHandler->update($query);
-        my $query = "DROP TABLE $stagingTablePrefix"."_output_file_track ";
+        $query = "DROP TABLE IF EXISTS $stagingTablePrefix"."_notice_template";
         $log->addLine($query);
         $dbHandler->update($query);
-        my $query = "DROP TABLE $stagingTablePrefix"."_file_track ";
+        $query = "DROP TABLE IF EXISTS $stagingTablePrefix"."_import_status";
         $log->addLine($query);
         $dbHandler->update($query);
-        my $query = "DROP TABLE $stagingTablePrefix"."_job ";
+        $query = "DROP TABLE IF EXISTS $stagingTablePrefix"."_output_file_track";
         $log->addLine($query);
         $dbHandler->update($query);
-        my $query = "DROP TABLE $stagingTablePrefix"."_source ";
+        $query = "DROP TABLE IF EXISTS $stagingTablePrefix"."_file_track";
         $log->addLine($query);
         $dbHandler->update($query);
-        my $query = "DROP TABLE $stagingTablePrefix"."_client ";
+        $query = "DROP TABLE IF EXISTS $stagingTablePrefix"."_job";
         $log->addLine($query);
         $dbHandler->update($query);
-        my $query = "DROP TABLE $stagingTablePrefix"."_cluster ";
+        $query = "DROP TABLE IF EXISTS $stagingTablePrefix"."_source";
+        $log->addLine($query);
+        $dbHandler->update($query);
+        $query = "DROP TABLE IF EXISTS $stagingTablePrefix"."_client";
+        $log->addLine($query);
+        $dbHandler->update($query);
+        $query = "DROP TABLE IF EXISTS $stagingTablePrefix"."_cluster ";
         $log->addLine($query);
         $dbHandler->update($query);
         
@@ -832,7 +853,7 @@ sub createDatabase
         $log->addLine($query) if $debug;
         $dbHandler->update($query);
 
-        my $query = "CREATE TABLE $stagingTablePrefix"."_job (
+        $query = "CREATE TABLE $stagingTablePrefix"."_job (
         id int not null auto_increment,
         type varchar(100) DEFAULT 'processmarc',
         source int,
@@ -891,6 +912,7 @@ sub createDatabase
         insert_time datetime DEFAULT CURRENT_TIMESTAMP,
         job int,
         out_file int,
+        deleted BOOLEAN DEFAULT FALSE,
         PRIMARY KEY (id),
         FOREIGN KEY (file) REFERENCES $stagingTablePrefix"."_file_track(id) ON DELETE RESTRICT,
         FOREIGN KEY (job) REFERENCES $stagingTablePrefix"."_job(id) ON DELETE RESTRICT,
@@ -1000,6 +1022,19 @@ sub createDatabase
             IF NEW.status != OLD.status THEN
                 SET NEW.last_update_time = NOW();
                 SET NEW.current_action_num = OLD.current_action_num + 1;
+            END IF;
+        END;
+        ";
+        $log->addLine($query) if $debug;
+        $dbHandler->update($query);
+
+        $query = "
+        CREATE TRIGGER $stagingTablePrefix"."_import_status_update_deleted BEFORE UPDATE ON $stagingTablePrefix"."_import_status
+        FOR EACH ROW
+        BEGIN
+            IF NEW.deleted THEN
+                SET NEW.record_raw = NULL;
+                SET NEW.record_tweaked = NULL;
             END IF;
         END;
         ";
@@ -1140,13 +1175,13 @@ sub getForignKey
         my $query = "SELECT id FROM $stagingTablePrefix"."_".$convert_map{$key}{"table"}." WHERE ".$convert_map{$key}{"colname"}." = '$value'";
         $log->addLine($query) if $debug;
         my @results = @{$dbHandler->query($query)};
-        if(!@results[0])
+        if(!$results[0])
         {
             print "Error in seed data mapping on table: '$table' and column '$colPos' with value: '$value'\n";
             exit;
         }
         my @row = @{$results[0]};
-        return @row[0];
+        return $row[0];
     }
     return $value;
 }
@@ -1166,7 +1201,7 @@ sub figureColumnsFromTable
     foreach(@results)
     {
         my @row = @{$_};
-        push @ret, @row[0];
+        push @ret, $row[0];
     }
     return \@ret;
 }
@@ -1175,11 +1210,12 @@ sub checkConfig
 {
     my @reqs = ("logfile","db","dbhost","dbuser","dbpass","port","tmpspace");
     my $valid = 1;
+    print Dumper(\%conf);
     for my $i (0..$#reqs)
     {
-        if(!$conf{@reqs[$i]})
+        if(!$conf{$reqs[$i]})
         {
-            print "Required configuration missing from conf file: ".@reqs[$i]."\n";
+            print "Required configuration missing from conf file: ".$reqs[$i]."\n";
             exit;
         }
     }
@@ -1195,8 +1231,9 @@ sub trim
 
 sub dirtrav
 {
-	my @files = @{@_[0]};
-	my $pwd = @_[1];
+    my $f = shift;
+	my $pwd = shift;
+    my @files = @{$f};
 	opendir(DIR,"$pwd") or die "Cannot open $pwd\n";
 	my @thisdir = readdir(DIR);
 	closedir(DIR);

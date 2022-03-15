@@ -34,7 +34,7 @@ class noticeUI
 		{
             if(isset($this->uri['getsummarytable']))
             {
-                $ret = $this->getSearchTable();
+                $ret = $this->getNoticeHistorySearchTable();
             }
             else if(isset($this->uri['submitjson']) && isset($_POST['payload']))
             {
@@ -48,7 +48,7 @@ class noticeUI
         {
             If(isset($this->uri['additionalsearch']) && isset($this->uri['searchstring']) && strlen($this->uri['searchstring']) > 1 )
 			{	
-				$ret = $this->getSearchTable($this->uri['searchstring']);
+				$ret = $this->getNoticeHistorySearchTable($this->uri['searchstring']);
 			}
             else if(isset($this->uri['screenshotdiag']) && isset($this->uri['sourceid']))
             {
@@ -72,6 +72,12 @@ class noticeUI
         <script type=\"text/javascript\" src=\"js/notice.js\"></script>
         <div class='regularBox'>
         <div class='notice_container'>
+            <div class=\"table-title\">Notice Definitions</div>
+                <div id='notice_definition_datatable' class='notice_child'>
+                <div class='loader'></div>
+                </div> <!-- notice_history_datatable -->
+
+            <div class=\"table-title\">Notice History</div>
             <div id='notice_history_datatable' class='notice_child'>
             <div class='loader'></div>
             </div> <!-- notice_history_datatable -->
@@ -81,16 +87,16 @@ class noticeUI
 		return $ret;
 	}
 
-    function getSearchTable($searchstring = null)
+    function getNoticeHistorySearchTable($searchstring = null)
 	{
         $fromDate = convertToDatabaseDate($fromDate);
         $toDate = convertToDatabaseDate($toDate);
-		addDebug("getSearchTable called");
+		addDebug("getNoticeHistorySearchTable called");
 		$anchorProps = array();
 		$selectCols = array(
         "nt.name \"name\"",
         "nh.status \"nhstatus\"",
-        "nh.create_time AS DATE \"create_time\"",
+        "DATE(nh.create_time) \"create_time\"",
         "nh.send_time \"send_time\"",
         "nh.status \"nhstatus\"");
 		$showCols = array("name"=>"Template Name","nhstatus"=>"Notice Status","create_time"=>"Created","send_time"=>"Send Time");

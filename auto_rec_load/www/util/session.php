@@ -34,9 +34,7 @@ echo '<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www
 
 	
 	<!--  CUSTOM  -->
-	<script type="text/javascript" src="js/validate.js"></script>
 	<script type="text/javascript" src="js/datepicker.js"></script>
-	<script type="text/javascript" src="js/tabs.js"></script>
 	<script type="text/javascript" src="js/search-table.js"></script>
     <script type="text/javascript" src="js/util.js"></script>
     

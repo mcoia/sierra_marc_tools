@@ -89,8 +89,6 @@ class vendorsUI
 
     function getSearchTable($searchstring = null)
 	{
-        $fromDate = convertToDatabaseDate($fromDate);
-        $toDate = convertToDatabaseDate($toDate);
 		addDebug("getSearchTable called");
 		$anchorProps = array();
 		$selectCols = array(
