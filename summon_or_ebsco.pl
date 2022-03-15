@@ -43,9 +43,14 @@
  use utf8;
  use Encode;
  use DateTime::Format::Duration;
+ use MARC::Record;
+ use MARC::File;
+ use MARC::File::USMARC;
+ use MARC::Batch;
+ use File::stat;
 
  my $barcodeCharacterAllowedInEmail=2000;
- 
+ our $log;
  #use warnings;
  #use diagnostics; 
 		 
@@ -65,7 +70,6 @@
 	if ($conf{"logfile"})
 	{
 		my $log = new Loghandler($conf->{"logfile"});
-		$log->addLogLine(" ---------------- Script Starting ---------------- ");
 		my @reqs = ("dbhost","db","dbuser","dbpass","port","fileprefix","marcoutdir","school","alwaysemail","fromemail","ftplogin","ftppass","ftphost","queryfile","platform","pathtothis","maxdbconnections");
 		my $valid = 1;
 		for my $i (0..$#reqs)
@@ -92,6 +96,7 @@
 				{
 					thread(\%conf);
 				}
+                $log->addLogLine(" ---------------- Script Starting ---------------- ");
 				my $platform = $conf{"platform"};#ebsco or summon
 				my $fileNamePrefix = $conf{"fileprefix"}."_cancels_";
 				my $remoteDirectory = "/updates";
@@ -259,10 +264,10 @@
 												$r++;
 												push(@marc,$marc);
 											}
+                                            $file->close();
+                                            undef $file;
 											print "Read $r records from $_\n";
 											$check->deleteFile();
-											$file->close();
-											undef $file;
 										}
 										my @back = @{processMARC(\@marc,$platform,$type,$school,$marcout)};
 										$extraInformationOutput.=@back[0];
@@ -389,7 +394,7 @@
 		}
 		elsif(@count[1]==0)
 		{
-			$addThisone=0;
+            $couldNotBeCut.=$marc->subfield('907',"a");
 		}
 		
 		if($addThisone) #ISO2709 MARC record is limited to 99,999 octets 
@@ -424,11 +429,8 @@
 			$marcout->appendLine($marc->as_usmarc());
 			$recCount++;
 		}
-		else
-		{
-			$couldNotBeCut.=$marc->subfield('907',"a");
-		}
 	}
+	$extraInformationOutput = substr($extraInformationOutput,0,-1);
 	my @ret=($extraInformationOutput,$barcodes,$couldNotBeCut,$recCount);
 	return \@ret;
  }
@@ -475,7 +477,6 @@
  {
 	my %conf = %{@_[0]};
 	my $previousTime=DateTime->now;
-	my $rangeWriter = new Loghandler("/tmp/rangepid.pid");
 	my $mobUtil = new Mobiusutil();
 	my $offset = @ARGV[2];
 	my $increment = @ARGV[3];
@@ -484,7 +485,6 @@
 	my $dbuser = @ARGV[5];
 	my $typ = @ARGV[6];
 	#print "Type = $typ\n";
-	$rangeWriter->addLine("$offset $increment");
 	#print "$pid: $offset - $increment $dbuser\n";
 	my $dbpass = "";
 	my @dbUsers = @{$mobUtil->makeArrayFromComma($conf{"dbuser"})};
@@ -505,6 +505,10 @@
 	my $school = $conf{"school"};
 	my $type = @ARGV[1];
 	my $platform = $conf{"platform"};
+    my $title = $conf{"school"};
+    $title =~ s/[\s\t\\\/'"]/_/g;
+    my $rangeWriter = new Loghandler("/tmp/rangepid_$title.pid");
+    $rangeWriter->addLine("$offset $increment");
 	my $dbHandler;
 	eval{$dbHandler = new DBhandler($conf{"db"},$conf{"dbhost"},$dbuser,$dbpass,$conf{"port"});};
 	
@@ -519,7 +523,7 @@
 		#print "Sending off to get thread query: $school, $platform, $type";
 		my $selectQuery = $mobUtil->findQuery($dbHandler,$school,$platform,$typ,$queries);		
 		$selectQuery=~s/\$recordSearch/SIERRA_VIEW.BIB_RECORD.RECORD_ID/gi;
-		$selectQuery.= " AND SIERRA_VIEW.BIB_RECORD.ID > $offset AND SIERRA_VIEW.BIB_RECORD.ID <= $increment";
+		$selectQuery.= " AND SIERRA_VIEW.BIB_RECORD.RECORD_ID > $offset AND SIERRA_VIEW.BIB_RECORD.RECORD_ID <= $increment";
 		#print "Thread got this query\n\n$selectQuery\n\n";
 		$pidWriter->truncFile("0");	
 		#print "Thread started\n offset: $offset\n increment: $increment\n pidfile: $pid\n limit: $limit";
@@ -563,8 +567,9 @@
 				$file->close();
 				undef $file;
 				#Just checking for errors - temporary file created and deleted
-				my $tempOutputFileName = $mobUtil->chooseNewFileName("/tmp","t","mrc");
-				my $marcout = new Loghandler($tempOutputFileName);
+                my $randNum=int(rand(100000));
+
+                my $marcout = new Loghandler('/tmp/t_'.$randNum.'.mrc');
 				#print "processing\n";
 				my @back = @{processMARC(\@marc,$platform,$type,$school,$marcout,$log)};
 				$finishedprocessing=1;
@@ -595,10 +600,10 @@
 		my @diskDump = @{$sierraScraper->getDiskDump()};
 		my $disk =@diskDump[0];
 		my $queryTime = $sierraScraper->getSpeed();
-        print "Time to gather: $secondsElapsed";
+        # print "Time to gather: $secondsElapsed";
 		$secondsElapsed = $sierraScraper->calcTimeDiff($previousTime);
-        print "\t\tfinished: $secondsElapsed\n";
-		#print "Writing to thread File:\n$disk\n$recordCount\n$extraInformationOutput\n$couldNotBeCut\n$queryTime\n$limit\n$dbuser\n$secondsElapsed\n";
+        # print "\t\tfinished: $secondsElapsed\n";
+		# print "Writing to thread File:\n$disk\n$recordCount\n$extraInformationOutput\n$couldNotBeCut\n$queryTime\n$limit\n$dbuser\n$secondsElapsed\n";
 		my $writeSuccess=0;
 		my $trys=0;
 		while(!$writeSuccess && $trys<100)
