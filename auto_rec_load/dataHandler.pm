@@ -51,7 +51,7 @@ sub _init
 
     if($self->{sourceID} && $self->{dbHandler} && $self->{prefix} && $self->{driver} && $self->{log} && $self->{thisJobID})
     {
-        $self = fillVars($self);
+        $self = _fillVars($self);
         $self = $self->parseJSON($self->{json});
     }
     else
@@ -62,7 +62,7 @@ sub _init
     return $self;
 }
 
-sub fillVars
+sub _fillVars
 {
     my ($self) = @_[0];
 

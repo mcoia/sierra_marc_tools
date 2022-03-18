@@ -26,7 +26,7 @@ sub _init
  
     if($self->{noticeID} && $self->{dbHandler} && $self->{prefix} && $self->{log})
     {
-        $self = fillVars($self);
+        $self = _fillVars($self);
         if($self->getError())
         {
             $self->addTrace("Error loading notice object");
@@ -35,7 +35,7 @@ sub _init
     return $self;
 }
 
-sub fillVars
+sub _fillVars
 {
     my $self = shift;
 
@@ -61,7 +61,8 @@ sub fillVars
         anh.job,
         anh.create_time,
         anh.send_time,
-        anh.data
+        anh.data,
+        anh.send_status
         FROM
         ".$self->{prefix} ."_notice_history anh
         JOIN
@@ -82,6 +83,7 @@ sub fillVars
             $self->{create_time} = @row[7];
             $self->{send_time} = @row[8];
             $self->{data} = @row[9];
+            $self->{send_status} = @row[10];
             last; # should only be one row returned
         }
     }
@@ -162,7 +164,7 @@ sub _insertNotice
     if($id)
     {
         $self->{noticeID} = $id;
-        $self->fillVars();
+        $self->_fillVars();
     }
     return $id;
 }
@@ -460,6 +462,76 @@ sub getJobStats
 sub fire
 {
     my $self = shift;
+    if( $self->{noticeID} && $self->{data} )
+    {
+        my $text = encode_utf8($self->{data});
+        return 0 if (!$text);
+
+        my $sender = Email::Send->new({mailer => 'SMTP'});
+        $sender->mailer_args([Host => '127.0.0.1']);
+
+        my $stat;
+        my $err;
+
+        my $email = Email::MIME->new($text);
+
+        # Handle the address fields.  In addition to encoding the values
+        # properly, we make sure there is only 1 each.
+        for my $hfield (qw/From To Bcc Cc Reply-To Sender/) {
+            my @headers = $email->header($hfield);
+            $email->header_str_set($hfield => decode_utf8(join(',', @headers))) if ($headers[0]);
+        }
+
+        # Handle the Subject field.  Again, the standard says there can be
+        # only one.
+        my @headers = $email->header('Subject');
+        $email->header_str_set('Subject' => decode_utf8($headers[0])) if ($headers[0]);
+
+        $email->header_set('MIME-Version' => '1.0') unless $email->header('MIME-Version');
+        $email->header_set('Content-Type' => "text/plain; charset=UTF-8") unless $email->header('Content-Type');
+        $email->header_set('Content-Transfer-Encoding' => '8bit') unless $email->header('Content-Transfer-Encoding');
+
+        local $@;
+        eval
+        {
+            $stat = $sender->send($email);
+            $self->{send_status} = 'sent';
+            $self->{send_status} = substr($stat->type, 0, 99) if($stat and $stat->type ne 'success')
+            1;
+        } or do
+        {
+            $err = shift;
+            $self->{send_status} = substr($err, 0, 99); # column only holds 100 characters
+        };
+        writeDB($self, 1);
+
+        return 1 if( $self->{send_status} eq 'sent' );
+    }
+    return 0;
 }
+
+
+sub writeDB
+{
+    my $self = shift;
+    my $sent = shift || 0;
+    my $query = "UPDATE
+    ".$self->{prefix}.
+    "_notice_history anh
+    SET
+    send_status = ?
+    !!send_time!!
+    WHERE
+    id = ?";
+    $query =~ s/!!send_time!!/, send_time = NOW()/g if $sent;
+    $query =~ s/!!send_time!!//g if !$sent;
+    my @vars =
+    (
+        $self->{send_status},
+        $self->{noticeID}
+    );
+    $self->doUpdateQuery($query, undef, \@vars);
+}
+
 
 1;

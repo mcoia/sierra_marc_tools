@@ -24,7 +24,7 @@ sub _init
  
     if($self->{importStatusID} && $self->{dbHandler} && $self->{prefix} && $self->{log})
     {
-        $self = fillVars($self);
+        $self = _fillVars($self);
         if($self->getError())
         {
             $self->addTrace("Error loading import object");
@@ -38,7 +38,7 @@ sub _init
     return $self;
 }
 
-sub fillVars
+sub _fillVars
 {
     my $self = shift;
     my $query = "select 

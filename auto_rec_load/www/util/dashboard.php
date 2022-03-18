@@ -274,6 +274,7 @@ class dashboardUI
         ". $this->tablePrefix ."job aj
         where
         aj.id=ais.job
+        AND aj.type='processmarc'
         !!daterange!!";
         if($nonStarted)
         {
@@ -299,7 +300,7 @@ class dashboardUI
         {
             $daterange .= "
             and ais.loaded = ?";
-            $vars[] = 1;
+            $vars[] = 0;
         }
         $query = preg_replace('/!!daterange!!/i', $daterange, $query);
 		$result = $this->sqlconnect->executeQuery($query,$vars);

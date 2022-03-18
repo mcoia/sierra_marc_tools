@@ -27,7 +27,7 @@ sub _init
  
     if($self->{job} && $self->{dbHandler} && $self->{prefix} && $self->{log})
     {
-        $self = fillVars($self);
+        $self = _fillVars($self);
         if($self->getError())
         {
             $self->addTrace("Error loading job");
@@ -40,7 +40,7 @@ sub _init
     return $self;
 }
 
-sub fillVars
+sub _fillVars
 {
     my $self = shift;
 

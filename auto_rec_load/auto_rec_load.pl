@@ -42,10 +42,9 @@ our $log;
 our $debug = 0;
 our $recreateDB = 0;
 our $dbSeed;
-our $specificSource;
-our $specificClient;
-our $runAllScrapers = 0;
-our $runAllJobs = 0;
+our $action;
+our $specific_source;
+our $specific_client;
 our $runJobID;
 our $configFile;
 our $jobid = -1;
@@ -65,22 +64,25 @@ GetOptions (
 "debug" => \$debug,
 "recreateDB" => \$recreateDB,
 "dbSeed=s" => \$dbSeed,
-"specificSource=s" => \$specificSource,
-"specificClient=s" => \$specificClient,
-"runAllScrapers" => \$runAllScrapers,
-"runAllJobs" => \$runAllJobs,
-"runJob" => \$runJobID,
+"specific_source=s" => \$specific_source,
+"specific_client=s" => \$specific_client,
+"action=s" => \$action,
+"job" => \$runJobID,
 "testMARC=s" => \$testMARC,
 "lockfile=s" => \$lockfile,
 "checkILSLoaded" => \$checkILSLoaded,
 )
 or die("Error in command line arguments\nYou can specify
 --config                                      [Path to the config file]
+--action                                      [specify what you want this thing to do: run_scrapers, run_jobs, run_ils_check, run_marc_test, www_actions, fire_emails]
 --debug                                       [Cause more log output]
 --recreateDB                                  [Deletes the tables and recreates them]
 --dbSeed                                      [DB Seed file - populating the base data]
 --lockfile                                    [Specific lockfile for this operation, allows for the script to run simultaneously with itself in different modes]
---testMARC                                    [Expects to find test.mrc in working folder, pass the name of the MARC editor you want to test EG 'ebook_central_MWSU']
+--testMARC                                    [Used in conjunction action=run_marc_test, expects to find test.mrc in working folder, pass the name of the MARC editor you want to test EG 'ebook_central_MWSU']
+--job                                         [specify a job ID in some action contexts]
+--specific_source                             [specify a specific source (by name) in some action contexts]
+--specific_client                             [specify a specific client (by name) in some action contexts]
 \n");
 
 if(!$configFile || !(-e $configFile) )
@@ -101,6 +103,15 @@ if($conf)
     %conf = %{$conf};
     if ($conf{"logfile"})
     {
+        $action = lc $action;
+
+        # defang
+        undef $specific_source if( ($specific_source) && ($specific_source  =~ m/[&'%\\\/]/) );
+        $specific_source = lc $specific_source if $specific_source;
+
+        undef $specific_client if( ($specific_client) && ($specific_client =~ m/[&'%\\\/]/) );
+        $specific_client = lc $specific_client if $specific_client;
+
         figurePIDFileStuff();
         checkConfig();
         $log = new Loghandler($conf->{"logfile"});
@@ -111,7 +122,11 @@ if($conf)
         undef $runJobID if($runJobID =~ m/[&'%\\\/]/);
         $runJobID =~ s/\D//g if $runJobID; #remove non-numeric values. We expect and ID number here
 
-        runTest() if($testMARC);
+        if($action eq 'run_marc_test')
+        {
+            runTest() if($testMARC);
+            exit;
+        }
 
         setupDB();
 
@@ -129,11 +144,26 @@ if($conf)
             mkdir $screenShotDIR unless -d $screenShotDIR;
         }
 
-        runScrapers() if($runAllScrapers);
-        
-        runJobs() if($runAllJobs);
-
-        runCheckILSLoaded() if($checkILSLoaded);
+        if($action eq 'run_scrapers')
+        {
+            runScrapers();
+        }
+        elsif($action eq 'run_jobs')
+        {
+            runProcessMarcJobs();
+        }
+        elsif($action eq 'run_ils_check')
+        {
+            runCheckILSLoaded();
+        }
+        elsif($action eq 'www_actions')
+        {
+            runWWWActions();
+        }
+        elsif($action eq 'fire_emails')
+        {
+            runEmails();
+        }
 
         undef $writePid;
         unlink $lockfile;
@@ -154,7 +184,7 @@ else
 
 sub runScrapers
 {
-    my %all = %{getSources()};
+    my %all = %{getScraperJobs()};
     while ( (my $key, my $value) = each(%all) )
     {
         # my $folder = "/mnt/evergreen/tmp/auto_rec_load/tmp/1"; # setupDownloadFolder($key);
@@ -221,9 +251,9 @@ sub runScrapers
     closeBrowser();
 }
 
-sub runJobs
+sub runProcessMarcJobs
 {
-    my @jobs = @{getReadyJobs()};
+    my @jobs = @{getProcessMarcReadyJobs()};
     foreach(@jobs)
     {
         my $thisJobID = $_;
@@ -367,7 +397,7 @@ sub runTest
     exit;
 }
 
-sub getReadyJobs
+sub getProcessMarcReadyJobs
 {
     my @ret = ();
     my $query = "";
@@ -496,28 +526,85 @@ sub createScraperJobs
         $creates{$row[0]} = $run_time;
     }
     $log->addLogLine("Creating new scraper jobs:\n" . Dumper(\%creates));
-    while ( (my $key, my $value) = each(%creates) )
+    while ( (my $key, my $run_time) = each(%creates) )
     {
-        my $query = "INSERT INTO $stagingTablePrefix"."_job (source, type)
-        VALUES(?,?)";
-        my @vals = ($key, 'scraper');
+        insertOneScraperJob($key, $run_time);
+    }
+    if($specific_client && $specific_source) # if the user wants a special run, we might need to make a special scraper job
+    {
+        print "User wants special job\n";
+        $query = "SELECT
+        source.id,client.name,source.name,job.id,job.run_time < (NOW() + INTERVAL 1 MINUTE), (NOW() - INTERVAL 1 minute)
+        FROM
+        $stagingTablePrefix"."_client client
+        JOIN $stagingTablePrefix"."_source source ON (source.client=client.id)
+        JOIN $stagingTablePrefix"."_job job ON (job.source=source.id)
+        WHERE
+        job.type='scraper'
+        AND job.status='new'
+        AND LOWER(source.name) = '$specific_source'
+        AND LOWER(client.name) = '$specific_client'";
+        $log->addLogLine($query) if $debug;
+        @results = @{$dbHandler->query($query)};
+        if($#results > -1)
+        {
+            my @row = @{$results[0]};
+            my $jobid = $row[3];
+            my $is_future = $row[4];
+            my $run_time = $row[5];
+            if($is_future eq '0')
+            {
+                $query = "UPDATE $stagingTablePrefix"."_job set run_time = ? WHERE id = ?";
+                my @vals = ($run_time, $jobid);
+                $log->addLogLine($query) if $debug;
+                $log->addLogLine(Dumper(\@vals)) if $debug;
+                $dbHandler->updateWithParameters($query, \@vals);
+            }
+        }
+        else
+        {
+            $query = "SELECT
+            source.id
+            FROM
+            $stagingTablePrefix"."_client client
+            JOIN $stagingTablePrefix"."_source source ON (source.client=client.id)
+            WHERE
+            LOWER(source.name) = '$specific_source'
+            AND LOWER(client.name) = '$specific_client'";
+            $log->addLogLine($query) if $debug;
+            @results = @{$dbHandler->query($query)};
+            if($#results > -1)
+            {
+                my @row = @{$results[0]};
+                insertOneScraperJob($row[0], 'NOW()');
+            }
+        }
+    }
+}
+
+sub insertOneScraperJob
+{
+    my $source = shift;
+    my $run_time = shift;
+    my $query = "INSERT INTO $stagingTablePrefix"."_job (source, type) VALUES(?,?)";
+    my @vals = ($source, 'scraper');
+    $log->addLogLine($query) if $debug;
+    $log->addLogLine(Dumper(\@vals)) if $debug;
+    $dbHandler->updateWithParameters($query, \@vals);
+    my $id = getNewestJob($source, 'scraper');
+    if($id)
+    {
+        $query = "UPDATE $stagingTablePrefix"."_job
+        SET
+        run_time = $run_time
+        WHERE
+        id = ?";
+        @vals = ($id);
         $log->addLogLine($query) if $debug;
         $log->addLogLine(Dumper(\@vals)) if $debug;
         $dbHandler->updateWithParameters($query, \@vals);
-        my $id = getNewestJob($key, 'scraper');
-        if($id)
-        {
-            $query = "UPDATE $stagingTablePrefix"."_job
-            SET
-            run_time = $value
-            WHERE
-            id = ?";
-            @vals = ($id);
-            $log->addLogLine($query) if $debug;
-            $log->addLogLine(Dumper(\@vals)) if $debug;
-            $dbHandler->updateWithParameters($query, \@vals);
-        }
     }
+    return $id;
 }
 
 sub getNewestJob
@@ -540,7 +627,7 @@ sub getNewestJob
     return $ret;
 }
 
-sub getSources
+sub getScraperJobs
 {
     createScraperJobs();
     my @ret = ();
@@ -555,37 +642,34 @@ sub getSources
     JOIN $stagingTablePrefix"."_job job ON (job.source=source.id)
     WHERE
     client.id=client.id
+    AND job.type='scraper'
+    AND job.status='new'
     AND source.enabled IS TRUE
-    ___specificSource___
-    ___specificClient___
+    ___specific_source___
+    ___specific_client___
     ___specificJob___
     ORDER BY 2 desc,1
     ";
 
-    # defang
-    undef $specificSource if( ($specificSource) && ($specificSource  =~ m/[&'%\\\/]/) );
-    $specificSource = lc $specificSource if $specificSource;
-
-    undef $specificClient if( ($specificClient) && ($specificClient =~ m/[&'%\\\/]/) );
-    $specificClient = lc $specificClient if $specificClient;
-
-    if (!$specificSource && !$specificClient)
+    if (!$specific_source && !$specific_client)
     {
-        my $fill = "AND source.id IN (select source from $stagingTablePrefix"."_job WHERE status='new' AND type='scraper' AND run_time < (NOW() + INTERVAL 1 MINUTE) )";
-        $query =~ s/___specificClient___/$fill/g;
+        my $fill = "AND source.id IN (select source from $stagingTablePrefix"."_job WHERE AND type='scraper' AND run_time < (NOW() + INTERVAL 1 MINUTE) )";
+        $query =~ s/___specific_client___/$fill/g;
     }
     else
     {
         # remove enabled requirement when humans want to run it by hand
         $query =~ s/AND source.enabled IS TRUE//g;
     }
-    $query =~ s/___specificSource___/AND LOWER(source.name) = '$specificSource'/g if $specificSource;
-    $query =~ s/___specificSource___//g if !$specificSource;
+    $query =~ s/___specific_source___/AND LOWER(source.name) = '$specific_source'/g if $specific_source;
+    $query =~ s/___specific_source___//g if !$specific_source;
 
-    $query =~ s/___specificClient___/AND LOWER(client.name) = '$specificClient'/g if $specificClient;
-    $query =~ s/___specificClient___//g if !$specificClient;
+    $query =~ s/___specific_client___/AND LOWER(client.name) = '$specific_client'/g if $specific_client;
+    $query =~ s/___specific_client___//g if !$specific_client;
 
     $query =~ s/___specificJob___/AND job.id = $runJobID/g if $runJobID;
+    $query =~ s/AND job.status='new'//g if $runJobID; # remove "new" requirement if specified JOBID argument
+
     $query =~ s/___specificJob___//g if !$runJobID;
 
     $log->addLogLine($query);
@@ -764,6 +848,9 @@ sub createDatabase
         $log->addLine($query);
         $dbHandler->update($query);
         $query = "DROP TRIGGER IF EXISTS $stagingTablePrefix"."_import_status_update_deleted";
+        $log->addLine($query);
+        $dbHandler->update($query);
+        $query = "DROP TABLE IF EXISTS $stagingTablePrefix"."_wwwaction";
         $log->addLine($query);
         $dbHandler->update($query);
         $query = "DROP TABLE IF EXISTS $stagingTablePrefix"."_wwwpages";
@@ -945,6 +1032,7 @@ sub createDatabase
         create_time datetime DEFAULT CURRENT_TIMESTAMP,
         send_time datetime DEFAULT NULL,
         data text(65000),
+        send_status varchar(100) DEFAULT 'new',
         PRIMARY KEY (id),
         FOREIGN KEY (notice_template) REFERENCES $stagingTablePrefix"."_notice_template(id) ON DELETE RESTRICT,
         FOREIGN KEY (job) REFERENCES $stagingTablePrefix"."_job(id) ON DELETE RESTRICT
@@ -1006,13 +1094,23 @@ sub createDatabase
         $log->addLine($query) if $debug;
         $dbHandler->update($query);
 
+        $query = "CREATE TABLE $stagingTablePrefix"."_wwwaction (
+        id int not null auto_increment,
+        type varchar(100) not null,
+        status varchar(100) not null DEFAULT 'new',
+        referenced_id int,
+        create_time datetime DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id)
+        )
+        ";
+        $log->addLine($query) if $debug;
+        $dbHandler->update($query);
 
         ##################
         # FUNCTIONS
         ##################
 
-        $query = "
-        CREATE TRIGGER $stagingTablePrefix"."_job_update BEFORE UPDATE ON $stagingTablePrefix"."_job
+        $query = "CREATE TRIGGER $stagingTablePrefix"."_job_update BEFORE UPDATE ON $stagingTablePrefix"."_job
         FOR EACH ROW
         BEGIN
             IF NEW.current_action != OLD.current_action THEN
@@ -1028,8 +1126,7 @@ sub createDatabase
         $log->addLine($query) if $debug;
         $dbHandler->update($query);
 
-        $query = "
-        CREATE TRIGGER $stagingTablePrefix"."_import_status_update_deleted BEFORE UPDATE ON $stagingTablePrefix"."_import_status
+        $query = "CREATE TRIGGER $stagingTablePrefix"."_import_status_update_deleted BEFORE UPDATE ON $stagingTablePrefix"."_import_status
         FOR EACH ROW
         BEGIN
             IF NEW.deleted THEN
@@ -1294,16 +1391,16 @@ sub concatTrace
 sub figureLockFile
 {
     my $ret = "/tmp/auto_rec_load-";
-    $ret .= "scraper" if $runAllScrapers;
-    $ret .= "scraper-client$specificClient" if $specificClient;
-    $ret .= "-source$specificSource" if $specificSource;
+    $ret .= "scraper" if $action eq 'run_scrapers';
+    $ret .= "scraper-client$specific_client" if $specific_client;
+    $ret .= "-source$specific_source" if $specific_source;
 
-    $ret .= "processmarc" if $runAllJobs;
+    $ret .= "processmarc" if $action eq 'run_jobs';
     $ret .= "processmarc-job$runJobID" if $runJobID;
 
-    $ret .= "testmarc" if $testMARC;
+    $ret .= "testmarc"  if ($action eq 'run_marc_test' && $testMARC);
 
-    $ret .= "ilsload" if $checkILSLoaded;
+    $ret .= "ilsload" if ($action eq 'run_ils_check');
     $ret .= ".LOCK";
     return $ret;
 }
