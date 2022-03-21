@@ -33,11 +33,9 @@ function selectElement(id, valueToSelect)
 
 function createOverlayDialog(html)
 {
-    $("body").append("<div id=\"overlaydialog\">" + html + "</div>");
-    $("#overlaydialog").click(function(){
+    $("body").append("<div id=\"overlaydialog\"><div id=\"overlaydialogcontainer\"><div id=\"close-overlay\"><a href=\"#\">[close]</a></div>" + html + "<div id='jsoneditorerrorbox'></div></div></div>");
+    $("#close-overlay").click(function(){
         $("#overlaydialog").remove();
-    }).children().click(function(e) {
-        return false;
     });
 }
 

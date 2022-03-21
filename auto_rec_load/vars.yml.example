@@ -6,4 +6,7 @@
 ## https://www.seleniumhq.org/download/
   selenium_download: https://selenium-release.storage.googleapis.com/3.9/selenium-server-standalone-3.9.1.jar
   selenium_folder: /path/to/application/folder/selenium
+  smtp_relay_server: smtp-relay.domain.com
+  smtp_replay_username: email@email
+  smtp_replay_password: emailpassword
 ...

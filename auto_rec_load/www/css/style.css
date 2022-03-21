@@ -51,17 +51,6 @@ body {
     top: 30px;
     width: 570px;
 	}
-	
-.trackingWindow{
-	background-color: #FFFFFF;
-    border: 4px solid black;
-    left: 1060px;
-    padding: 4px;
-    position: absolute;
-    top: 10px;
-    width: 300px;
-    border-radius: 10px 10px 10px 10px;
-	}
 
 .submiterror{
 	color: red;
@@ -83,6 +72,7 @@ body {
     font-weight: bold;
     padding-bottom: 4px;
     text-align: center;
+    padding-top: 2em;
 	}
 	
 .titlesmaller{
@@ -98,14 +88,13 @@ body {
     background-color: #FFFFFF;
     padding-bottom: 13px;
 	}
-	
+
 .regularPrivBox{
 	border: 2px solid #D6E1F4;
 	border-radius: 8px 8px 8px 8px;
     background-color: #FFFFFF;
     padding-bottom: 13px;
 	}
-
 	
 #usersearchframe{
 	width:100%;
@@ -119,31 +108,7 @@ body {
 #changePasswordDiv{
     width: 325px;
 	}
-	
-#createDebtDiv{
-	width: 345px;
-	}
-	
-#privilegesTable{
-	border: 1px solid black;
-    border-collapse: collapse;
-    padding: 10px;
-	}
 
-#privilegesTable td{
-	padding: 10px;
-	border: 1px solid black;
-	border-collapse: collapse;
-	}
-	
-.privilegeChecked{
-	background-color: #85fa79;
-	}
-	
-.privilegeNotChecked{
-	background-color: #f77456;
-	}
-	
 .textAlignCenterBox{
 	text-align: center;
 	}
@@ -152,44 +117,6 @@ body {
 	border: 1px solid black;
 	min-height: 300px;
 	
-	}
-	
-.reportResultsTitle{
-	float: left;
-    font-size: 14pt;
-    padding: 7px;
-	}
-	
-.reportResultsDate{
-	float: right;
-    padding: 10px;
-	}
-	
-.reportResultsVars ul{
-	clear: both;
-	}
-
-.reportResultsVars ul li{
-	padding: 2px;
-	}
-	
-.reportResultsTable{
-	border: 1px solid black;
-    border-collapse: collapse;
-    clear: both;
-    margin-top: 10px;
-	}
-	
-.reportResultsTable th{
-	border: 1px solid black;
-    overflow: hidden;
-    padding: 2px;
-	}
-		
-.reportResultsTable td{
-	border: 1px solid black;
-    overflow: hidden;
-    padding: 2px;
 	}
 
 a[rel='pdf'] { 
@@ -201,26 +128,6 @@ a[rel='csv'] {
 	padding-left: 18px;
 	background: transparent url("/images/icon_xls.gif") no-repeat center left;
 }
-
-#resulttable{
-	/*border: 1px solid black;*/
-	margin-top: 20px;
-	}
-#resulttable table{
-	margin-left: auto;
-    margin-right: auto;
-	border-collapse: collapse;
-	}
-#resulttable table th{
-	border: 2px solid black;
-    padding: 2px;
-    text-align: center;
-	}	
-#resulttable table td{
-	border: 1px solid black;
-    padding: 2px;
-    text-align: center;
-	}
 
 #loginBoxTable{
     text-align: center;
@@ -269,17 +176,6 @@ a[rel='csv'] {
 	color: #000;
 }
 
-.addDebtUL{
-	margin: 16px;
-	}
-	
-.addDebtUL li{	
-	/*border: 1px solid black;
-    display: inline; */
-    list-style-type: none;
-    padding: 10px;
-}
-
 /* Form Input Styles */
 	
 form table{
@@ -311,160 +207,6 @@ form table td input{
 	width: 185px;	
 	}
 	
-#userDebtTab table{
-	padding:10px;
-	width: 100%
-	}
-	
-#userDebtTab table td{
-	vertical-align: top;
-	}
-	
-.debtUL{
-	font-size: 12pt;
-	margin-left: -9px;
-    width: 100%;
-    border: 1px solid black;
-    cursor: pointer;
-	}
-	
-.debtUL li{
-	display: inline;
-    padding: 0 6px;
-}
-
-.debtSelected{
-	border: 2px solid yellow;
-	}
-	
-.debtTRDetail{
-	border: 1px solid black;
-	}
-	
-.debtTRDetail td{
-	padding: 3px;
-	border-left: 1px solid black;
-	}
-	
-#userDebtDetailTable{	
-    border-collapse: collapse;
-    font-size: 9pt;
-    text-align: center;
-    width: 100%;
-	}
-	
-#userDebtDetailTable th{
-	padding: 3px;
-	}
-	
-#userWageTotal{
-	font-size: 17pt;
-    font-weight: bold;
-    padding: 17px;
-	}
-	
-#wageTotal{
-	color: #21e54b;
-	}
-	
-#perhour{
-	color: #000;
-	font-size: 10pt;
-}
-
-#userWageDetailTable{	
-    border-collapse: collapse;
-    font-size: 9pt;
-    text-align: center;
-    width: 100%;
-	}
-#userWageDetailTable th{
-	padding: 3px;
-	}
-	
-.wageTRDetail{
-	border: 1px solid black;
-	}
-	
-.wageTRDetail td{
-	padding: 3px;
-	border-left: 1px solid black;
-	}
-	
-#addDebtInputDiv{
-	/*border: 1px solid black;*/
-    width: 388px;
-    margin: 10px;
-	}
-	
-#addDebtInputDiv span{
-	 font-size: 14pt;
-	}
-	
-#createNewDebtPane{
-	
-	}
-#userWagePanel{
-	float: right;
-	width: 48%;
-	margin-right: -6px;
-	}
-		
-#userBasicInfoBox{
-	width: 48%;
-	min-height: 900px;
-	}
-	
-#userWageInputTable{
-	text-align: center;
-    width: 100%;
-	}
-	
-#privGroupSelectTable{
-	margin-left: 18px;
-	}
-	
-#privGroupSelectTable td{
-	vertical-align: top;
-	padding: 10px;
-	}
-	
-#privGroupTableMaster{
-	border-collapse: collapse;
-	margin: 40px;
-	width: 92%;
-	}
-	
-#privGroupTableMaster td{
-	padding-right: 23px;
-    width: 25%;
-	}
-	
-.privGroupTable{
-	border-collapse: collapse;
-	margin: 40px;
-	width: 92%;
-	}
-	
-.privSelect{
-	width: 91%;
-	border-collapse: collapse;
-	margin-top: 20px;
-	margin-bottom: 20px
-	}
-	
-.privSelect td{
-	border-bottom: 2px solid black;
-    border-collapse: collapse;
-    text-align: right;
-    font-size: 12pt;
-    vertical-align: middle;
-	}
-	
-.availableprivilegedropdown{
-	bottom: 2px;
-	}
-	
 .removeButton{
 	background-color: #FFFFFF;
     background-image: url("../images/redx.jpg");
@@ -479,16 +221,7 @@ form table td input{
     height: 22px;
     width: 26px;
 	}
-	
-.bidSequence{
-	border-bottom: 1px solid #447FC7;
-	margin-bottom: 5px;
-	}
-	
-.changeBidButton{
-	display: none;
-	}
-	
+
 .chosen{
 	color: green;
 	}
@@ -496,6 +229,15 @@ form table td input{
 .notchosen{
 	color: red;
 	}
+
+.floatleft {
+    float: left;
+}
+
+.floatright {
+    float: right;
+}
+
 #leftsection{
 	float: left;
     width: 150px;
@@ -693,12 +435,27 @@ input {
 
 #overlaydialog {
     width: 100%;
-    height: 100%;
+    height: 2500px;
     background-color: rgba(80, 69, 159, 0.75);
     z-index: 999;
     position: absolute;
     top: 0;
     left: 0;
+}
+
+#overlaydialogcontainer {
+    opacity: 100%;
+    width: 85%;
+    margin: 6%;
+    background-color: white;
+    padding: 2em;
+    position: absolute;
+}
+
+#close-overlay {
+    position: absolute;
+    right: 0;
+    top: 0;
 }
 
 .screnshot_table {
@@ -738,99 +495,11 @@ input {
     background-color: white;
 }
 
-#jsoneditorwrapper {
-    opacity: 100%;
-    width: 75%;
-    margin: 10%;
-}
-
 #jsoneditor {
     width: 100%;
     min-height: 300px;
 }
 
-#page_content {
-	padding: 5px 0px 0px;
-	width: 732px;
-	background: url('../images/content_background.gif') repeat-y 0px 0px;
-}
-
-.content_box {
-	margin: 0px auto;
-	padding: 11px 0px 0px;
-	width: 710px;
-}
-
-.content_box h2 {
-	height: 18px;
-	}
-
-.inventoryUL{
-		
-	}
-
-.inventoryUL li{
-	float: left;
-	position: relative;		
-	}
-
-.inventoryeffectivedate{
-	font-size: 14pt;
-	font-weight: bold;
-	}
-
-#POInventorytable{
-	border-collapse: collapse;
-    margin-top: 10px;
-    margin-bottom: 20px;
-	}
-	
-#POInventorytable td{
-	border: 1px solid;
-    border-collapse: collapse;
-	}
-	
-.POInventoryTotal{
-	color: green;
-    font-size: 17pt;
-    font-weight: bold;
-	}
-	
-#POgrandTotalLine{
-    font-size: 19pt;
-    font-weight: bold;
-    min-height: 42px;
-	}
-	
-#POgrandTotalLine .POGleft{
-	float: left;
-	}
-	
-#POgrandTotalLine .POGright{
-	float: right;
-	}
-	
-.PONumSub{
-	font-size: 9px;
-    text-align: center;
-	}
-	
-.oldsubmits{
-	background-color: white;
-    border: 2px solid #D6E1F4;
-    border-radius: 8px 8px 8px 8px;
-    box-shadow: 0 0 6px 5px #000000;
-    left: 18%;
-    position: fixed;
-    text-align: center;
-    top: 31%;
-    z-index: 101;
-	}
-	
-.oldsubmits input{
-	width: 60px;
-	}	
-	
 #greyout {
     background-color: grey;
     color: #FFFFFF;
@@ -843,101 +512,31 @@ input {
     z-index: 100;
 }
 
-.doneoldsubmits{
-	background-color: white;
-    border: 2px solid #D6E1F4;
-    border-radius: 8px 8px 8px 8px;
-    font-size: 14pt;
-    margin-top: 138px;
-    padding: 0;
-	}
-	
-.oldwagesubmits{
-	background-color: white;
-    border: 2px solid #D6E1F4;
-    border-radius: 8px 8px 8px 8px;
-    box-shadow: 0 0 6px 5px #000000;
-    left: 18%;
-    position: fixed;
+#create_notice_definition_button {
+    float: right;
+    padding: 10px;
+    cursor: pointer;
+}
+
+#create_notice_definition_button .plusSignButton {
+    float: left;
+}
+
+.create_notice_definition_button_title {
+    float: right;
     text-align: center;
-    top: 31%;
-    z-index: 101;
-	}
+    padding: 5px;
+}
 
-#editJob{	
-	min-height: 800px;
-	}
-	
-#jobEditorBox{
-	/*
-	width: 57%;
-	float: left;
-	*/
-	}
-	
-#jobRelatedPOsPanel{
-	width: 35%;
-	margin-right: -6px;
-	}
-
-#prevwagediv{
-	float: right;
-	}
-	
-#prevwagediv input{
-    border: 2px solid black;
-    border-radius: 3px;
-    box-shadow: 0 0 4px 0 #81b8eb;
-	}
-
-.hoursEditorBox{
-	min-height: 500px;
-	}
-	
-.hoursSubmitFormDiv{
-	width: 95%;
-	}
-	
-.hoursSummary{
-    margin-right: 17px;
-    width: 30%;
-	}
-.hoursSummaryEmpName{
-	font-size: 8pt;
-	}
-	
-.hoursSummaryTable{
-	font-size: 12pt;
+#noticeTemplateData {
     width: 100%;
-	}
+    min-height: 300px;
+}
 
-#hoursSummary_new{
-	vertical-align: top;
-	}
-	
-.hoursSummaryTable td{
-	}
-	
-.massApproveSummaryTable{
-	font-size: 12pt;
+#noticeTemplateWrapper {
     width: 100%;
-	}
-
-.massApproveSummaryTable th{
-	font-size: 14pt;
-    background-color: lightgrey;
-	}
-
-.massApproveSummaryTable tr:nth-child(even){
-	background-color: lightblue;
-	}
-
-#payrollsuggestcomment{
-	font-weight: bold;
-	font-size: 14pt;
-	color: green;
-	cursor: pointer;
-	}
+    min-height: 300px;
+}
 
 table.dataTable tbody tr.odd    { background-color: #E2E4FF; }
 table.dataTable tbody tr.even  { background-color: white; }
@@ -948,6 +547,7 @@ table.dataTable tbody tr.even  { background-color: white; }
   width: 1em;
   height: 1em;
 }
+
 .spinner {
 	margin: 5px auto;
     font-size: 10px;

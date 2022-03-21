@@ -79,6 +79,10 @@
     become: true
     ignore_errors: yes
     shell: export PERL_MM_USE_DEFAULT=1 && perl -MCPAN -e 'install "MARC::Charset"'
+  - name: Installing CPAN packages Email::Send
+    become: true
+    ignore_errors: yes
+    shell: export PERL_MM_USE_DEFAULT=1 && perl -MCPAN -e 'install "Email::Send"'
   - name: Installing CPAN packages YAML
     become: true
     ignore_errors: yes
@@ -104,7 +108,7 @@
     ignore_errors: yes
     shell: export PERL_MM_USE_DEFAULT=1 && perl -MCPAN -e 'install "Selenium::Remote::Driver"'
   - name: Installing CPAN packages Selenium::Remote::WebElement
-    become: true    
+    become: true
     ignore_errors: yes
     shell: export PERL_MM_USE_DEFAULT=1 && perl -MCPAN -e 'install "Selenium::Remote::WebElement"'
   - name: Installing JDK
@@ -122,6 +126,55 @@
     package:
       name: firefox
       state: present
+  - name: Installing Sendmail
+    become: true
+    package:
+      name: sendmail
+      state: present
+## Setup sendmail
+  - name: Setup sendmail Auth config
+    become: true
+    shell: touch /etc/mail/authinfo
+  - name: Setup sendmail Auth config
+    become: true
+    lineinfile: dest=/etc/mail/authinfo state=present regexp='AuthInfo:{{smtp_relay_server}} ' line='AuthInfo:{{smtp_relay_server}} "U:smmsp" "I:{{smtp_replay_username}}" "P:{{smtp_replay_password}}" "M:PLAIN"'
+  - name: Setup sendmail Auth config
+    become: true
+    lineinfile: dest=/etc/mail/authinfo state=present regexp='AuthInfo:{{smtp_relay_server}}:587 ' line='AuthInfo:{{smtp_relay_server}}:587 "U:smmsp" "I:{{smtp_replay_username}}" "P:{{smtp_replay_password}}" "M:PLAIN"'
+  - name: Setup sendmail Auth config
+    become: true
+    lineinfile: dest=/etc/mail/authinfo state=present regexp='AuthInfo:{{smtp_relay_server}}:465 ' line='AuthInfo:{{smtp_relay_server}}:465 "U:smmsp" "I:{{smtp_replay_username}}" "P:{{smtp_replay_password}}" "M:PLAIN"'
+  - name: Setup sendmail.mc
+    become: true
+    lineinfile: dest=/etc/mail/sendmail.mc state=present insertbefore='MAILER_DEFINITIONS' regexp="define\(`SMART_HOST'" line="define(`SMART_HOST', `{{smtp_relay_server}}')dnl"
+  - name: Setup sendmail.mc
+    become: true
+    lineinfile: dest=/etc/mail/sendmail.mc state=present insertbefore='MAILER_DEFINITIONS' regexp="define\(`RELAY_MAILER_ARGS" line="define(`RELAY_MAILER_ARGS', `TCP $h 587')"
+  - name: Setup sendmail.mc
+    become: true
+    lineinfile: dest=/etc/mail/sendmail.mc state=present insertbefore='MAILER_DEFINITIONS' regexp="define\(`ESMTP_MAILER_ARGS" line="define(`ESMTP_MAILER_ARGS', `TCP $h 587')"
+  - name: Setup sendmail.mc
+    become: true
+    lineinfile: dest=/etc/mail/sendmail.mc state=present insertbefore='MAILER_DEFINITIONS' regexp="define\(`confAUTH_OPTIONS" line="define(`confAUTH_OPTIONS', `A p')dnl"
+  - name: Setup sendmail.mc
+    become: true
+    lineinfile: dest=/etc/mail/sendmail.mc state=present insertbefore='MAILER_DEFINITIONS' regexp="TRUST_AUTH_MECH\(" line="TRUST_AUTH_MECH(`EXTERNAL DIGEST-MD5 CRAM-MD5 LOGIN PLAIN')dnl"
+  - name: Setup sendmail.mc
+    become: true
+    lineinfile: dest=/etc/mail/sendmail.mc state=present insertbefore='MAILER_DEFINITIONS' regexp="define\(`confAUTH_MECHANISMS" line="define(`confAUTH_MECHANISMS', `EXTERNAL GSSAPI DIGEST-MD5 CRAM-MD5 LOGIN PLAIN')dnl"
+  - name: Setup sendmail.mc
+    become: true
+    lineinfile: dest=/etc/mail/sendmail.mc state=present insertbefore='MAILER_DEFINITIONS' regexp="FEATURE\(`authinfo" line="FEATURE(`authinfo',`hash -o /etc/mail/authinfo.db')dnl"
+  - name: Compile sendmail authentication info
+    become: true
+    shell: cd /etc/mail && /usr/sbin/makemap hash authinfo < authinfo
+  - name: Rebuild sendmail config
+    become: true
+    shell: cd /etc/mail && /usr/bin/make -C /etc/mail
+  - name: Restart sendmail
+    become: true
+    shell: /etc/init.d/sendmail restart
+## Setup selenium
   - stat: path={{geckodriverdestination}}
     register: geckodriverexists
   - stat: path={{selenium_folder}}

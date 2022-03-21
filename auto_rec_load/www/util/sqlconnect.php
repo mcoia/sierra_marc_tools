@@ -243,7 +243,6 @@ class sqlconnect{
                     $config[$key] = $therest;
                 }
             }
-            
         }
         $needed = array("dbhost", "db", "dbuser", "dbpass", "port");
         $missing = array();

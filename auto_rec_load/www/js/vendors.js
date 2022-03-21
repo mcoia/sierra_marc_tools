@@ -21,8 +21,8 @@ function editJSONClick(element)
 {
     var data = $(element).html();
     var source = $(element).attr('source');
-    var html = "<div id='jsoneditorwrapper'><textarea id='jsoneditor'>" + htmlUnEscape(data) + "</textarea><input source = '"+source+"' type='button' value='Submit' onClick='saveJSON(this)' />"+
-    "<div id='jsoneditorerrorbox'></div></div>";
+    var html = "<textarea id='jsoneditor'>" + htmlUnEscape(data) + "</textarea><input source = '"+source+"' type='button' value='Submit' onClick='saveJSON(this)' />";
+    
     createOverlayDialog(html);
 }
 
@@ -38,8 +38,7 @@ function saveJSON(element)
     console.log("Getting data: "+url);
     $.post(url, {'payload' : htmlEscape(submitdata)} ).done(
         function(data){
-$("#jsoneditorerrorbox").html(data);
-            //$("#jsoneditorerrorbox").html(htmlUnEscape(data));
+            $("#jsoneditorerrorbox").html(data);
             if(data == '1')
             {
                 $("#jsoneditorerrorbox").html("<span id='jsonsuccess' style='color:green;font-size: 12pt'>success</span>");

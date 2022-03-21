@@ -3,7 +3,6 @@
 require_once ("sqlconnect.php");
 require_once ("loginclass.php");
 require_once ("session.php");
-require_once ("job.php");
 require_once ("user.php");
 require_once ("dashboard.php");
 require_once ("control_panel.php");

@@ -1012,6 +1012,7 @@ sub createDatabase
         $query = "CREATE TABLE $stagingTablePrefix"."_notice_template (
         id int not null auto_increment,
         name varchar(100),
+        enabled boolean default true,
         source int,
         type varchar(100) DEFAULT 'scraper',
         upon_status varchar(100) DEFAULT 'success',

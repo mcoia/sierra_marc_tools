@@ -5,6 +5,8 @@ package notice;
 use lib qw(./);
 use Data::Dumper;
 use JSON;
+use Email::MIME;
+use Email::Send;
 
 use Loghandler;
 
@@ -53,6 +55,7 @@ sub _fillVars
     {
         $query = "SELECT
         ant.name,
+        ant.enabled,
         ant.source,
         ant.type,
         ant.upon_status,
@@ -74,16 +77,17 @@ sub _fillVars
         {
             my @row = @{$_};
             $self->{name} = @row[0];
-            $self->{source} = @row[1];
-            $self->{type} = @row[2];
-            $self->{upon_status} = @row[3];
-            $self->{template} = @row[4];
-            $self->{status} = @row[5];
-            $self->{job} = @row[6];
-            $self->{create_time} = @row[7];
-            $self->{send_time} = @row[8];
-            $self->{data} = @row[9];
-            $self->{send_status} = @row[10];
+            $self->{enabled} = @row[1];
+            $self->{source} = @row[2];
+            $self->{type} = @row[3];
+            $self->{upon_status} = @row[4];
+            $self->{template} = @row[5];
+            $self->{status} = @row[6];
+            $self->{job} = @row[7];
+            $self->{create_time} = @row[8];
+            $self->{send_time} = @row[9];
+            $self->{data} = @row[10];
+            $self->{send_status} = @row[11];
             last; # should only be one row returned
         }
     }
@@ -205,6 +209,7 @@ sub getNoticeTemplateForJob
     ".$self->{prefix} ."_job aj
     JOIN ".$self->{prefix} ."_notice_template nt on (nt.source=aj.source)
     WHERE
+    nt.enabled is true and
     aj.id = ? and
     nt.upon_status = ? and
     nt.type = ?
@@ -224,6 +229,7 @@ sub getNoticeTemplateForJob
         FROM
         ".$self->{prefix} ."_notice_template nt
         WHERE
+        nt.enabled is true and
         nt.source is null and
         nt.upon_status = ? and
         nt.type = ?
@@ -496,7 +502,7 @@ sub fire
         {
             $stat = $sender->send($email);
             $self->{send_status} = 'sent';
-            $self->{send_status} = substr($stat->type, 0, 99) if($stat and $stat->type ne 'success')
+            $self->{send_status} = substr($stat->type, 0, 99) if($stat and $stat->type ne 'success');
             1;
         } or do
         {

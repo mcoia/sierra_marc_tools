@@ -64,8 +64,6 @@ class vendorsUI
 	function UI()
 	{
 		$ret="";
-        $controlPanel = new control_panel();
-        $dateControlPanel = $controlPanel->getDateControlPanel();
 
 		$ret.="
         <script type=\"text/javascript\" src=\"js/vendors.js\"></script>
