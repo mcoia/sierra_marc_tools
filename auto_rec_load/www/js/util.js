@@ -49,19 +49,21 @@ function htmlEscape(str)
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
             .replace(/\\n/g,'&NewLine;')
-            .replace(/ /g, '&nbsp;');
+            .replace(/ /g, '&nbsp;')
+            // .replace(/@/g, '&commat;') // php doesn't unescape this https://www.php.net/manual/en/function.htmlspecialchars-decode.php
+            ;
 }
 
 function htmlUnEscape(str) 
 {
 	//return str;
     return String(str)
-            .replace(/&quot;/g, '"')
-            .replace(/&#39;/g, "'")
-            .replace(/&lt;/g, '<')
-            .replace(/&gt;/g, '>')
-            .replace(/&NewLine;/g, "\n")
             .replace(/&commat;/g, '@')
             .replace(/&nbsp;/g, ' ')
+            .replace(/&NewLine;/g, "\n")
+            .replace(/&gt;/g, '>')
+            .replace(/&lt;/g, '<')
+            .replace(/&#39;/g, "'")
+            .replace(/&quot;/g, '"')
             .replace(/&amp;/g, '&');
 }

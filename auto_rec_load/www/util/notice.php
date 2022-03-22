@@ -48,6 +48,10 @@ class noticeUI
             {
                echo $this->updateTemplate();
             }
+            else if(isset($this->uri['deletetemplate']))
+            {
+               echo $this->deleteTemplate($this->uri['deletetemplate']);
+            }
 		}
         else if(isset($this->uri['getjson']))
         {
@@ -110,15 +114,21 @@ class noticeUI
         addDebug("getNoticeHistorySearchTable called");
 		$anchorProps = array();
 		$selectCols = array(
+        "CONCAT(
+        '<a href=\"#\" onclick=\"templateAction(\\'edit\\', ',nt.id,')\">Edit</a>  |  ',
+        '<a href=\"#\" onclick=\"templateAction(\\'clone\\', ',nt.id,')\">Clone</a>  |  ',
+        '<a href=\"#\" onclick=\"templateAction(\\'delete\\', ',nt.id,')\">Delete</a>'
+        ) \"action\"",
         "nt.name \"name\"",
         "CASE WHEN nt.enabled IS TRUE THEN 'Enabled' ELSE 'Disabled' END \"enabled\"",
-        "source.name \"ntsource\"",
+        "CASE WHEN source.id IS NOT NULL THEN (CONCAT(source.name, '_', client.name)) ELSE 'All Client/Vendors' END \"ntsource\"",
         "nt.type \"type\"",
         "nt.upon_status \"ntupon_status\"",
         "nt.template \"nttemplate\"",
-        "count(*) \"historycount\""
+        "count(nh.id) \"historycount\""
         );
 		$showCols = array(
+        "action"=>"Action",
         "name"=>"Template Name",
         "enabled"=>"Enabled",
         "ntsource"=>"Client/Vendor",
@@ -134,13 +144,14 @@ class noticeUI
 		$extraWhereClause = "";
         $table = "
         " . $this->tablePrefix ."notice_template nt
-        JOIN " . $this->tablePrefix ."source source ON (nt.source=source.id)
+        LEFT JOIN " . $this->tablePrefix ."source source ON (nt.source=source.id)
+        LEFT JOIN " . $this->tablePrefix ."client client ON (client.id=source.client)
         LEFT JOIN " . $this->tablePrefix ."notice_history nh ON (nh.notice_template=nt.id)";
 
 		$search=null;
 		$getRaw=null;
         $groupClause = "1,2,3,4,5";
-		$orderClause = "1,2,3,4,5";
+		$orderClause = "3,4,5";
 		if(isset($searchstring))
 		{
 			$search=$searchstring;
@@ -212,29 +223,29 @@ class noticeUI
     function updateTemplate()
     {
         $ret = "";
-        $template =  html_entity_decode(htmlspecialchars_decode($_POST['template']));
+        $template = html_entity_decode(htmlspecialchars_decode($_POST['template']));
         $name =  $_POST['name'];
         $editingID =  $_POST['editingID'];
-        $source =  $_POST['source'];
+        $source =  $_POST['source']; # This could be set to null, which means the template is for ALL SOURCES
         $type =  $_POST['type'];
         $upon_status =  $_POST['upon_status'];
         $enabled =  $_POST['enabled'];
+        $enabled = strcmp($enabled, 'false') == 0 ? 0 : 1;
 
         if($editingID > 0) # handle update
         {
-            $query = "update " . $this->tablePrefix ."notice_template " .
-            "set template = ?, enabled = ? where id = ?";
-            $vars = array($template, $enabled, $editingID);
+            $query = "UPDATE " . $this->tablePrefix ."notice_template " .
+            "SET template = ?, enabled = ?, name = ? WHERE id = ?";
+            $vars = array($template, $enabled, $name, $editingID);
             return $this->sqlconnect->executeQuery($query, $vars);
         }
         else # handle new
         {
             $query = "INSERT INTO " . $this->tablePrefix ."notice_template " .
             "(name, enabled, source, type, upon_status, template)
-            VALUES(?, ?, ?, ?, ?, ?)";
-            $vars = array($name, $enabled, $source, $type, $upon_status, $template);
-            $this->sqlconnect->executeQuery($query, $vars);
-            # return $this->sqlconnect->executeQuery($query, $vars);
+            VALUES(?, ?, $source, ?, ?, ?)";            
+            $vars = array($name, $enabled, $type, $upon_status, $template);
+            return $this->sqlconnect->executeQuery($query, $vars);
         }
 
         # Leaving this code in here for troubleshooting if needs be
@@ -247,6 +258,22 @@ class noticeUI
         return $ret;
     }
 
+    function deleteTemplate($templateID)
+    {
+        $ret = "";
+        $query = "DELETE FROM " . $this->tablePrefix ."notice_history WHERE notice_template = ?";
+        $vars = array($templateID);
+        if($this->sqlconnect->executeQuery($query, $vars))
+        {
+            $query = "DELETE FROM " . $this->tablePrefix ."notice_template WHERE id = ?";
+            return $this->sqlconnect->executeQuery($query, $vars);
+        }
+        else
+        {
+            return 0;
+        }
+    }
+
     function getSourceList()
     {
         $query = "SELECT source.id \"id\", source.name \"sourcename\", client.name \"clientname\"
@@ -256,6 +283,8 @@ class noticeUI
         ORDER BY 2,3";
         $vars = array();
         $result = $this->sqlconnect->executeQuery($query, $vars);
+        # Append to the top of the array our special "All Sources"
+        array_unshift($result, Array("id" => "null", "sourcename" => "All", "clientname" => "Sources"));
         if(count($result) > 0)
         {
             return json_encode($result);
@@ -269,7 +298,7 @@ class noticeUI
         'types' =>array('scraper','processmarc','ilsload'),
         'upon_statuses' =>array('success','fail','generic')
         );
-        $query = "SELECT nt.id \"id\", nt.source \"sourceid\", nt.type \"type\", nt.upon_status \"upon_status\"
+        $query = "SELECT nt.id \"id\", nt.source \"sourceid\", nt.type \"type\", nt.upon_status \"upon_status\", nt.enabled \"enabled\", nt.name \"name\"
         FROM
         " . $this->tablePrefix ."notice_template nt";
         $vars = array();
@@ -291,7 +320,7 @@ class noticeUI
         $result = $this->sqlconnect->executeQuery($query, $vars);
         if(count($result) == 1)
         {
-            $ret = $result[0][0];
+            $ret = $result[0]["template"];
         }
 
         return $ret;

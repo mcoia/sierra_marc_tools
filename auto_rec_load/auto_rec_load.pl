@@ -692,6 +692,75 @@ sub getScraperJobs
     return \%sources;
 }
 
+sub runEmails
+{
+    print "Firing Emails\n";
+    my $query = "
+    SELECT
+    id
+    FROM
+    $stagingTablePrefix"."_notice_history
+    WHERE
+    status = 'pending' AND
+    send_time IS NULL
+    ORDER BY 1";
+    $log->addLogLine($query);
+    my @results = @{$dbHandler->query($query)};
+    foreach(@results)
+    {
+        my @row = @{$_};
+        print "Firing: " . $row[0] . "\n";
+        my $notice = new notice($log, $dbHandler, $stagingTablePrefix, $debug, $row[0]);
+        $notice->fire();
+        undef $notice;
+    }
+
+}
+
+sub runWWWActions
+{
+    my @types = ('emailme', 'emit');
+
+    my $query = "SELECT referenced_id, misc_data, id
+    FROM
+    $stagingTablePrefix"."_wwwaction
+    WHERE
+    status = 'new' AND
+    type = ?";
+    foreach(@types)
+    {
+        my $type = $_;
+        my @vars = ($type);
+        my @results = @{$dbHandler->query($query, \@vars)};
+        $log->addLogLine($query);
+        $log->addLogLine(Dumper(\@vars));
+        foreach(@results)
+        {
+            my @row = @{$_};
+            if($type eq 'emailme')
+            {
+                my $n = new notice($log, $dbHandler, $stagingTablePrefix, $debug, $row[0]);
+                my $data = $n->getData();
+                undef $n;
+                my $notice = new notice($log, $dbHandler, $stagingTablePrefix, $debug);
+                $notice->setData($data);
+                print "Sending override to: " . $row[1] . "\n";
+                $notice->fire($row[1]);
+                undef $notice;
+                undef $data;
+            }
+            my $uquery = "UPDATE 
+            $stagingTablePrefix"."_wwwaction
+            SET status = 'processed'
+            WHERE id = ?";
+            @vars = ($row[2]);
+            $log->addLogLine($uquery);
+            $log->addLogLine(Dumper(\@vars));
+            $dbHandler->updateWithParameters($uquery, \@vars);
+        }
+    }
+}
+
 sub escapeData
 {
     my $d = shift;
@@ -1100,6 +1169,7 @@ sub createDatabase
         type varchar(100) not null,
         status varchar(100) not null DEFAULT 'new',
         referenced_id int,
+        misc_data text(10000),
         create_time datetime DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id)
         )
@@ -1412,7 +1482,7 @@ sub figurePIDFileStuff
     if (-e $lockfile)
     {
         print "Sorry, it looks like I am already running.\nIf you know that I am not, please delete $lockfile\n";
-        exit;
+        # exit;
     }
 }
 

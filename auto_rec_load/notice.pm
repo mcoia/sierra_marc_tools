@@ -7,6 +7,7 @@ use Data::Dumper;
 use JSON;
 use Email::MIME;
 use Email::Send;
+use Encode;
 
 use Loghandler;
 
@@ -76,18 +77,18 @@ sub _fillVars
         foreach(@results)
         {
             my @row = @{$_};
-            $self->{name} = @row[0];
-            $self->{enabled} = @row[1];
-            $self->{source} = @row[2];
-            $self->{type} = @row[3];
-            $self->{upon_status} = @row[4];
-            $self->{template} = @row[5];
-            $self->{status} = @row[6];
-            $self->{job} = @row[7];
-            $self->{create_time} = @row[8];
-            $self->{send_time} = @row[9];
-            $self->{data} = @row[10];
-            $self->{send_status} = @row[11];
+            $self->{name} = $row[0];
+            $self->{enabled} = $row[1];
+            $self->{source} = $row[2];
+            $self->{type} = $row[3];
+            $self->{upon_status} = $row[4];
+            $self->{template} = $row[5];
+            $self->{status} = $row[6];
+            $self->{job} = $row[7];
+            $self->{create_time} = $row[8];
+            $self->{send_time} = $row[9];
+            $self->{data} = $row[10];
+            $self->{send_status} = $row[11];
             last; # should only be one row returned
         }
     }
@@ -465,10 +466,24 @@ sub getJobStats
     return \%ret;
 }
 
+sub setData
+{
+    my $self = shift;
+    $self->{data} = shift;
+}
+
+sub getData
+{
+    my $self = shift;
+    return $self->{data};
+}
+
 sub fire
 {
     my $self = shift;
-    if( $self->{noticeID} && $self->{data} )
+    my $toOverride = shift;
+
+    if( $self->{data} )
     {
         my $text = encode_utf8($self->{data});
         return 0 if (!$text);
@@ -483,10 +498,13 @@ sub fire
 
         # Handle the address fields.  In addition to encoding the values
         # properly, we make sure there is only 1 each.
-        for my $hfield (qw/From To Bcc Cc Reply-To Sender/) {
+        for my $hfield (qw/From To Bcc Cc Reply-To Sender/)
+        {
             my @headers = $email->header($hfield);
             $email->header_str_set($hfield => decode_utf8(join(',', @headers))) if ($headers[0]);
         }
+
+        $email->header_str_set('To' => $toOverride) if($toOverride);
 
         # Handle the Subject field.  Again, the standard says there can be
         # only one.
@@ -502,15 +520,16 @@ sub fire
         {
             $stat = $sender->send($email);
             $self->{send_status} = 'sent';
+            $self->{status} = 'processed';
             $self->{send_status} = substr($stat->type, 0, 99) if($stat and $stat->type ne 'success');
             1;
         } or do
         {
             $err = shift;
+            $self->{status} = 'error';
             $self->{send_status} = substr($err, 0, 99); # column only holds 100 characters
         };
-        writeDB($self, 1);
-
+        writeDB($self, 1) if !$toOverride;
         return 1 if( $self->{send_status} eq 'sent' );
     }
     return 0;
@@ -525,7 +544,8 @@ sub writeDB
     ".$self->{prefix}.
     "_notice_history anh
     SET
-    send_status = ?
+    send_status = ?,
+    status = ?
     !!send_time!!
     WHERE
     id = ?";
@@ -534,6 +554,7 @@ sub writeDB
     my @vars =
     (
         $self->{send_status},
+        $self->{status},
         $self->{noticeID}
     );
     $self->doUpdateQuery($query, undef, \@vars);
