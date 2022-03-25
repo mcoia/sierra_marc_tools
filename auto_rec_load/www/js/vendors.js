@@ -4,11 +4,9 @@ $(document).ready(function() {
 
 function getVendorTable(wrapperdiv)
 {
-    wrapperdiv.append('<div class="loader"</div>');
-    var pageID = "pageid="+$("#thisPageID").val();
-    var path = location.protocol+"//"+location.hostname;
-    var fromDate = '';
-    var url = path+"/index.php?getdata=1" + fromDate + "&getsummarytable=1&"+pageID;
+    wrapperdiv.append('<div class="loader"></div>');
+    var querystring = {'getsummarytable': '1'};
+    var url = createServerCallBackURL(querystring);
     console.log("Getting data: "+url);
     $.get(url,
         function(data){
@@ -30,20 +28,21 @@ function saveJSON(element)
 {
     var source = $(element).attr('source');
     console.log(source + ' = ' + $("#jsoneditor").val());
-    var pageID = "pageid="+$("#thisPageID").val();
-    var path = location.protocol+"//"+location.hostname;
     var submitdata = $("#jsoneditor").val();
-    
-    var url = path+"/index.php?getdata=1&submitjson="+source+"&"+pageID;
+
+    var querystring = {'submitjson': source};
+    var url = createServerCallBackURL(querystring);
     console.log("Getting data: "+url);
     $.post(url, {'payload' : htmlEscape(submitdata)} ).done(
         function(data){
-            $("#jsoneditorerrorbox").html(data);
             if(data == '1')
             {
-                $("#jsoneditorerrorbox").html("<span id='jsonsuccess' style='color:green;font-size: 12pt'>success</span>");
-                $("#jsonsuccess").fadeOut(5000);
+                overlayDialogMessage("", 'success');
                 writeBackSuccess(source, submitdata);
+            }
+            else
+            {
+                overlayDialogMessage(data)
             }
             console.log(data);
     }, 'json');
@@ -65,10 +64,8 @@ function showScreenShots(element)
 {
     var data = $(element).html();
     var source = $(element).attr('source');
-    var pageID = "pageid="+$("#thisPageID").val();
-    var path = location.protocol+"//"+location.hostname;
-    var fromDate = '';
-    var url = path+"/index.php?getjson=1&sourceid=" + source + "&screenshotdiag=1&" + pageID;
+    var querystring = {'sourceid': source, 'screenshotdiag': '1'};
+    var url = createServerCallBackURL(querystring, 'getjson');
     console.log("Getting data: "+url);
     $.get(url,
         function(data){

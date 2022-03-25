@@ -452,6 +452,13 @@ input {
     position: absolute;
 }
 
+#overlaydialogresponsecontainer {
+    width: 100%;
+    text-align: center;
+    height: 100px;
+    background-color: white;
+}
+
 #close-overlay {
     position: absolute;
     right: 0;
@@ -482,17 +489,10 @@ input {
 .screnshot_table img {
     width: 800px;
 }
+
 .screenshoterror {
     color: red;
     font-size: 20pt;
-}
-
-#jsoneditorerrorbox {
-    width: 100%;
-    text-align: center;
-    height: 100px;
-    color: red;
-    background-color: white;
 }
 
 #jsoneditor {

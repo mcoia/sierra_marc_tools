@@ -24,6 +24,7 @@ use email;
 
 use dataHandler;
 use dataHandlerProquest;
+use dataHandlerOverdrive;
 use commonTongue;
 use marcEditor;
 use job;
@@ -678,15 +679,17 @@ sub getScraperJobs
     {
         my @row = @{$_};
         my %hash = ();
-        $hash{"clientname"} = $row[1];
-        $hash{"sourcename"} = $row[2];
-        $hash{"type"} = $row[3];
-        $hash{"perl_mod"} = $row[4];
-        $hash{"json"} = $row[5];
-        $hash{"clientid"} = $row[6];
-        $hash{"scrape_img_folder"} = $row[7];
-        $hash{"jobid"} = $row[8];
-        $sources{$row[0]} = \%hash;
+        my $sid = shift @row;
+        $hash{"clientname"} = shift @row;
+        $hash{"sourcename"} = shift @row;
+        $hash{"type"} = shift @row;
+        $hash{"perl_mod"} = shift @row;
+        $hash{"json"} = shift @row;
+        $hash{"clientid"} = shift @row;
+        $hash{"scrape_img_folder"} = shift @row;
+        $hash{"jobid"} = shift @row;
+        $hash{"json"} =~ s/\\([^\\])/\\\\$1/g; #escape backslashes
+        $sources{$sid} = \%hash;
     }
     print Dumper(%sources) if $debug;
     return \%sources;
@@ -781,9 +784,9 @@ sub initializeBrowser
     $profile->set_preference('browser.download.folderList' => '2');
     $profile->set_preference('browser.download.dir' => $downloadFolder);
     # $profile->set_preference('browser.helperApps.neverAsk.saveToDisk' => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;application/pdf;text/plain;application/text;text/xml;application/xml;application/xls;text/csv;application/xlsx");
-    $profile->set_preference('browser.helperApps.neverAsk.saveToDisk' => "application/vnd.ms-excel; charset=UTF-16LE; application/zip");
+    $profile->set_preference('browser.helperApps.neverAsk.saveToDisk' => "application/vnd.ms-excel; charset=UTF-16LE; application/zip; text/csv");
     # $profile->set_preference('browser.helperApps.neverAsk.saveToDisk' => "");
-    $profile->set_preference("browser.helperApps.neverAsk.openFile" =>"application/vnd.ms-excel; charset=UTF-16LE; application/zip");
+    $profile->set_preference("browser.helperApps.neverAsk.openFile" =>"application/vnd.ms-excel; charset=UTF-16LE; application/zip; text/csv");
     $profile->set_boolean_preference('browser.download.manager.showWhenStarting' => 0);
     $profile->set_boolean_preference('pdfjs.disabled' => 1);
     $profile->set_boolean_preference('browser.helperApps.alwaysAsk.force' => 0);
@@ -999,6 +1002,7 @@ sub createDatabase
         type varchar(100),
         client int,
         perl_mod varchar(50),
+        marc_editor_function varchar(100),
         scrape_img_folder varchar(1000),
         scrape_interval varchar(100) DEFAULT '1 MONTH',
         json_connection_detail varchar(5000),

@@ -46,11 +46,15 @@ class noticeUI
             }
             else if(isset($this->uri['submittemplate']) && isset($_POST['template']))
             {
-               echo $this->updateTemplate();
+                $ret = $this->updateTemplate();
             }
             else if(isset($this->uri['deletetemplate']))
             {
-               echo $this->deleteTemplate($this->uri['deletetemplate']);
+                $ret = $this->deleteTemplate($this->uri['deletetemplate']);
+            }
+            else if(isset($this->uri['emailme']) && isset($this->uri['emailmeaddress']))
+            {
+                $ret = $this->emailMeHistory($this->uri['emailme'], $this->uri['emailmeaddress']);
             }
 		}
         else if(isset($this->uri['getjson']))
@@ -137,7 +141,7 @@ class noticeUI
         "historycount"=>"History Count"
         );
 		$ClickPos=array();
-		$searchCols = array();
+		$searchCols = array("nt.name","nt.upon_status","nt.template","nt.type");
 		$tableID = "noticeTemplateTable";
 		$uriValClick = array();
 		$additionalURI = array();
@@ -178,6 +182,9 @@ class noticeUI
 		addDebug("getNoticeHistorySearchTable called");
 		$anchorProps = array();
 		$selectCols = array(
+        "CONCAT(
+        '<a href=\"#\" onclick=\"historyAction(\\'emailme\\', ',nh.id,')\">Email Me</a>'
+        ) \"action\"",
         "nt.name \"name\"",
         "nh.status \"nhstatus\"",
         "DATE(nh.create_time) \"create_time\"",
@@ -185,9 +192,9 @@ class noticeUI
         "nh.status \"nhstatus\"",
         "nh.data \"nhdata\""
         );
-		$showCols = array("name"=>"Template Name","nhstatus"=>"Notice Status","create_time"=>"Created","send_time"=>"Send Time");
+		$showCols = array("action"=>"Action", "name"=>"Template Name","nhstatus"=>"Notice Status","create_time"=>"Created","send_time"=>"Send Time");
 		$ClickPos=array();
-		$searchCols = array();
+		$searchCols = array("nt.name","nh.data","nh.send_status","nh.status");
 		$tableID = "noticeHistorySearchTable";
 		$uriValClick = array();
 		$additionalURI = array();
@@ -324,6 +331,16 @@ class noticeUI
         }
 
         return $ret;
+    }
+
+    function emailMeHistory($historyID, $toEmailAddress)
+    {
+        # basic check to make sure we have a numeric ID and an email address that contains the at symbol
+        if(is_numeric($historyID) && ($historyID+0 > 0) && preg_match("/@/", $toEmailAddress))
+        {
+            return insertWWWAction('emailme', $historyID, $toEmailAddress);
+        }
+        return 0;
     }
 
 

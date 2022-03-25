@@ -162,25 +162,25 @@ sub runJob
 
             # Instantiate the import
             {
-                # local $@;
-                # eval
-                # {
+                local $@;
+                eval
+                {
                     eval $perl;
-                    # 1;  # ok
-                # } or do
-                # {
-                    # print "*********************failed*************************";
-                    # $self->{log}->addLogLine("\n\nError during Instantiating importStatus ID $iID - " .$@ . "\n\n");
-                    # updateImportError($self, $iID, "Couldn't read something correctly, error creating importStatus object");
-                    # $self->addTrace("runJob","Error creating importStatus $iID");
-                    # $self->setError("One or more import objects failed");
-                    # $recordTracker{"convertedFailed"}++;
-                # };
+                    1;  # ok
+                } or do
+                {
+                    print "*********************failed*************************";
+                    $self->{log}->addLogLine("\n\nError during Instantiating importStatus ID $iID - " .$@ . "\n\n");
+                    updateImportError($self, $iID, "Couldn't read something correctly, error creating importStatus object");
+                    $self->addTrace("runJob","Error creating importStatus $iID");
+                    $self->setError("One or more import objects failed");
+                    $recordTracker{"convertedFailed"}++;
+                };
             }
             {
-                # local $@;
-                # eval
-                # {
+                local $@;
+                eval
+                {
                     updateJobStatus($self, "Converting MARC importID $iID");
                     print "Converting...\n" if $self->{debug};
                     $import->convertMARC($type);
@@ -243,15 +243,15 @@ sub runJob
                         print "writing fail\n" if $self->{debug};
                     }
                     $import->writeDB();
-                    # 1;  # ok
-                # } or do
-                # {
-                    # $self->{log}->addLogLine("Error during converting/writing MARC Status ID $iID - " .$@);
-                    # updateImportError($self, $iID, "Couldn't manipulate the MARC: importStatus object");
-                    # $self->addTrace("runJob","Error performing conversion importStatus $iID");
-                    # $self->setError("One or more import objects failed to perform");
-                    # $recordTracker{"convertedFailed"}++;
-                # };
+                    1;  # ok
+                } or do
+                {
+                    $self->{log}->addLogLine("Error during converting/writing MARC Status ID $iID - " .$@);
+                    updateImportError($self, $iID, "Couldn't manipulate the MARC: importStatus object");
+                    $self->addTrace("runJob","Error performing conversion importStatus $iID");
+                    $self->setError("One or more import objects failed to perform");
+                    $recordTracker{"convertedFailed"}++;
+                };
             }
             undef $import;
         }

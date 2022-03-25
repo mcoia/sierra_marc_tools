@@ -105,20 +105,6 @@ sub _fillVars
     return $self;
 }
 
-sub setSpecificDate
-{
-    my ($self) = shift;
-    my $dbDate = shift;
-    if($dbDate =~ m/\d{4}\-\d{1,2}\-\d{1,2}/)
-    {
-        $self->{specificMonth} = $dbDate;
-    }
-    else
-    {
-        $self->{specificMonth} = undef;
-    }
-}
-
 sub waitForPageLoad
 {
     my ($self) = shift;
@@ -131,7 +117,6 @@ sub waitForPageLoad
     {
         $done = $self->{driver}->execute_script("return document.readyState === 'complete';");
         print "Waiting for Page load check: $tries\n";
-        $tries++;
         $stop = 1 if $tries > 10;
         $tries++;
         sleep 1;
@@ -142,6 +127,7 @@ sub waitForPageLoad
     sleep 1;
     my $newBody = getHTMLBody($self);
     my $stop = 0;
+    $tries = 0;
     # An attempt to make sure the page is done loading any javascript alterations
     while( ($newBody ne $body) && !$stop)
     {
@@ -297,6 +283,108 @@ sub handleAnchorClick
             takeScreenShot($self, "handleAnchorClick_$anchorString"."_string_not_found");
         }
     }
+    return $worked;
+}
+
+sub handleParentAnchorClick
+{
+    my $self = shift;
+    my $childTagType = shift;
+    my $childTagStringMatch = shift;
+    my $childPropValMatch = shift;
+    my $correctPageString = shift;
+    my $parentTagType = shift || 'a';
+
+
+    $self->addTrace( "handleParentAnchorClick", $childTagStringMatch);
+    # get the string ready for js regex
+    $childTagStringMatch =~ s/\?/\\?/g;
+    $childTagStringMatch =~ s/\//\\\//g;
+    $childTagStringMatch =~ s/\./\\\./g;
+    $childTagStringMatch =~ s/\[/\\\[/g;
+    $childTagStringMatch =~ s/\]/\\\]/g;
+    $childTagStringMatch =~ s/\(/\\\(/g;
+    $childTagStringMatch =~ s/\)/\\\)/g;
+
+    my $js = "
+        var doms = document.getElementsByTagName('".$childTagType."');
+        
+        for(var i=0;i<doms.length;i++)
+        {
+            var thisaction = doms[i]." . $childPropValMatch . ";
+            if(thisaction !== null && thisaction.match(/" . $childTagStringMatch . "/gi))
+            {
+                var parent = findParent(doms[i]);
+                if(parent)
+                {
+                    parent.click();
+                    return 1;
+                }
+                return 0;
+            }
+        }
+        function findParent(curNode)
+        {
+            var tParent = curNode.parentElement;
+            if(tParent)
+            {
+                if(tParent.tagName.match(/" . $parentTagType . "/i))
+                {
+                    return tParent;
+                }
+                else
+                {
+                    return findParent(tParent);
+                }
+            }
+            return 0;
+        }
+        return 0;
+        ";
+    $self->{log}->addLine("Executing: $js");
+    my $worked = $self->{driver}->execute_script($js);
+    waitForPageLoad($self);
+    takeScreenShot($self, "handleAnchorClick_$childTagStringMatch");
+    if($correctPageString)
+    {
+        my $tries = 0;
+        $worked = checkIfCorrectPage($self, $correctPageString);
+        while(!$worked && $tries < 20) # Some websites are completely JS, and the page load isn't reliable, Let's do 20 seconds of page parses
+        {
+            sleep 1;
+            $worked = checkIfCorrectPage($self, $correctPageString);
+            $tries++;
+        }
+        if(!$worked)
+        {
+            my $error = $self->flattenArray($correctPageString, 'string');
+            $self->setError( "Clicked anchor but didn't find string(s): $error");
+            takeScreenShot($self, "handleAnchorClick_$childTagStringMatch"."_string_not_found");
+        }
+        else
+        {
+            takeScreenShot($self, "handleAnchorClick_after_click");
+        }
+    }
+    return $worked;
+}
+
+sub handleInputBoxData
+{
+    my $self = shift;
+    my $inputBoxID = shift;
+    my $inputString = shift;
+    $inputString =~ s/'/\\'/g;
+    $self->addTrace( "handleInputBoxData", $inputBoxID);
+
+    my $js = "
+        document.getElementById('".$inputBoxID."').value = '$inputString';
+        return 1;
+        ";
+    $self->{log}->addLine("Executing: $js");
+    my $worked = $self->{driver}->execute_script($js);
+    waitForPageLoad($self);
+    takeScreenShot($self, "handleInputBoxData_$inputString");
     return $worked;
 }
 
@@ -922,11 +1010,15 @@ sub ensureFolderExists
 {
     my $self = shift;
     my $path = shift;
+    my $mode = shift || 0711;
+    print "mode: $mode\n";
     if ( !(-d $path) )
     {
+        print "creating: '" . $path. "'\n";
         make_path($path, {
         verbose => 1,
-        mode => 0711,
+        chmod => $mode,
+        mode => $mode,
         });
     }
 }
@@ -958,8 +1050,7 @@ sub getHTMLBody
 sub cleanScreenShotFolder
 {
     my $self = shift;
-    print "creating: '" .$self->{screenShotDIR}. "'\n" unless -d $self->{screenShotDIR};
-    make_path($self->{screenShotDIR},  {chmod => 0755} )  unless -d $self->{screenShotDIR};
+    ensureFolderExists($self, $self->{screenShotDIR}, 0777);
     cleanFolder($self, $self->{screenShotDIR});
 }
 

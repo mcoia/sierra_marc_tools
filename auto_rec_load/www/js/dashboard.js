@@ -15,19 +15,17 @@ $(document).ready(function() {
 function drawPie(wrapperdiv)
 {
     wrapperdiv.append('<div class="loader"></div>');
-    var pageID = "pageid="+$("#thisPageID").val();
-    var path = location.protocol+"//"+location.hostname;
     var width = wrapperdiv.width();
-    var fromDate = '';
+    var querystring = {'summarypie': '1'};
     if($('#datesince'))
     {
-        fromDate = '&fromdate=' + convertStringToDate($('#datesince').val());
+        querystring['fromdate'] = convertStringToDate($('#datesince').val());
     }
     console.log("width " + width);
     width = width > 500 ? 500 : width;
     console.log("width " + width);
-    var url = path + '/index.php?getgraph=1&summarypie=1' + fromDate + '&width=' + width + '&' + pageID;
-    console.log("Getting img: "+url);
+    querystring['width'] = width;
+    var url = createServerCallBackURL(querystring, 'getgraph');
     wrapperdiv.html("");
     wrapperdiv.append('<img src="' + url + '" />');
     wrapperdiv.remove('.loader');
@@ -36,15 +34,12 @@ function drawPie(wrapperdiv)
 function getSummaryTable(wrapperdiv)
 {
     wrapperdiv.append('<div class="loader"></div>');
-    var pageID = "pageid="+$("#thisPageID").val();
-    var path = location.protocol+"//"+location.hostname;
-    var fromDate = '';
+    var querystring = {'getsummarytable': '1'};
     if($('#datesince'))
     {
-        fromDate = '&fromdate=' + convertStringToDate($('#datesince').val());
+        querystring['fromdate'] = convertStringToDate($('#datesince').val());
     }
-    var url = path+"/index.php?getdata=1" + fromDate + "&getsummarytable=1&"+pageID;
-    console.log("Getting data: "+url);
+    var url = createServerCallBackURL(querystring);
     $.get(url,
         function(data){
             wrapperdiv.html(data);
@@ -58,15 +53,12 @@ function getStats()
         var affectElement = $(this);
         affectElement.append('<div class="loader" style="width: 60px;height: 60px;"></div>');
         var statID = affectElement.parent().attr('id');
-        var pageID = "pageid="+$("#thisPageID").val();
-        var path = location.protocol+"//"+location.hostname;
-        var fromDate = '';
+        var querystring = {'statid': statID, 'getstat': '1'};
         if($('#datesince'))
         {
-            fromDate = '&fromdate=' + convertStringToDate($('#datesince').val());
+            querystring['fromdate'] = convertStringToDate($('#datesince').val());
         }
-        var url = path+"/index.php?getdata=1&getstat=1" + fromDate + "&statid=" + statID + "&"+pageID;
-        console.log("Getting data: "+url);
+        var url = createServerCallBackURL(querystring);
         $.get(url,
             function(data){
                 affectElement.remove('.loader');

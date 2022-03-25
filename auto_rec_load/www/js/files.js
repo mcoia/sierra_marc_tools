@@ -4,12 +4,9 @@ $(document).ready(function() {
 
 function getFilesTable(wrapperdiv)
 {
-    wrapperdiv.append('<div class="loader"</div>');
-    var pageID = "pageid="+$("#thisPageID").val();
-    var path = location.protocol+"//"+location.hostname;
-    var fromDate = '';
-    var url = path+"/index.php?getdata=1" + fromDate + "&getsummarytable=1&"+pageID;
-    console.log("Getting data: "+url);
+    wrapperdiv.append('<div class="loader"></div>');
+    var querystring = {'getsummarytable': '1'};
+    var url = createServerCallBackURL(querystring);
     $.get(url,
         function(data){
             wrapperdiv.html(data);
@@ -19,16 +16,16 @@ function getFilesTable(wrapperdiv)
 
 function marcFileDownloadClick(fileid, element)
 {
-    var path = location.protocol+"//"+location.hostname;
     var source = "";
+    var querystring = {'fileid': fileid};
+    
     if($(element).attr("sourcefile") !== undefined)
     {
-        source = "&sourcefile=1";
+        querystring['sourcefile'] = '1';
     }
 
-    var url = path+"/index.php?getmarc=1&fileid="+fileid+source;
+    var url = createServerCallBackURL(querystring, 'getmarc');
 
-    console.log("Getting data: "+url);
     window.location.assign(url);
     return false;
 }

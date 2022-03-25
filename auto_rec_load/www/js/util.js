@@ -33,10 +33,32 @@ function selectElement(id, valueToSelect)
 
 function createOverlayDialog(html)
 {
-    $("body").append("<div id=\"overlaydialog\"><div id=\"overlaydialogcontainer\"><div id=\"close-overlay\"><a href=\"#\">[close]</a></div>" + html + "<div id='jsoneditorerrorbox'></div></div></div>");
+    $("body").append("<div id=\"overlaydialog\"><div id=\"overlaydialogcontainer\"><div id=\"close-overlay\"><a href=\"#\">[close]</a></div>" + html + "<div id='overlaydialogresponsecontainer'></div></div></div>");
     $("#close-overlay").click(function(){
         $("#overlaydialog").remove();
     });
+}
+
+function overlayDialogMessage(message, messageType = 'error')
+{
+    var cssclass = 'submiterror';
+    var fade = 0;
+    // design decision here, figured if it's success, we're always going to fade out
+    if( message.length == 0 && messageType == 'success' )
+    {
+        message = 'Success';
+        fade = 1;
+    }
+    if(messageType == 'success')
+    {
+        cssclass = 'submitsuccess';
+    }
+    var wrapper = "<div id=\"overlaydialogresponsemessage\" class=\""+cssclass+"\">"+message+"</div>";
+    $("#overlaydialogresponsecontainer").html(wrapper);
+    if(fade)
+    {
+        $("#overlaydialogresponsemessage").fadeOut(5000);
+    }
 }
 
 function htmlEscape(str) 
@@ -50,6 +72,7 @@ function htmlEscape(str)
             .replace(/>/g, '&gt;')
             .replace(/\\n/g,'&NewLine;')
             .replace(/ /g, '&nbsp;')
+            // .replace(/\\/g, '!!backslash!!')
             // .replace(/@/g, '&commat;') // php doesn't unescape this https://www.php.net/manual/en/function.htmlspecialchars-decode.php
             ;
 }
@@ -66,4 +89,23 @@ function htmlUnEscape(str)
             .replace(/&#39;/g, "'")
             .replace(/&quot;/g, '"')
             .replace(/&amp;/g, '&');
+}
+
+function createServerCallBackURL(querystringOptionArray, type = 'getdata')
+{
+    var path = location.protocol+"//"+location.hostname;
+    var pageID = "pageid="+$("#thisPageID").val();
+    var querystring = '';
+    for (var key in querystringOptionArray)
+    {
+        querystring += "&" + key + "=" + querystringOptionArray[key];
+    }
+    if(querystring.length > 0)
+    {
+        querystring = querystring.substring(1); // strip the first &
+        querystring += "&"; // put it at the end
+    }
+    var url = path+"/index.php?"+querystring+type+"=1&"+pageID;
+    console.log("Getting data: "+url);
+    return url;
 }

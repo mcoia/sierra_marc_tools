@@ -55,6 +55,7 @@ sub _fillVars
     aus.id,
     ac.id,
     aus.name,
+    aus.marc_editor_function,
     ac.name,
     aoft.id,
     aoft.filename
@@ -96,10 +97,10 @@ sub _fillVars
         $self->{source} = shift @row;
         $self->{client} = shift @row;
         $self->{source_name} = shift @row;
+        $self->{marc_editor_name} = shift @row;
         $self->{client_name} = shift @row;
         $self->{output_file_id} = shift @row;
         $self->{output_filename_real} = shift @row;
-        $self->{marc_editor_name} = $self->{source_name} . '_' . $self->{client_name};
     }
     $self->{error} = "Couldn't read import status data ID: ". $self->{importStatusID} if($#results == -1);
     die if($#results == -1);

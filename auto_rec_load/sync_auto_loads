@@ -1,6 +1,7 @@
 #!/bin/bash
 
 declare -A sync_array
+declare -A ch_array
 
 dst_chgroup="www-data"
 
@@ -8,11 +9,28 @@ src_root="/dfsdump/Data Archive/auto_loads"
 dst_root="/jail"
 
 #############################################
+# Cluster: Archway
+#############################################
+cluster_src_root=$src_root"/archway"
+cluster_dst_root=$dst_root"/archway/home/archway/scheduler"
+
+#############################################
+# Cluster: Archway
+# Project: overdrive
+# Client: ALL
+#############################################
+
+project_src_root=$cluster_src_root"/overdrive/"
+sync_array[$project_src_root]=$cluster_dst_root"/overdrive"
+ch_array[$project_src_root]="archway"
+
+
+
+#############################################
 # Cluster: KC-Towers
 #############################################
 cluster_src_root=$src_root"/kctowers"
-cluster_dst_root=$dst_root"/kc-towers/home/kc-towers/incoming"
-dst_chuser="kc-towers"
+cluster_dst_root=$dst_root"/kc-towers/home/kc-towers/scheduler"
 
 #############################################
 # Cluster: KC-Towers
@@ -29,6 +47,7 @@ project_src_root=$cluster_src_root"/ebook_central"
 
 this_src_root=$project_src_root"/mwsu/"
 sync_array[$this_src_root]=$cluster_dst_root"/EBC/MWSU"
+ch_array[$this_src_root]="kc-towers"
 
 #############################################
 # Cluster: KC-Towers
@@ -38,6 +57,7 @@ sync_array[$this_src_root]=$cluster_dst_root"/EBC/MWSU"
 
 this_src_root=$project_src_root"/SPST/"
 sync_array[$this_src_root]=$cluster_dst_root"/EBC/SPST"
+ch_array[$this_src_root]="kc-towers"
 
 
 
@@ -59,7 +79,8 @@ for key in "${!sync_array[@]}"
 do
     echo "$key"
     echo "${sync_array[$key]}"
-    rsync -av -W --chown $dst_chuser:$dst_chgroup --delete "$key" "${sync_array[$key]}"
+    echo "chown: ${ch_array[$key]}"
+    rsync -av -W --chown "${ch_array[$key]}":$dst_chgroup --delete "$key" "${sync_array[$key]}"
     chmod aug-x -R "${sync_array[$key]}"
     chmod aug+Xrw -R "${sync_array[$key]}"
 done

@@ -92,16 +92,17 @@ class vendorsUI
 		$selectCols = array(
         "CASE WHEN asource.enabled IS TRUE THEN 'Enabled' ELSE 'Disabled' END \"enabled\"",
         "asource.name \"vname\"",
+        "cluster.name \"cname\"",
         "ac.name \"clientname\"",
-        "
-        CASE WHEN asource.type = 'web' THEN
+        "CASE WHEN asource.type = 'web' THEN
         concat('<a source=\"',asource.id,'\" onClick=\"showScreenShots(this)\" href=\"#screenshotanchor\">', asource.type, '</a>')
         ELSE asource.type
         END \"type\"",
         "asource.perl_mod \"perlmod\"",
+        "asource.marc_editor_function \"marcfunction\"",
         "asource.last_scraped \"last_scraped\"",
         "concat('<a  json =\"1\" source=\"',asource.id,'\" onClick=\"editJSONClick(this)\" href=\"#\">', asource.json_connection_detail, '</a>') \"conndetail\"");
-		$showCols = array("enabled"=>"Enabled","vname"=>"Vendor","clientname"=>"Institution","type"=>"Type","perlmod"=>"Perl Mod","last_scraped"=>"Last Scraped","conndetail"=>"Connection Detail");
+		$showCols = array("enabled"=>"Enabled","cname"=>"Cluster","vname"=>"Vendor","clientname"=>"Institution","type"=>"Type","perlmod"=>"Perl Mod","marcfunction"=>"MARC Editor","last_scraped"=>"Last Scraped","conndetail"=>"Connection Detail");
 		$ClickPos=array();
 		$searchCols = array();
 		$tableID = "vendorSearchTable";
@@ -110,7 +111,8 @@ class vendorsUI
 		$extraWhereClause = "";
         $table = "
         " . $this->tablePrefix ."source asource
-        JOIN " . $this->tablePrefix ."client ac ON (asource.client=ac.id)";
+        JOIN " . $this->tablePrefix ."client ac ON (asource.client=ac.id)
+        JOIN " . $this->tablePrefix ."cluster cluster ON (cluster.id=asource.cluster)";
 
 		$search=null;
 		$getRaw=null;
@@ -225,7 +227,7 @@ class vendorsUI
         $query = "update " . $this->tablePrefix ."source asource " .
         "set json_connection_detail = ? where id = ?";
         $vars = array($json, $sourceID);
-		return $result = $this->sqlconnect->executeQuery($query, $vars);
+		return $this->sqlconnect->executeQuery($query, $vars);
 
 # Leaving this code in here for troubleshooting if needs be
         $ret .= $query;
@@ -246,5 +248,5 @@ class vendorsUI
         array_pop($split);
         return implode(".", $split);
     }
-    
+
 }

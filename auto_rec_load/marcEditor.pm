@@ -8,12 +8,6 @@ use MARC::Record;
 use MARC::Field;
 use Data::Dumper;
 
-our %map = 
-(
-    "ebook_central_MWSU" => "ebook_central_MWSU",
-    "ebook_central_SPST" => "ebook_central_SPST"
-);
-
 sub new
 {
     my ($class, @args) = @_;
@@ -41,27 +35,26 @@ sub manipulateMARC
     my $marc = shift;
     my $tag = shift;
     my $ret = $marc;
-    if ( $map{$key} )
+
+    my $ev = '$ret = ' . $key .'($self, $marc);';
+    $self->{log}->addLine("Running " . $map{$key} ) if($self->{debug});
+    # print $ev . "\n";
+    # eval $ev;
+    local $@;
+    eval
     {
-        my $ev = '$ret = ' . $map{$key} .'($self, $marc);';
-        $self->{log}->addLine("Running " . $map{$key} ) if($self->{debug});
-        # print $ev . "\n";
         eval $ev;
-        # local $@;
-        # eval
-        # {
-            # eval $ev;
-            # 1;  # ok
-        # } or do
-        # {
-            # print "Failed to manipulate\n";
-            # print $@;
-            # die;
-        # };
-        $ret = tagAddsMARC($self, $ret, $tag);
-        $ret = tagDeletesMARC($self, $ret, $key) if ($self->{type} eq 'deletes');
-        $ret = removeField($self, $ret, '856') if ($self->{type} eq 'deletes');
-    }
+        1;  # ok
+    } or do
+    {
+        print "Failed to manipulate\n";
+        print $@;
+        die;
+    };
+    $ret = tagAddsMARC($self, $ret, $tag);
+    $ret = tagDeletesMARC($self, $ret, $key) if ($self->{type} eq 'deletes');
+    $ret = removeField($self, $ret, '856') if ($self->{type} eq 'deletes');
+
     return $ret;
 }
 

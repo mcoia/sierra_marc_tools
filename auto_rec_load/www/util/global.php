@@ -707,7 +707,18 @@ function getComebackURLString($tabInfo)
 		return $ret;
 		
 	}
-	
+
+    function insertWWWAction($type, $ref, $misc)
+    {
+        global $sqlconnect;
+        global $tablePrefix;
+        $query = "INSERT INTO " . $tablePrefix ."wwwaction
+        (type, referenced_id, misc_data)
+        VALUES(?, ?, ?)";
+        $vars = array($type, $ref, $misc);
+        return $sqlconnect->executeQuery($query, $vars);
+    }
+
 	function createCSVFrom2DArray($array)
 	{
 		$ret="";
