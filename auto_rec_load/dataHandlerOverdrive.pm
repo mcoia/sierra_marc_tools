@@ -23,19 +23,22 @@ sub scrape
     $self->takeScreenShot('pageload');
     $self->addTrace("scrape","login");
     $self->updateThisJobStatus("Login Page");
+    print "Logging in\n" if($self->{debug});
     my $continue = $self->handleLoginPage("id","UserName","Password","The information entered is incorrect");
-    print "Continue: $continue\n";
+    print "Continue: $continue\n" if($self->{debug});
     if($continue)
     {
         $self->updateThisJobStatus("Login Page Worked");
+        print "Login Page Worked\n" if($self->{debug});
         @titleIDs = @{getTitleIDs($self)};
         $continue = $self->handleAnchorClick("Admin/MarcExpressDeliveries","MARC Express deliveries", 1);
-        print "Continue: $continue\n";
+        print "Continue: $continue\n" if($self->{debug});
     }
     if($continue) # we're on the search grid page
     {
         $self->updateThisJobStatus("On Search Grid Page");
-       
+        print "On Search Grid Page\n" if($self->{debug});
+
         # We've made it to the end of execution
         # whether there were files or not, we need to mark this source as having had a successful scrape
         $self->updateSourceScrapeDate();
@@ -46,39 +49,135 @@ sub scrape
 sub getTitleIDs
 {
     my $self = shift;
-    my $continue = $self->handleAnchorClick("/Insights", "Title status", 1);
+    ##############
+    #
+    # Click "Insights"
+    #
+    ##############
+    my $continue = $self->doWebActionAfewTimes( 'handleAnchorClick($self, "/Insights", "Title status", 1)', 4 );
+    print "Clicked on Insights\n" if($self->{debug});
     print "Continue: $continue\n";
+
+    ##############
+    #
+    # Click "Reports/TitleStatusAndUsage"
+    #
+    ##############
     if($continue)
     {
-        $continue = $self->handleAnchorClick("Reports/TitleStatusAndUsage", "Title status and usage", 1);
+        $continue = $self->doWebActionAfewTimes( 'handleAnchorClick($self, "Reports/TitleStatusAndUsage", "Title status and usage", 1)', 4 );
+        print "Clicked on Title status and usage\n" if($self->{debug});
     }
     print "Continue: $continue\n";
+
+    ##############
+    #
+    # Click Run new report
+    #
+    ##############
     if($continue)
     {
-        $continue = $self->handleParentAnchorClick("span", "Run new report", "innerHTML", "Title status and usage report options", 'a');
+        $continue = $self->doWebActionAfewTimes('handleParentAnchorClick($self, "span", "Run new report", "innerHTML", "Title status and usage report options", "a")', 4 );
+        print "Clicked on Title status and usage report options\n" if($self->{debug});
     }
     print "Continue: $continue\n";
-    if($continue) # Date range type
+
+    ##############
+    #
+    # Click Date Dropdown, and Choose "Specific"
+    #
+    ##############
+    if($continue)
     {
-        $continue = $self->handleInputBoxData("combobox-1011-inputEl", "Specific");
+        my %attribs =
+        (
+            "data-ref" => 'inputEl',
+            "role" => "combobox",
+            "type" => "text",
+            "name" => "DateRangePeriodType"
+        );
+        my $dropdownID = $self->findElementByAttributes("input", "id", \%attribs);
+        print "Clicking on $dropdownID\n";
+        $continue = $self->handleDOMTriggerOrSetValue('action', $dropdownID, "click()");
+        sleep 1;
+        if($continue)
+        {
+            # Get the associated number value for the dropdown element, so we can find the associated combo element
+            $dropdownID =~ s/[^\d]//g;
+            %attribs =
+            (
+                "data-boundview" => 'combobox-' . $dropdownID . '-picker',
+                "role" => "option"
+            );
+            $continue = $self->handleDOMTriggerOrSetValue('action', undef, "click()", "li", \%attribs, "Specific");
+        }
+        print "Filled 'Specific' into DateRangePeriodType\n" if($self->{debug});
     }
     print "Continue: $continue\n";
+
+    ##############
+    #
+    # Start Date empty
+    #
+    ##############
+    if($continue) # Start date
+    {
+        my %attribs =
+        (
+            "data-ref" => 'inputEl',
+            "role" => "combobox",
+            "type" => "text",
+            "name" => "StartDateInputValue"
+        );
+        $continue = $self->handleDOMTriggerOrSetValue('setval', undef, "", "input", \%attribs);
+        print "Filled 'Specific' into DateRangePeriodType\n" if($self->{debug});
+    }
+    print "Continue: $continue\n";
+
+    ##############
+    #
+    # End Date 01/01/4000
+    #
+    ##############
     if($continue) # End date
     {
-        $continue = $self->handleInputBoxData("datefield-1017-inputEl", "01/01/2000");
+        my %attribs =
+        (
+            "data-ref" => 'inputEl',
+            "role" => "combobox",
+            "type" => "text",
+            "name" => "EndDateInputValue"
+        );
+        $continue = $self->handleDOMTriggerOrSetValue('setval', undef, "01/01/4000", "input", \%attribs);
+        print "Filled 'Specific' into DateRangePeriodType\n" if($self->{debug});
     }
     print "Continue: $continue\n";
+
+    ##############
+    #
+    # Formats: Ebook, Audiobook
+    #
+    ##############
     if($continue)
     {
-        $continue = $self->handleInputBoxData("Format-inputEl", "Ebook, Audiobook");
+        my %attribs =
+        (
+            "data-ref" => 'inputEl',
+            "role" => "combobox",
+            "type" => "text",
+            "name" => "Format"
+        );
+        $continue = $self->handleDOMTriggerOrSetValue('setval', undef, "Ebook, Audiobook", "input", \%attribs);
+        print "Filled 'Specific' into DateRangePeriodType\n" if($self->{debug});
     }
     print "Continue: $continue\n";
-    if($continue) # Start date empty
-    {
-        $continue = $self->handleInputBoxData("datefield-1016-inputEl", "");
-    }
-    print "Continue: $continue\n";
-    if($continue) # Start date empty
+
+    ##############
+    #
+    # Click "Update"
+    #
+    ##############
+    if($continue)
     {
         $continue = $self->handleParentAnchorClick("span", "Update", "innerHTML", "Displaying 1", 'a');
     }

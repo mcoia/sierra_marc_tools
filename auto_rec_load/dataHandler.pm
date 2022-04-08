@@ -245,15 +245,9 @@ sub handleAnchorClick
     my $hrefMatch = shift || 0;
     my $propVal = $hrefMatch ? 'getAttribute("href")' : 'textContent';
 
+    $anchorString = escapeStringForJSRegEX($self, $anchorString);
     $self->addTrace( "handleAnchorClick", $anchorString);
-    # get the string ready for js regex
-    $anchorString =~ s/\?/\\?/g;
-    $anchorString =~ s/\//\\\//g;
-    $anchorString =~ s/\./\\\./g;
-    $anchorString =~ s/\[/\\\[/g;
-    $anchorString =~ s/\]/\\\]/g;
-    $anchorString =~ s/\(/\\\(/g;
-    $anchorString =~ s/\)/\\\)/g;
+
 
     my $js = "
         var doms = document.getElementsByTagName('a');
@@ -297,18 +291,11 @@ sub handleParentAnchorClick
 
 
     $self->addTrace( "handleParentAnchorClick", $childTagStringMatch);
-    # get the string ready for js regex
-    $childTagStringMatch =~ s/\?/\\?/g;
-    $childTagStringMatch =~ s/\//\\\//g;
-    $childTagStringMatch =~ s/\./\\\./g;
-    $childTagStringMatch =~ s/\[/\\\[/g;
-    $childTagStringMatch =~ s/\]/\\\]/g;
-    $childTagStringMatch =~ s/\(/\\\(/g;
-    $childTagStringMatch =~ s/\)/\\\)/g;
+    $childTagStringMatch = escapeStringForJSRegEX($self, $childTagStringMatch);
 
     my $js = "
         var doms = document.getElementsByTagName('".$childTagType."');
-        
+        var matched = 0;
         for(var i=0;i<doms.length;i++)
         {
             var thisaction = doms[i]." . $childPropValMatch . ";
@@ -319,10 +306,13 @@ sub handleParentAnchorClick
                 {
                     parent.click();
                     return 1;
+                    matched = 1;
+                    break;
                 }
-                return 0;
             }
         }
+        return matched;
+
         function findParent(curNode)
         {
             var tParent = curNode.parentElement;
@@ -339,7 +329,6 @@ sub handleParentAnchorClick
             }
             return 0;
         }
-        return 0;
         ";
     $self->{log}->addLine("Executing: $js");
     my $worked = $self->{driver}->execute_script($js);
@@ -369,23 +358,145 @@ sub handleParentAnchorClick
     return $worked;
 }
 
-sub handleInputBoxData
+sub handleDOMTriggerOrSetValue
 {
     my $self = shift;
-    my $inputBoxID = shift;
-    my $inputString = shift;
-    $inputString =~ s/'/\\'/g;
-    $self->addTrace( "handleInputBoxData", $inputBoxID);
+    my $type = shift; # 'setval' or 'action'
+    my $DOMID = shift; # this can be null if you supply $domType and $elementProperty instead
+    my $data = shift;
+    my $domType = shift; # "input" or "textbox", etc.
+    my $elementAttributesRef = shift;
+    my $elementTextContentMatch = shift;
 
-    my $js = "
-        document.getElementById('".$inputBoxID."').value = '$inputString';
-        return 1;
-        ";
-    $self->{log}->addLine("Executing: $js");
-    my $worked = $self->{driver}->execute_script($js);
-    waitForPageLoad($self);
-    takeScreenShot($self, "handleInputBoxData_$inputString");
+    my $worked = undef;
+    $data =~ s/'/\\'/g;
+    $data = "value  = '$data'" if($type eq 'setval');
+    %elementAttributes = %{$elementAttributesRef} if($elementAttributesRef);
+    $self->addTrace( "handleDOMTriggerFire", $DOMID);
+    print "heading to search routine\n";
+    $DOMID = findElementByAttributes($self, $domType, 'id', $elementAttributesRef, $elementTextContentMatch) if($elementAttributesRef && $domType);
+    print "Received: $DOMID\n";
+    if(''.$DOMID eq '0' && ($elementAttributesRef && $domType))
+    {
+        print "Dropping into action\n";
+        # in the case where the target element doesn't have an ID: we just need the search code to perform the action
+        findElementByAttributes($self, $domType, 'id', $elementAttributesRef, $elementTextContentMatch, $data);
+    }
+    else
+    {
+        my $js = "
+            if(document.getElementById('".$DOMID."'))
+            {
+                document.getElementById('".$DOMID."').$data;
+                return 1;
+            }
+            return 0;
+            ";
+        
+        $self->{log}->addLine("Executing: $js");
+        $worked = $self->{driver}->execute_script($js);
+        waitForPageLoad($self);
+        takeScreenShot($self, "TriggerOrSetValue_$data");
+    }
     return $worked;
+}
+
+sub findElementByAttributes
+{
+    my $self = shift;
+    my $domType = shift; # "input" or "textbox", etc.
+    my $returnProp = shift;
+    my $elementAttributesRef = shift;
+    my $elementTextContentMatch = shift;
+    my $elementAction = shift;
+
+    my %elementAttributes = undef;
+    %elementAttributes = %{$elementAttributesRef} if($elementAttributesRef);
+    $elementTextContentMatch = escapeStringForJSRegEX($self, $elementTextContentMatch) if ($elementTextContentMatch);
+    if(%elementAttributes && $domType && $returnProp)
+    {
+        my $js = "
+        var doms = document.getElementsByTagName('".$domType."');
+        var attribs = {";
+        while ( (my $key, my $value) = each(%elementAttributes) )
+        {
+            $js .= "'$key' : '$value',\n";
+        }
+        $js = substr($js,0,-2);
+        $js.="};
+        
+        for(var i=0;i<doms.length;i++)
+        {
+            var matched = 0;
+            for (var key in attribs)
+            {
+                if(doms[i].getAttribute(key))
+                {
+                    var rgxp = new RegExp(attribs[key],'i');
+                    if(doms[i].getAttribute(key).match(rgxp))
+                    {";
+                    if($elementTextContentMatch)
+                    {
+                        $js.="
+                        if(!doms[i].textContent.match(/$elementTextContentMatch/i))
+                        {
+                            matched = 0;
+                            break;
+                        }";
+                    }
+                    $js.="
+                        matched = 1;
+                    }
+                    else
+                    {
+                        matched = 0;
+                        break;
+                    }
+                }
+            }
+            if(matched)
+            {
+                ";
+                if($elementAction)
+                {
+                    $js .= "doms[i].$elementAction;
+                    return 1;
+                    ";
+                }
+                $js.="
+                if(doms[i].getAttribute('$returnProp'))
+                {
+                    return doms[i].getAttribute('$returnProp');
+                }
+            }
+        }
+        return 0;
+        ";
+        $self->{log}->addLine("Executing: $js");
+        my $worked = $self->{driver}->execute_script($js);
+        takeScreenShot($self, "findElementByAttributes_$domType");
+        return $worked;
+    }
+    return 0;
+}
+
+sub doWebActionAfewTimes
+{
+    my $self = shift;
+    my $actionCode = shift;
+    my $retryCount = shift;
+    my $result = 0;
+
+    $actionCode = '$result = ' . $actionCode . ";";
+    my $loops = 0;
+    $self->{log}->addLine("Executing: $actionCode");
+    # return handleAnchorClick($self, "/Insights", "Title status", 1);
+    while( ($retryCount > $loops) && !$result )
+    {
+        eval $actionCode;
+        $loops++;
+    }
+    return $result;
 }
 
 sub checkIfCorrectPage
@@ -412,6 +523,20 @@ sub checkPageForString
     return stringContains($self, $body, $string);
 }
 
+sub escapeStringForJSRegEX
+{
+    my $self = shift;
+    my $string = shift;
+    # get the string ready for js regex
+    $string =~ s/\?/\\?/g;
+    $string =~ s/\//\\\//g;
+    $string =~ s/\./\\\./g;
+    $string =~ s/\[/\\\[/g;
+    $string =~ s/\]/\\\]/g;
+    $string =~ s/\(/\\\(/g;
+    $string =~ s/\)/\\\)/g;
+    return $string;
+}
 sub stringContains
 {
     my $self = shift;

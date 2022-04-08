@@ -27,8 +27,7 @@ class vendorsUI
 	
 	function go()
 	{
-		$ret="";
-       
+		$ret = "";
 		if(isset($this->uri['getdata']))
 		{
             if(isset($this->uri['getsummarytable']))
@@ -112,7 +111,7 @@ class vendorsUI
         $table = "
         " . $this->tablePrefix ."source asource
         JOIN " . $this->tablePrefix ."client ac ON (asource.client=ac.id)
-        JOIN " . $this->tablePrefix ."cluster cluster ON (cluster.id=asource.cluster)";
+        JOIN " . $this->tablePrefix ."cluster cluster ON (cluster.id=ac.cluster)";
 
 		$search=null;
 		$getRaw=null;
@@ -165,6 +164,7 @@ class vendorsUI
         {
             $ret["trace"] = array();
             $images = scandir($imagesFolder);
+            $sortImageNameArray = array();
             foreach($images as $internal => $filename)
             {
                 $full = $imagesFolder . "/" . $filename;
@@ -200,10 +200,38 @@ class vendorsUI
                     $ret["trace"][] = $full;
                     $ret["images"][] = convertToRelativePath($full);
                     $ret["images_name"][] = $this->parseImageName($filename);
+                    $sortImageNameArray[] = $this->getImageNumeric($filename);
                 }
             }
             if($ret["images"])
             {
+                $i = 0;
+                # print_r($sortImageNameArray);
+                while( $i < (count($sortImageNameArray) - 1) )
+                {
+                    if($i < 0)
+                    {
+                        $i = 0;
+                    }
+                    # print "Comparing: " . $sortImageNameArray[$i] . " to: " . $sortImageNameArray[$i+1] ."<Br/>";
+                    if( ($sortImageNameArray[$i]+0) > ($sortImageNameArray[$i+1]+0))
+                    {
+                        $temp = $sortImageNameArray[$i];
+                        $sortImageNameArray[$i] = $sortImageNameArray[$i+1];
+                        $sortImageNameArray[$i+1] = $temp;
+
+                        $temp = $ret["images"][$i];
+                        $ret["images"][$i] = $ret["images"][$i+1];;
+                        $ret["images"][$i+1] = $temp;
+
+                        $temp = $ret["images_name"][$i];
+                        $ret["images_name"][$i] = $ret["images_name"][$i+1];
+                        $ret["images_name"][$i+1] = $temp;
+                        $i-=2;
+                    }
+                    $i++;
+                }
+                # print_r($sortImageNameArray);
                 $ret["status"] = "success";
                 $ret["statuscode"] = "Found images";
             }
@@ -237,6 +265,20 @@ class vendorsUI
         }
         $ret .= "<pre>$json</pre>";
         return $ret;
+    }
+
+    function getImageNumeric($filename) # this routine finds the first occurance of a number, and assumes that the the image sequence ID number
+    {
+        $split = explode("_",$filename);
+        foreach($split as $internal => $value)
+        {
+            $match = array();
+            if(preg_match('/^\d+$/', $value, $match))
+            {
+                return $match[0]+0;
+            }
+        }
+        return "0";
     }
 
     function parseImageName($filename)
