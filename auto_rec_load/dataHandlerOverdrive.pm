@@ -9,6 +9,7 @@ use pQuery;
 use Try::Tiny;
 use Data::Dumper;
 use Text::CSV;
+use Digest::SHA2;
 
 use parent dataHandler;
 
@@ -26,24 +27,51 @@ sub scrape
     print "Logging in\n" if($self->{debug});
     my $continue = $self->handleLoginPage("id","UserName","Password","The information entered is incorrect");
     print "Continue: $continue\n" if($self->{debug});
+    my @titleIDs = ();
+    my $key = '';
     if($continue)
     {
         $self->updateThisJobStatus("Login Page Worked");
         print "Login Page Worked\n" if($self->{debug});
-        @titleIDs = @{getTitleIDs($self)};
-        $continue = $self->handleAnchorClick("Admin/MarcExpressDeliveries","MARC Express deliveries", 1);
-        print "Continue: $continue\n" if($self->{debug});
+        $self->addTrace("scrape","getting title ID's");
+        my $titleids = getTitleIDs($self);
+        if(ref $titleids eq 'ARRAY')
+        {
+            $continue = 1;
+            @titleIDs = @{$titleids};
+            $self->addTrace("scrape","Got:" . $#titleIDs . " Title IDs");
+            $key = createKeyString($self, \@titleIDs);
+            $continue = decideDownload($self, $key);
+        }
+        else
+        {
+            $continue = 0;
+            $self->setError("Didn't get CSV of Title IDs");
+        }
     }
-    if($continue) # we're on the search grid page
+    if($continue)
     {
-        $self->updateThisJobStatus("On Search Grid Page");
-        print "On Search Grid Page\n" if($self->{debug});
+        # The ultimate anchor tag that we want to click is setup to create a new tab.
+        # So I am skipping the page scrape click throughs, and hard-coding the relative URL
 
-        # We've made it to the end of execution
-        # whether there were files or not, we need to mark this source as having had a successful scrape
-        $self->updateSourceScrapeDate();
-        $self->finishThisJob("Downloaded $fileCount file(s)");
+        my $js = "window.location.href = '/Admin/CreateCustomFile';";
+        $self->updateThisJobStatus("Navigating to /Admin/CreateCustomFile");
+        $self->{driver}->execute_script($js);
+        $self->waitForPageLoad();
+        $self->takeScreenShot($self, "CreateCustomFile");
     }
+    if($continue)
+    {
+        $self->updateThisJobStatus("On Custom MARC Express file Page");
+        print "On Search Grid Page\n" if($self->{debug});    
+        $self->handleDOMTriggerOrSetValue('action', 'CreateFileBtn', 'click()');
+        $self->handleDOMTriggerOrSetValue('action', 'btnTitleIds', 'click()');
+
+    }
+    # We've made it to the end of execution
+    # whether there were files or not, we need to mark this source as having had a successful scrape
+    $self->updateSourceScrapeDate();
+    $self->finishThisJob("Downloaded $fileCount file(s)");
 }
 
 sub getTitleIDs
@@ -181,10 +209,10 @@ sub getTitleIDs
     {
         $continue = $self->handleParentAnchorClick("span", "Update", "innerHTML", "Displaying 1", 'a');
     }
+    my $newFile = 0;
     if($continue)
     {
         $self->handleParentAnchorClick("span", "Create worksheet", "innerHTML", "Displaying 1", 'a');
-        my $newFile = 0;
         my $tries = 0;
         while(!$newFile && $tries < 120) # sometimes Overdrive can take a whole minute to generate the file
         {
@@ -196,11 +224,41 @@ sub getTitleIDs
         if($newFile)
         {
             print "Got this: $newFile\n";
+            if( lc $self->getFileExt($newFile) eq 'csv' )
+            {
+                $continue = 1;
+            }
+            else
+            {
+                $continue = 0;
+            }
+        }
+        else
+        {
+            $continue = 0;
         }
     }
-    print "Continue: $continue\n";
-    exit;
+    if($continue)
+    {
+        my @titleIDs = @{$self->getColumnFromCSV($newFile, 'TitleID')};
+        $self->{log}->addLine(Dumper(\@titleIDs));
+        sort @titleIDs;
+        return \@titleIDs;
+    }
+    return 0;
+}
 
+
+sub createKeyString
+{
+    my $self = shift;
+    my $sortedTitleIDs = shift;
+    my @ids = @{$sortedTitleIDs};
+    my $digest = new Digest::SHA2;
+    $digest->add($_) foreach(@ids);
+    $digest = $digest->hexdigest();
+    $self->{log}->addLine("Final KeyString: " . $digest) if $self->{debug};
+    return $digest;
 }
 
 sub decideDownload

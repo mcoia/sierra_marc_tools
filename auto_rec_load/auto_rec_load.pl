@@ -20,6 +20,7 @@ use pQuery;
 use Getopt::Long;
 use Cwd;
 use email;
+use Digest::SHA2;
 
 
 use dataHandler;

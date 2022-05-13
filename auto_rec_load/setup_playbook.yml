@@ -111,6 +111,10 @@
     become: true
     ignore_errors: yes
     shell: export PERL_MM_USE_DEFAULT=1 && perl -MCPAN -e 'install "Selenium::Remote::WebElement"'
+  - name: Installing CPAN packages Digest::SHA2
+    become: true
+    ignore_errors: yes
+    shell: export PERL_MM_USE_DEFAULT=1 && perl -MCPAN -e 'install "Digest::SHA2"'
   - name: Installing JDK
     become: true
     package:

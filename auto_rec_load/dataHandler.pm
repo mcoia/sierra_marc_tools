@@ -980,6 +980,53 @@ sub createImportStatusFromRecordArray
     undef $loops;
 }
 
+sub getColumnFromCSV
+{
+    my $self = shift;
+    my $file = shift;
+    my $columnNameOrPosition = shift || '0'; # default to first column
+    my @ret = ();
+
+    my $csv = Text::CSV->new ({ binary => 1, auto_diag => 1 });
+    open my $fh, "<:encoding(utf8)", $file or die "$file: $!";
+    my $rownum = 0;
+    my $colPOS = -1;
+    if($columnNameOrPosition =~ m/^\d+$/) # The passed value is numeric, assuming it's a column position number, 0 based
+    {
+        $colPOS = $columnNameOrPosition;
+        print "set colpos = $colPOS\n";
+    }
+
+    while (my $row = $csv->getline ($fh))
+    {
+        if($colPOS == -1) # we've not figured out the column yet
+        {
+            print "ref:\n";
+            print ref $row;
+            print "\n";
+            my $col = 0;
+            foreach(@{$row})
+            {
+                $_ =~ s/\x{feff}//g;
+                $self->{log}->addLine("comparing: '$_' to '$columnNameOrPosition'");
+                if( (lc($_)) eq (lc($columnNameOrPosition)) )
+                {
+                    $colPOS = $col;
+                    $self->{log}->addLine("matched");
+                }
+                $col++;
+            }
+        }
+        else
+        {
+            push @ret, $row->[$colPOS];
+        }
+    }
+    close $fh;
+
+    return \@ret;
+}
+
 sub createImportStatus
 {
     my $self = shift;
