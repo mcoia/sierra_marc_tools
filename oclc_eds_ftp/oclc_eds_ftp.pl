@@ -1,0 +1,327 @@
+#!/usr/bin/perl
+
+use lib qw(.);
+use Data::Dumper;
+use Getopt::Long;
+use Text::CSV;
+use Email::MIME;
+use edsService;
+
+my $csvfile;
+my $summaryemailaddress;
+our $fromemailaddress;
+my $emailsubject = "MOBIUS Weekly OCLC EDS Summary";
+our @csvReadErrors = ();
+
+our @csvSanityCheck =
+(
+    '^\d+\.[^\.]{3,7}.*$',  # filename (needs numeric followed by period, folloewd by 3-7 non-period characters
+    '^.*?\/.*?\/.*$',  # local folder (require two slashes)
+    '^.*?\.+.*$',  # ftp server (at least one period)
+    '^.{2}.*$',  # ftp username (at least 2 characters)
+    '^.{2}.*$',  # ftp password (at least 2 characters)
+    '.*',  # ftp folder (anything)
+    '^[^@]*?@[^\.]*?\..*$',  #emailsucces (emali address format please)
+    '^.{2}.*$',  #Filename replacer
+    '^.{2}.*$',  #Library Name (at least 2 characters)
+    '^.*?\/.*?\/.*$',  #final destination (require two slashes)
+);
+
+GetOptions
+(
+    "csv=s" => \$csvfile,
+    "summaryemailaddress=s" => \$summaryemailaddress,
+    "emailsubject=s" => \$emailsubject,
+    "fromemailaddress=s" => \$fromemailaddress
+)
+
+or die("
+Please give me the path to the CSV file and a global email address
+--csv [path]
+--summaryemailaddress [email address]
+--emailsubject
+--fromemailaddress
+\n");
+
+
+
+my @edsObjects = @{readCSV($csvfile)};
+
+
+# I think it's a good idea to figure out how many of these have
+# the same email address, that way we're not sending multiple emails to the same email address
+my %uniqueEmailSuccess = ();
+my @errorPOS = ();
+
+my $arpos = 0;
+foreach(@edsObjects)
+{
+    my $thisEDS = $_;
+    if($thisEDS->getRelatedFilesNum() > 0) # make sure there are files to process for any given object
+    {
+        print "Got files: " .$thisEDS->getLibraryName() ."\n";
+        $thisEDS->readFilesContents();
+        push @errorPOS, $arpos if($thisEDS->getTotalErrors() != 0);
+        next if($thisEDS->getTotalErrors() != 0); # next object if we had an error here
+        $thisEDS->sendFTP();
+        push @errorPOS, $arpos if($thisEDS->getTotalErrors() != 0);
+        next if($thisEDS->getTotalErrors() != 0); # next object if we had an error here
+
+        my $thisEmail = $thisEDS->getEmailSuccess();
+        my @ar = ();
+        @ar = @{$uniqueEmailSuccess{$thisEmail}} if $uniqueEmailSuccess{$thisEmail};
+        push @ar, $arpos;
+        $uniqueEmailSuccess{$thisEmail} = \@ar;
+        $thisEDS->moveFilesToArchive();
+        push @errorPOS, $arpos if($thisEDS->getTotalErrors() != 0); # this is a non-fatal error, but we need to report it anyway
+    }
+    $arpos++;
+}
+
+# And now the summary email to the summaryemailaddress
+my $summaryBody = boxText("Full Summary") . "\r\n";
+# Loop through all of our successful processes per email address
+while ((my $internal, my $mvalue ) = each(%uniqueEmailSuccess))
+{
+    my @thisGroup = ();
+    my $bodyHeader = "The following EBS records were sent to OCLC this week:\r\n\r\n";
+    my $bodyFooter = "\r\n\r\nThe ICODE1 code for the Adds has been updated to 0 and the Cancels to 200.";
+    push @thisGroup, @edsObjects[$_] foreach(@{$mvalue});
+    my $thisSubject = composeSubject(\@thisGroup);
+    my $thisBody = composeBody(\@thisGroup);
+    $summaryBody .= boxText($thisSubject) . "\r\n\r\n";
+    $summaryBody .= "To: $internal\r\n";
+    $summaryBody .= "\r\nBody:\r\n$thisBody\r\n";
+    my @allEmailAddresses = split(/\s*/, $internal); # The CSV could specify more than one email address space delimited
+    emailsend($thisSubject, $bodyHeader.$thisBody.$bodyFooter, @allEmailAddresses);
+}
+
+
+if($#errorPOS > -1 || $#csvReadErrors > -1) # don't bother putting an error section if there were none
+{
+    $summaryBody .= boxText("ERRORS",'!','!',7);
+    if($#csvReadErrors)
+    {
+        $summaryBody .= boxText("CSV File Issues");
+        foreach(@csvReadErrors)
+        {
+            $summaryBody .= $_."\r\n";
+        }
+    }
+    foreach(@errorPOS)
+    {
+        my $thisEDS = @edsObjects[$_];
+        my @thisErrors = @{$thisEDS->getErrors()};
+        $summaryBody .= boxText($thisEDS->getLibraryName());
+        foreach(@thisErrors)
+        {
+            $summaryBody .= $_ ."\r\n";
+        }
+    }
+}
+
+# emailsend($emailsubject . " - Admin Complete Summary", $summaryBody, $summaryemailaddress);
+
+sub composeSubject
+{
+    my $groupRef = shift;
+    my @group = @{$groupRef};
+    my $libNames = "";
+    my $libTotal = 0;
+    my $fileTotal = 0;
+    my $recordTotal = 0;
+    foreach(@group)
+    {
+        $libNames .= $_->getLibraryName() .",";
+        $libTotal++;
+        $fileTotal += $_->getRelatedFilesNum();
+        $recordTotal += $_->getTotalRecords();
+    }
+    $libNames = substr($libNames, 0, -1); #chop off the last comma
+
+    return $emailsubject . " - libraries: $libNames $fileTotal file(s) and $recordTotal record(s)";
+}
+
+sub composeBody
+{
+    my $groupRef = shift;
+    my @group = @{$groupRef};
+    my $ret = "";
+    foreach(@group)
+    {
+        $ret .= $_->getEmailBlurb();
+    }
+    return $ret;
+}
+
+sub emailsend  	#subject, body
+{
+    my ($subject, $body, @to) = @_;
+    my @headerArray = ();
+    
+    push(@headerArray, "From");
+    push(@headerArray, $fromemailaddress);
+
+    for my $r (0.. $#to)
+    {
+        push(@headerArray, "To");
+        push(@headerArray, @to[$r]);
+    }
+
+    push(@headerArray, "Subject");
+    push(@headerArray, $subject);
+
+    $body .= "\n"; # make sure we've got some space at the bottom :)
+
+    my $message = Email::MIME->create
+    (
+        header_str => [@headerArray],
+        attributes =>
+        {
+            encoding => 'quoted-printable',
+            charset  => 'ISO-8859-1',
+        },
+        body_str => $body
+    );
+
+    use Email::Sender::Simple qw(sendmail);
+    sendmail($message);
+    print "Got some email addresses in the to:\n";
+    print Dumper(\@to);
+    exit;
+}
+
+sub readCSV
+{
+    my $csvfile = shift;
+    my @edsObjects = ();
+    # Read/parse CSV
+    print "reading CSV: $csvfile\n";
+    my $csv = Text::CSV->new ({ binary => 1, auto_diag => 1 });
+    open my $fh, "<:encoding(utf8)", $csvfile or die "Error opening $csvfile $!";
+
+    # Skip header line
+    $csv->getline ($fh);
+
+    my $linenum = 2; # 1-based Starting on second line because we skipped the header
+
+    while (my $row = $csv->getline ($fh))
+    {
+        my @ar = @{$row};
+        my $error = checkCSVLine(\@ar);
+        if($error == 1)
+        {
+            push @edsObjects, new edsService(@ar);
+        }
+        else
+        {
+            push @csvReadErrors, "Line $linenum : $error";
+        }
+        $linenum++;
+    }
+    close $fh;
+    return \@edsObjects;
+}
+
+sub checkCSVLine
+{
+    my $row = shift;
+    my @ar = @{$row};
+    return "Incorrect number of columns" if($#ar != $#csvSanityCheck);
+    for my $pos(0..$#ar)
+    {
+        my $check = @csvSanityCheck[$pos];
+        if( !(@ar[$pos] =~ m/$check/))
+        {
+            return "CSV column number $pos did not pass the sanity check";
+        }
+        $pos++;
+    }
+    return 1;
+}
+
+sub boxText
+{
+    my $text = shift;
+    my $hChar = shift || '#';
+    my $vChar = shift || '|';
+    my $padding = shift || 2;
+    my $ret = "";
+    my $longest = 0;
+    my @lines = split(/\n/,$text);
+    length($_) > $longest ? $longest = length($_) : '' foreach(@lines);
+    my $totalLength = $longest + (length($vChar)*2) + ($padding *2) + 2;
+    my $heightPadding = ($padding / 2 < 1) ? 1 : $padding / 2;
+
+    # Draw the first line
+    my $i = 0;
+    while($i < $totalLength)
+    {
+        $ret.=$hChar;
+        $i++;
+    }
+    $ret.="\n";
+    # Pad down to the data line
+    $i = 0;
+    while( $i < $heightPadding )
+    {
+        $ret.="$vChar";
+        my $j = length($vChar);
+        while( $j < ($totalLength - (length($vChar))) )
+        {
+            $ret.=" ";
+            $j++;
+        }
+        $ret.="$vChar\n";
+        $i++;
+    }
+
+    foreach(@lines)
+    {
+        # data line
+        $ret.="$vChar";
+        $i = -1;
+        while($i < $padding )
+        {
+            $ret.=" ";
+            $i++;
+        }
+        $ret.=$_;
+        $i = length($_);
+        while($i < $longest)
+        {
+            $ret.=" ";
+            $i++;
+        }
+        $i = -1;
+        while($i < $padding )
+        {
+            $ret.=" ";
+            $i++;
+        }
+        $ret.="$vChar\n";
+    }
+    # Pad down to the last
+    $i = 0;
+    while( $i < $heightPadding )
+    {
+        $ret.="$vChar";
+        my $j = length($vChar);
+        while( $j < ($totalLength - (length($vChar))) )
+        {
+            $ret.=" ";
+            $j++;
+        }
+        $ret.="$vChar\n";
+        $i++;
+    }
+     # Draw the last line
+    $i = 0;
+    while($i < $totalLength)
+    {
+        $ret.=$hChar;
+        $i++;
+    }
+    $ret.="\n";
+    return $ret;
+}
