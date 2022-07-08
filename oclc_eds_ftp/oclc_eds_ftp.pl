@@ -5,10 +5,14 @@ use Data::Dumper;
 use Getopt::Long;
 use Text::CSV;
 use Email::MIME;
+use Email::Sender::Simple qw(sendmail);
 use edsService;
 
 my $csvfile;
 my $summaryemailaddress;
+our $debug = 0;
+my $noftp = 0;
+my $nomovefiles = 0;
 our $fromemailaddress;
 my $emailsubject = "MOBIUS Weekly OCLC EDS Summary";
 our @csvReadErrors = ();
@@ -32,18 +36,17 @@ GetOptions
     "csv=s" => \$csvfile,
     "summaryemailaddress=s" => \$summaryemailaddress,
     "emailsubject=s" => \$emailsubject,
-    "fromemailaddress=s" => \$fromemailaddress
+    "fromemailaddress=s" => \$fromemailaddress,
+    "debug" => \$debug,
+    "noftp" => \$noftp,
+    "nomovefiles" => \$nomovefiles
 )
+or printHelp();
 
-or die("
-Please give me the path to the CSV file and a global email address
---csv [path]
---summaryemailaddress [email address]
---emailsubject
---fromemailaddress
-\n");
-
-
+if(!$csvfile || !$summaryemailaddress || !$emailsubject || !$fromemailaddress)
+{
+    printHelp();
+}
 
 my @edsObjects = @{readCSV($csvfile)};
 
@@ -53,17 +56,22 @@ my @edsObjects = @{readCSV($csvfile)};
 my %uniqueEmailSuccess = ();
 my @errorPOS = ();
 
-my $arpos = 0;
+my $arpos = -1;
 foreach(@edsObjects)
 {
+    $arpos++;
+    undef $thisEDS; # in case there is bleed from loop to loop
     my $thisEDS = $_;
+    print "$arpos : " . $thisEDS->getLibraryName() ."\n" if $debug;
     if($thisEDS->getRelatedFilesNum() > 0) # make sure there are files to process for any given object
     {
-        print "Got files: " .$thisEDS->getLibraryName() ."\n";
+        print "Got files: " .$thisEDS->getLibraryName() ." ." . $thisEDS->getFilenameReplacer() . "\n" if $debug;
+        print "Number: $arpos\n" if $debug;
+        print Dumper($thisEDS) if $debug;
         $thisEDS->readFilesContents();
         push @errorPOS, $arpos if($thisEDS->getTotalErrors() != 0);
         next if($thisEDS->getTotalErrors() != 0); # next object if we had an error here
-        $thisEDS->sendFTP();
+        $thisEDS->sendFTP() if !$noftp;
         push @errorPOS, $arpos if($thisEDS->getTotalErrors() != 0);
         next if($thisEDS->getTotalErrors() != 0); # next object if we had an error here
 
@@ -72,55 +80,62 @@ foreach(@edsObjects)
         @ar = @{$uniqueEmailSuccess{$thisEmail}} if $uniqueEmailSuccess{$thisEmail};
         push @ar, $arpos;
         $uniqueEmailSuccess{$thisEmail} = \@ar;
-        $thisEDS->moveFilesToArchive();
+        $thisEDS->moveFilesToArchive() if !$nomovefiles;
         push @errorPOS, $arpos if($thisEDS->getTotalErrors() != 0); # this is a non-fatal error, but we need to report it anyway
     }
-    $arpos++;
 }
 
 # And now the summary email to the summaryemailaddress
-my $summaryBody = boxText("Full Summary") . "\r\n";
+my $summaryBody = boxText("Full Summary") . "\n";
 # Loop through all of our successful processes per email address
 while ((my $internal, my $mvalue ) = each(%uniqueEmailSuccess))
 {
     my @thisGroup = ();
-    my $bodyHeader = "The following EBS records were sent to OCLC this week:\r\n\r\n";
-    my $bodyFooter = "\r\n\r\nThe ICODE1 code for the Adds has been updated to 0 and the Cancels to 200.";
+    my $bodyHeader = "The following EBS records were sent to OCLC this week:\n\n";
+    my $bodyFooter = "\n\nThe ICODE1 code for the Adds has been updated to 0 and the Cancels to 200.";
     push @thisGroup, @edsObjects[$_] foreach(@{$mvalue});
     my $thisSubject = composeSubject(\@thisGroup);
     my $thisBody = composeBody(\@thisGroup);
-    $summaryBody .= boxText($thisSubject) . "\r\n\r\n";
-    $summaryBody .= "To: $internal\r\n";
-    $summaryBody .= "\r\nBody:\r\n$thisBody\r\n";
-    my @allEmailAddresses = split(/\s*/, $internal); # The CSV could specify more than one email address space delimited
-    emailsend($thisSubject, $bodyHeader.$thisBody.$bodyFooter, @allEmailAddresses);
+    $summaryBody .= boxText($thisSubject) . "\n\n";
+    $summaryBody .= "To: $internal\n";
+    $summaryBody .= "\nBody:\n$thisBody\n";
+    my @allEmailAddresses = split(/\s+/, $internal); # The CSV could specify more than one email address space delimited
+    emailsend($thisSubject, $bodyHeader.$thisBody.$bodyFooter, @allEmailAddresses) if !$debug;
+    emailsend($thisSubject, $bodyHeader.$thisBody.$bodyFooter, $summaryemailaddress) if $debug;
 }
 
-
+my $subjectErrorMessage = "Success";
 if($#errorPOS > -1 || $#csvReadErrors > -1) # don't bother putting an error section if there were none
 {
+    $subjectErrorMessage = "SOME ERRORS";
     $summaryBody .= boxText("ERRORS",'!','!',7);
-    if($#csvReadErrors)
+    if($#csvReadErrors > -1)
     {
         $summaryBody .= boxText("CSV File Issues");
         foreach(@csvReadErrors)
         {
-            $summaryBody .= $_."\r\n";
+            $summaryBody .= $_."\n";
         }
     }
-    foreach(@errorPOS)
+    if($#errorPOS > -1)
     {
-        my $thisEDS = @edsObjects[$_];
-        my @thisErrors = @{$thisEDS->getErrors()};
-        $summaryBody .= boxText($thisEDS->getLibraryName());
-        foreach(@thisErrors)
+        $summaryBody .= boxText("Data File Issues");
+        foreach(@errorPOS)
         {
-            $summaryBody .= $_ ."\r\n";
+            my $thisEDS = @edsObjects[$_];
+            my @thisErrors = @{$thisEDS->getErrors()};
+            $summaryBody .= boxText($thisEDS->getLibraryName());
+            foreach(@thisErrors)
+            {
+                $summaryBody .= $_ ."\n";
+            }
+            undef $thisEDS;
         }
     }
 }
 
-# emailsend($emailsubject . " - Admin Complete Summary", $summaryBody, $summaryemailaddress);
+
+emailsend($emailsubject . " - [$subjectErrorMessage] Admin Complete Summary", $summaryBody, $summaryemailaddress);
 
 sub composeSubject
 {
@@ -132,12 +147,12 @@ sub composeSubject
     my $recordTotal = 0;
     foreach(@group)
     {
-        $libNames .= $_->getLibraryName() .",";
+        $libNames .= $_->getLibraryName() .", ";
         $libTotal++;
         $fileTotal += $_->getRelatedFilesNum();
         $recordTotal += $_->getTotalRecords();
     }
-    $libNames = substr($libNames, 0, -1); #chop off the last comma
+    $libNames = substr($libNames, 0, -2); #chop off the last comma
 
     return $emailsubject . " - libraries: $libNames $fileTotal file(s) and $recordTotal record(s)";
 }
@@ -183,12 +198,7 @@ sub emailsend  	#subject, body
         },
         body_str => $body
     );
-
-    use Email::Sender::Simple qw(sendmail);
     sendmail($message);
-    print "Got some email addresses in the to:\n";
-    print Dumper(\@to);
-    exit;
 }
 
 sub readCSV
@@ -196,7 +206,7 @@ sub readCSV
     my $csvfile = shift;
     my @edsObjects = ();
     # Read/parse CSV
-    print "reading CSV: $csvfile\n";
+    print "reading CSV: $csvfile\n" if $debug;
     my $csv = Text::CSV->new ({ binary => 1, auto_diag => 1 });
     open my $fh, "<:encoding(utf8)", $csvfile or die "Error opening $csvfile $!";
 
@@ -324,4 +334,20 @@ sub boxText
     }
     $ret.="\n";
     return $ret;
+}
+
+sub printHelp
+{
+    print "
+Please give me the path to the CSV file and a global email address
+
+    --csv [required, path to the csv]
+    --summaryemailaddress [required, where to send the summary message email address]
+    --emailsubject [required, provide a quoted string for the prepended subject line]
+    --fromemailaddress [required, provide the 'from' email address to forge the message from]
+    --debug [not required, flag, causes the emails to only go to the 'summaryemailaddress']
+    --noftp [not required, flag, causes the software to skip the FTP portion]
+    --nomovefiles [not required, flag, causes the software to leave the files where they are]
+";
+    exit;
 }

@@ -5,6 +5,7 @@ use MARC::Record;
 use MARC::File;
 use MARC::File::USMARC;
 use File::Copy;
+use Net::FTP;
 
 sub new
 {
@@ -31,7 +32,6 @@ sub _init
         emailsuccess => shift @args,
         filenamereplacer => shift @args,
         libraryname => shift @args,
-        subjectfail => shift @args,
         finaldest => shift @args,
         errors => \@errors,
         totalerrors => 0,
@@ -85,10 +85,11 @@ sub getTotalRecords
 
 sub getEmailBlurb
 {
+    my $self = shift;
     my $ret = "";
     while ((my $internal, my $mvalue ) = each(%{$self->{filestats}}))
     {
-        $ret .= $self->{filenamereplacer} . " $mvalue records\r\n";
+        $ret .= $self->{filenamereplacer} . ": $mvalue records\n";
     }
     return $ret;
 }
@@ -115,14 +116,13 @@ sub readFilesContents
             1;  # ok
         } or do
         {
-            $file->close();
             addError($self, "Couldn't read MARC file: $marcfile");
         };
         $file->close();
         undef $file;
     }
     $self->{filestats} = \%fileStats;
-    $self->{totalrecords} = \%totalRecords;
+    $self->{totalrecords} = $totalRecords;
 }
 
 sub getTotalErrors
@@ -192,12 +192,11 @@ sub dirtrav
 sub sendFTP
 {
     my $self = shift;
-    # my @files = @{$self->{relatedfiles}};
-    my @files = ('/mnt/evergreen/tmp/oclc_eds_ftp/dummy.txt');
+    my @files = @{$self->{relatedfiles}};
     local $@;
     eval
     {
-        _sendFTP($self, $self->{ftpserver}, $self->{ftpuser}, $self->{ftppass}, $self->{ftpfolder}, \@files);
+        _sendFTP($self, $self->{ftpserver}, $self->{ftpuser}, $self->{ftppass}, $self->{ftpfolder}, @files);
         1;  # ok
     } or do
     {
@@ -209,8 +208,6 @@ sub _sendFTP   # server,login,password,remote directory, array of local files to
 {
     my $self = shift;
     my ($hostname, $login, $pass, $remotedir, @files) = @_;
-
-    die "Testing and error ".$hostname;
 
     my $ftp = Net::FTP->new($hostname, Debug => 0, Passive=> 1)
     or die "Cannot connect to ".$hostname;
@@ -230,7 +227,6 @@ sub _sendFTP   # server,login,password,remote directory, array of local files to
 sub moveFilesToArchive
 {
     my $self = shift;
-    print "Moving files to archive\n";
     my $destination = $self->{finaldest};
     if( !(-d $destination) ) # make sure the folder exists
     {
@@ -241,11 +237,10 @@ sub moveFilesToArchive
         foreach(@{$self->{relatedfiles}})
         {
             my $file = $_;
-            if(!(copy($file, $destination)))
+            if(!(move($file, $destination)))
             {
                 addError($self, "Could not move file: $file -> $destination");
             }
-            print "Moved $file to $destination\n";
         }
     }
 }
