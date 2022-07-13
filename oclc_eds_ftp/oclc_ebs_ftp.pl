@@ -14,7 +14,7 @@ our $debug = 0;
 my $noftp = 0;
 my $nomovefiles = 0;
 our $fromemailaddress;
-my $emailsubject = "MOBIUS Weekly OCLC EDS Summary";
+my $emailsubject = "MOBIUS Weekly OCLC EBS Summary";
 our @csvReadErrors = ();
 
 our @csvSanityCheck =
