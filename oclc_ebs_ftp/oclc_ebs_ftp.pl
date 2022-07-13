@@ -98,7 +98,7 @@ while ((my $internal, my $mvalue ) = each(%uniqueEmailSuccess))
     my $thisBody = composeBody(\@thisGroup);
     $summaryBody .= boxText($thisSubject) . "\n\n";
     $summaryBody .= "To: $internal\n";
-    $summaryBody .= "\nBody:\n$thisBody\n";
+    $summaryBody .= "\nBody:\n$bodyHeader $thisBody $bodyFooter\n";
     my @allEmailAddresses = split(/\s+/, $internal); # The CSV could specify more than one email address space delimited
     emailsend($thisSubject, $bodyHeader.$thisBody.$bodyFooter, @allEmailAddresses) if !$debug;
     emailsend($thisSubject, $bodyHeader.$thisBody.$bodyFooter, $summaryemailaddress) if $debug;
@@ -147,10 +147,13 @@ sub composeSubject
     my $recordTotal = 0;
     foreach(@group)
     {
-        $libNames .= $_->getLibraryName() .", ";
-        $libTotal++;
-        $fileTotal += $_->getRelatedFilesNum();
-        $recordTotal += $_->getTotalRecords();
+        if($_->getTotalRecords() > 0)
+        {
+            $libNames .= $_->getLibraryName() .", ";
+            $libTotal++;
+            $fileTotal += $_->getRelatedFilesNum();
+            $recordTotal += $_->getTotalRecords();
+        }
     }
     $libNames = substr($libNames, 0, -2); #chop off the last comma
 
@@ -164,7 +167,10 @@ sub composeBody
     my $ret = "";
     foreach(@group)
     {
-        $ret .= $_->getEmailBlurb();
+        if($_->getTotalRecords() > 0)
+        {
+            $ret .= $_->getEmailBlurb();
+        }
     }
     return $ret;
 }
