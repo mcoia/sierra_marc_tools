@@ -178,33 +178,75 @@ sub composeBody
 sub emailsend  	#subject, body
 {
     my ($subject, $body, @to) = @_;
-    my @headerArray = ();
-    
-    push(@headerArray, "From");
-    push(@headerArray, $fromemailaddress);
 
-    for my $r (0.. $#to)
-    {
-        push(@headerArray, "To");
-        push(@headerArray, @to[$r]);
-    }
+    @to = @{_deDupeEmailArray(\@to)};
 
-    push(@headerArray, "Subject");
-    push(@headerArray, $subject);
-
-    $body .= "\n"; # make sure we've got some space at the bottom :)
-
-    my $message = Email::MIME->create
-    (
-        header_str => [@headerArray],
-        attributes =>
-        {
+    my $message = Email::MIME->create(
+        header_str => [
+            From    => $fromemailaddress,
+            To      => [ @to ],
+            Subject => $subject
+        ],
+        attributes => {
             encoding => 'quoted-printable',
             charset  => 'ISO-8859-1',
         },
-        body_str => $body
+        body_str => "$body\n"
     );
+
     sendmail($message);
+}
+
+sub _deDupeEmailArray
+{
+    my $emailArrayRef = shift;
+    my @emailArray    = @{$emailArrayRef};
+    my %posTracker    = ();
+    my %bareEmails    = ();
+    my $pos           = 0;
+    my @ret           = ();
+
+    foreach (@emailArray)
+    {
+        my $thisEmail = $_;
+
+        print "processing: '$thisEmail'\n" if $debug;
+
+        # if the email address is expressed with a display name,
+        # strip it to just the email address
+        $thisEmail =~ s/^[^<]*<([^>]*)>$/$1/g if ( $thisEmail =~ m/</ );
+
+        # lowercase it
+        $thisEmail = lc $thisEmail;
+
+        # Trim the spaces
+        $thisEmail = _trim($thisEmail);
+
+        print "normalized: '$thisEmail'\n" if $debug;
+
+        $bareEmails{$thisEmail} = 1;
+        if ( !$posTracker{$thisEmail} )
+        {
+            my @a = ();
+            $posTracker{$thisEmail} = \@a;
+            print "adding: '$thisEmail'\n" if $debug;
+        }
+        else
+        {
+            print "deduped: '$thisEmail'\n" if $debug;
+        }
+        push( @{ $posTracker{$thisEmail} }, $pos );
+        $pos++;
+    }
+    while ( ( my $email, my $value ) = each(%bareEmails) )
+    {
+        my @a = @{ $posTracker{$email} };
+
+        # just take the first occurance of the duplicate email
+        push( @ret, @emailArray[ @a[0] ] );
+    }
+
+    return \@ret;
 }
 
 sub readCSV
