@@ -38,7 +38,8 @@ sub new
     return $self;
 }
 
-sub send    #subject, body
+#subject, body
+sub send
 {
     my $self    = shift;
     my $subject = shift;
@@ -55,6 +56,60 @@ sub send    #subject, body
             charset  => 'ISO-8859-1',
         },
         body_str => "$body\n"
+    );
+
+    use Email::Sender::Simple qw(sendmail);
+
+    _reportSummary( $self, $subject, $body );
+
+    sendmail($message);
+
+    print "Sent\n" if $self->{debug};
+}
+
+sub sendHTML
+{
+    my $self           = shift;
+    my $subject        = shift;
+    my $bodyText       = shift;
+    my $bodyHTML       = shift;
+    my $boundaryLength = 32;
+    my $boundary       = _generateRandomString($boundaryLength);
+
+    while ( index( $bodyHTML, $boundary ) != -1 )
+    {
+        $boundary = _generateRandomString($boundaryLength);
+    }
+
+    my @bodyLines = (
+        '--' . $boundary,
+        'Content-Type: text/plain; charset="UTF-8"',
+        "\n" . $bodyText . "\n",
+        '--' . $boundary,
+        'Content-Type: text/html; charset="UTF-8"',
+        'Content-Transfer-Encoding: quoted-printable',
+        "\n" . $bodyHTML . "\n",
+        '--' . $boundary . '--',
+    );
+    my $body_str = '';
+    $body_str .= "$_\n" foreach (@bodyLines);
+
+    print $body_str . "\n";
+
+    # construct our email
+    my $message = Email::MIME->create(
+        header_str => [
+            From    => $self->{fromEmailAddress},
+            To      => [ @{ $self->{finalToEmailList} } ],
+            Subject => $subject,
+        ],
+        attributes => {
+            encoding     => 'quoted-printable',
+            charset      => 'ISO-8859-1',
+            content_type => 'multipart/alternative',
+            boundary     => $boundary,
+        },
+        body_str => $body_str
     );
 
     use Email::Sender::Simple qw(sendmail);
@@ -119,9 +174,11 @@ sub _setupFinalToList
 
     undef @varMap;
 
-    push( @ret, @{ $self->{emailRecipientArray} } ) if ( $self->{emailRecipientArray}->[0] );
+    push( @ret, @{ $self->{emailRecipientArray} } )
+      if ( $self->{emailRecipientArray}->[0] );
 
-    push( @ret, @{ $self->{successemaillist} } ) if ( $self->{'notifySuccess'} );
+    push( @ret, @{ $self->{successemaillist} } )
+      if ( $self->{'notifySuccess'} );
 
     push( @ret, @{ $self->{erroremaillist} } ) if ( $self->{'notifyError'} );
 
@@ -236,7 +293,8 @@ sub _reportSummary
     }
 
     $fileSizeTotal += $bodySize;
-    print "!!!WARNING!!! Email (w/attachments) Exceeds Standard 25MB\n" if ( $fileSizeTotal > 25 );
+    print "!!!WARNING!!! Email (w/attachments) Exceeds Standard 25MB\n"
+      if ( $fileSizeTotal > 25 );
     print "\n";
 
 }
@@ -247,6 +305,26 @@ sub _trim
     $string =~ s/^\s+//;
     $string =~ s/\s+$//;
     return $string;
+}
+
+sub _generateRandomString
+{
+    my $length  = shift;
+    my $i       = 0;
+    my $ret     = "";
+    my @letters = ( "a" .. "z" );
+    my @nums    = ( 0 .. 9 );
+    my @all     = ( [@letters], [@nums] );
+    while ( $i < $length )
+    {
+        my $r   = int( rand( $#all + 1 ) );
+        my @t   = @{ @all[$r] };
+        my $int = int( rand( $#t + 1 ) );
+        $ret .= @{ $all[$r] }[$int];
+        $i++;
+    }
+
+    return $ret;
 }
 
 1;
