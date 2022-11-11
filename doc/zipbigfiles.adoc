@@ -1,0 +1,90 @@
+# zipbigfiles.pl
+
+This program compresses files of a given age in a specified directory & removes the uncompressed file saving valuable hdd space.
+
+If a compressed file is older than the specified date it is removed and a report is generated & emailed to the recipient.
+
+Here is a list of parameters the command can receive. It can be called with
+
+    zipbigfiles.pl --help
+```
+Usage: zipbigfiles.pl [OPTION]...
+gZip files in the specified directory of a certain age while removing files of a certain age.
+
+Mandatory arguments
+--path              Path to files that will be gzipped.
+--outputFile        Name of the html report file.
+--daysToCompress    Number of days old the file has to be before it is skipped & not gzipped.
+--daysToDelete      Number of days old the file has to be before it is deleted.
+--daysToDrop        Number of days we keep records in the report.
+--emailType         Email Plain Text or HTML. 0 = Plain, 1 = HTML
+--emailTo           Email address to send the final report to.
+--emailFrom         Email address of the sender.
+--htmlFilePath      HTML file to be use for report templating. If none is specified the default will be used. ex: ./index.html
+--debug             Set debug mode for more verbose output. 0 = OFF, 1 = ON.
+```
+
+### This program can also take in an html template with --htmlFilePath
+#### Check getGenericHTMLTemplate() for reference.
+
+## Template Variables
+
+##### The current year
+{{date}}
+
+##### The current time
+{{time}}
+
+##### epoch time the report ran
+data-time="{{reportTimeEpoch}}">
+
+##### The time the report ran. It's the same as {{date}} - {{time}}
+{{reportTime}}
+
+##### The total number of files deleted
+{{totalFilesDeleted}}
+
+##### The total number of directories deleted
+{{totalFoldersDeleted}}
+
+##### The total number of failed deletes
+{{totalFailed}}
+
+##### A list of filepaths of deleted files
+{{deletedFiles}}
+
+##### A list of filepaths of deleted directories
+{{deletedFolders}}
+
+##### A list of filepaths of failed deletes
+{{failed}}
+
+##### The filepath of the report location
+{{outputFile}}
+
+## Delimiters
+#### The delimeters are html comments.
+#### These delimeters mark where the the start and end of the specified locations
+#### The report container wraps all of the report items.
+
+##### Start & End of files that got deleted
+<!-- files-start  -->
+<!-- files-end -->
+
+##### Start & End of directories that got deleted
+<!-- folders-start -->
+<!-- folders-end -->
+
+##### Start & End of the failed items
+<!-- failed-start -->
+<!-- failed-end -->
+
+##### This is the wrapper for the individual reports themselves.
+##### Put the container start at the beginning of the html, the end at the end.
+<!-- report-container-start -->
+<!-- report-container-end -->
+
+##### This is where all the previous data goes.
+<!-- old-data-here -->
+
+
