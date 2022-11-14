@@ -60,7 +60,11 @@ my $emailTo = '';
 my $emailFrom = '';
 
 # The filename
-my $HTMLFilePath = '';
+my $HTMLFilePath;
+
+# The Email subject
+my $emailSubject = 'Old File Deletion Report';
+
 
 # Debug - default to OFF
 my $debug = 0;
@@ -79,7 +83,8 @@ Mandatory arguments
 --emailTo           Email address to send the final report to.
 --emailFrom         Email address of the sender.
 --htmlFilePath      HTML file to be use for report templating. If none is specified the default will be used. ex: ./index.html
---debug             Set debug mode for more verbose output. 0 = OFF, 1 = ON.
+--emailSubject      Custom Email Subject string, defaults to 'Old File Deletion Report'
+--debug             Set debug mode for more verbose output.
 ";
 
 GetOptions(
@@ -93,7 +98,8 @@ GetOptions(
     "emailTo=s"        => \$emailTo,
     "emailFrom=s"      => \$emailFrom,
     "htmlFilePath=s"   => \$HTMLFilePath,
-    "debug=i"          => \$debug,
+    "emailSubject=s"   => \$emailSubject,
+    "debug"            => \$debug,
 );
 
 printHelp();
@@ -132,8 +138,8 @@ sub main
         # Check the age of the file & if it's already zipped or gzipped
         if (   $fileDaysOld > $daysToCompress
             && !( -d $file )
-            && ( $fileExtension ne "zip" )
-            && ( $fileExtension ne "gz" ) )
+            && ( lc $fileExtension ne "zip" )
+            && ( lc $fileExtension ne "gz" ) )
         {
 
             # zip our file
@@ -436,7 +442,7 @@ sub buildHTML
     my $HTML = '';
 
     # If we don't pass in an email template then we'll use a generic one.
-    if ( $HTMLFilePath eq '' )
+    if ( !$HTMLFilePath )
     {
         print "from generic template \n";
         $HTML = getGenericHTMLTemplate();
@@ -742,13 +748,13 @@ sub sendEmailReport
     # Plain Text
     if ( $emailType == 0 )
     {
-        $email->send( "Old File Deletion Report", $emailPlainText );
+        $email->send( $emailSubject, $emailPlainText );
     }
 
     # HTML
     if ( $emailType == 1 )
     {
-        $email->sendHTML( "Old File Deletion Report", $emailPlainText, $emailHTML );
+        $email->sendHTML( $emailSubject, $emailPlainText, $emailHTML );
     }
 
 }
@@ -854,7 +860,7 @@ sub getHTMLFromFileSystem
 {
 
     # open file
-    open( FILE, '<', $HTMLFilePath ) or die "Could not open html file.";
+    open( FILE, '<', $HTMLFilePath ) or return getGenericHTMLTemplate();
 
     my $html = '';
     while (<FILE>)
