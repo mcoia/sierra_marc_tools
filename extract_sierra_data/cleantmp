@@ -1,0 +1,19 @@
+#!/bin/bash
+
+# Keeping this here for easy kill. Good for debugging
+#ps -ef | grep summon | grep -v apache | grep -v grep | awk '{print $2}' | xargs kill -9
+
+scriptrunning=$(ps aux|grep "summon"|grep -v "grep"|wc -l)
+#echo $scriptrunning
+if [ "$scriptrunning" -gt "2" ]
+then
+echo "It's running"
+else
+find /tmp/ -name *scrap* -type f -exec rm {} \;
+rm -f /tmp/range*
+rm -f /tmp/*sierr*
+rm -f /tmp/*master*
+rm -f /tmp/*xml
+rm -f /mnt/evergreen/tmp/temp/*
+fi
+

@@ -30,6 +30,7 @@
 # 2013-1-24
 
 package sierraScraper;
+ use lib qw(.);
  use MARC::Record;
  use MARC::File;
  use MARC::File::USMARC;
@@ -55,6 +56,7 @@ package sierraScraper;
     my %f=();
     my %g=();
     my %h=();
+    my %j=();
     my @i=();
     my $mobutil = new Mobiusutil();
     my $pidfile = new Loghandler($mobutil->chooseNewFileName('/tmp','scraper_pid','pid'));
@@ -70,6 +72,7 @@ package sierraScraper;
         'leader' => \%f,
         'standard' => \%g,
         'nine98' => \%h,
+        'nine02' => \%j,
         'selects' => "",
         'querytime' => 0,
         'query' => "",
@@ -86,7 +89,8 @@ package sierraScraper;
         'maxdbconnection' => 3,
         'current_query' => '',
         'query_log' => \@i,
-        'bursar' => shift
+        'libraryname' => 'temp',
+        'bursar' => shift,
     };
 
     my $t = shift;
@@ -94,6 +98,7 @@ package sierraScraper;
     $self->{'pathtothis'} = shift;
     $self->{'conffile'} = shift;
     my $m = shift;
+    $self->{'libraryname'} = shift;
     my $launch = shift;
     if(!defined $launch)
     {
@@ -119,15 +124,18 @@ package sierraScraper;
         }
         bless $self, $class;
         figureSelectStatement($self);
-        my $max = findMaxRecordCount($self,$self->{'selects'});
-        #print "Max calc: $max\n";
-        if(($t) && ($t ne 'thread') && ($max > 5000))
+        if(($t) && ($t ne 'thread'))
         {
-        gatherDataFromDB_spinThread_Controller($self, $max);
-        }
-        elsif(($t) && ($t eq 'full'))
-        {
-        gatherDataFromDB_spinThread_Controller($self, $max);
+            my $max = findMaxRecordCount($self,$self->{'selects'});
+            print "Expecting: $max records\n";
+            if($max > 5000)
+            {  
+                gatherDataFromDB_spinThread_Controller($self, $max);
+            }
+            else
+            {
+                gatherDataFromDB($self);
+            }
         }
         elsif(($t) && ($t eq 'thread'))
         {
@@ -154,9 +162,10 @@ package sierraScraper;
     $self->{'selects'} =~ s/\$recordSearch/SIERRA_VIEW.BIB_RECORD.RECORD_ID/gi;
     stuffStandardFields($self);
     stuffSpecials($self);
-    stuff945($self);
+    # stuff945($self);
+    # stuff902($self);
     stuff907($self);
-    stuff998alternate($self);
+    # stuff998alternate($self);
     stuffLeader($self);
     my $secondsElapsed = calcTimeDiff($self,$previousTime);
     if($secondsElapsed < 1)
@@ -212,11 +221,12 @@ package sierraScraper;
     #print "stuffSpecials\n";
     stuffSpecials($self);
     #print "stuff945\n";
-    stuff945($self);
-    #print "stuff907\n";
+    # stuff945($self);
+    # stuff902($self);
+    # #print "stuff907\n";
     stuff907($self);
-    #print "stuff998alternate\n";
-    stuff998alternate($self);
+    # #print "stuff998alternate\n";
+    # stuff998alternate($self);
     #print "stuffLeader\n";
     stuffLeader($self);
     #print "Done stuffing\n";
@@ -228,7 +238,7 @@ package sierraScraper;
     my @dumpedFiles = (0);
     @dumpedFiles = @{dumpRamToDisk($self, \@dumpedFiles,1)};
     $self->{'diskdump'}=\@dumpedFiles;
-    #print "Dumped files\n";
+    # print "Dumped files\n";
     return $currentRecordCount;
  }
 
@@ -601,8 +611,9 @@ package sierraScraper;
                                 my $thisPid = $mobUtil->chooseNewFileName("/tmp",$pidFileNameStart,"sierrapid");
                                 my $ty = $self->{'type'};
                                 # print "Spwaning: $thisPid\n";
-                                #print "Spawning: $pathtothis $conffile thread $thisOffset $thisIncrement $thisPid $dbuser $ty\n";
-                                system("$pathtothis $conffile thread $thisOffset $thisIncrement $thisPid $dbuser $ty &");
+                                # print "Spawning: $pathtothis $conffile thread $thisOffset $thisIncrement $thisPid $dbuser $ty '".$self->{'title'}."'\n";
+                                # exit;
+                                system("$pathtothis $conffile thread $thisOffset $thisIncrement $thisPid $dbuser $ty '".$self->{'title'}."' &");
                                 $dbUserTrack{$dbuser}++;
                                 my @ran = ($thisPid,$thisOffset,$thisIncrement,0,$dbuser);
                                 push(@threadTracker,[@ran]);
@@ -698,6 +709,7 @@ package sierraScraper;
         $max = @row[0];
     }
     #print "max: $max\n";
+    # return 6000 if $max > 6000;
     return $max;
  }
 
@@ -845,7 +857,7 @@ package sierraScraper;
     (SELECT MARC_IND1 FROM SIERRA_VIEW.SUBFIELD_VIEW WHERE VARFIELD_ID=A.ID LIMIT 1),
     (SELECT MARC_IND2 FROM SIERRA_VIEW.SUBFIELD_VIEW WHERE VARFIELD_ID=A.ID LIMIT 1),
     RECORD_ID FROM SIERRA_VIEW.VARFIELD_VIEW A WHERE A.RECORD_ID IN($selects) ORDER BY A.MARC_TAG, A.OCC_NUM";
-    #print "$query\n";
+
     recordQuery($self, $query);
     $pidfile->truncFile($query);
     my @results = @{$dbHandler->query($query)};
@@ -875,7 +887,7 @@ package sierraScraper;
             {
                 $ind2=' ';
             }
-            #print "Pushing ".@row[1]."\n";
+            # print "Pushing ".@row[1]."\n";
             push(@{$standard{$recordID}},new recordItem(@row[0],$ind1,$ind2,@row[1]));
         }
     }
@@ -1007,21 +1019,8 @@ sub stuff945
     my $query = "SELECT
 svbr.id,
 sviv.id,
-concat('|g',sviv.copy_num) as \"g\",
-concat('|i',regexp_replace(sviv.barcode,'\\|','','g')) as \"i\",
-concat('|j',sviv.agency_code_num) as \"j\",
-concat('|l',regexp_replace(sviv.location_code,'\\|','','g')) as \"l\",
-concat('|o',regexp_replace(sviv.icode2,'\\|','','g')) as \"o\",
-concat('|p\$',trim(to_char(sviv.price,'9999999999990.00'))) as \"p\",
-concat('|q',regexp_replace(sviv.item_message_code,'\\|','','g')) as \"q\",
-concat('|r',regexp_replace(sviv.opac_message_code,'\\|','','g')) as \"r\",
-concat('|s',regexp_replace(sviv.item_status_code,'\\|','','g')) as \"s\",
-concat('|t',sviv.itype_code_num) as \"t\",
-concat('|u',sviv.checkout_total) as \"u\",
-concat('|v',sviv.renewal_total) as \"v\",
-concat('|w',sviv.year_to_date_checkout_total) as \"w\",
-concat('|x',sviv.last_year_to_date_checkout_total) as \"x\",
-concat('|z',to_char(min(mvrm.creation_date_gmt), 'mm-dd-yy')) as \"z\"
+concat('|a',svbr.id) as \"a\",
+concat('|b',sviv.id) as \"b\"
 from
 sierra_view.item_view sviv
 left join SIERRA_VIEW.record_metadata mvrm on (mvrm.record_num=sviv.record_num AND mvrm.record_type_code='i'),
@@ -1035,7 +1034,7 @@ WHERE
 svbr.record_id = selects.record_id AND
 svbrir.bib_record_id=svbr.id AND
 sviv.id=svbrir.item_record_id
-group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16
+group by 1,2,3,4
 ";
     my $pidfile = $self->{'pidfile'};
     $pidfile->truncFile($query);
@@ -1069,12 +1068,8 @@ group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16
             $t{$subItemID} = $#{$nineHundreds{$recordID}}+1;
             $tracking{$recordID} = \%t;
         }
-        else
-        {
-            $log->addLogLine("945 Scrape: Huston, we have a problem, the query returned more than one of the same item(duplicate 945 record) - $recordID");
-        }
         my $all;
-        foreach my $b (2..$#row)
+        foreach my $b (3..$#row)
         {
             $all = $all.@row[$b];
         }
@@ -1092,12 +1087,13 @@ sub stuff907
     my $log = $self->{'log'};
     my %nine07 = %{$self->{'nine07'}};
     my $selects = $self->{'selects'};
-    my $query = "SELECT A.ID,RECORD_TYPE_CODE,RECORD_NUM,
-    CONCAT(
-    CONCAT('|b',TO_CHAR(A.RECORD_LAST_UPDATED_GMT, 'MM-DD-YY')),
-    CONCAT('|c',TO_CHAR(A.CREATION_DATE_GMT, 'MM-DD-YY'))
-    )
-    FROM SIERRA_VIEW.RECORD_METADATA A WHERE A.ID IN($selects)";
+    my $query = "SELECT A.ID,
+    concat('|a', A.RECORD_NUM, '|b".$self->{'libraryname'}."', '|z', svbr.is_suppressed)
+    FROM SIERRA_VIEW.RECORD_METADATA A,
+    sierra_view.bib_record svbr
+    WHERE
+    svbr.id=A.ID and
+    A.ID IN($selects)";
     my $pidfile = $self->{'pidfile'};
     $pidfile->truncFile($query);
     #print "$query\n";
@@ -1110,17 +1106,64 @@ sub stuff907
         my $row = $_;
         my @row = @{$row};
         my $recordID = @row[0];
-        my $checkDigit = calcCheckDigit($self,$row[2]);
-        my $subA = "|a.".@row[1].@row[2].$checkDigit;
         if(!exists $nine07{$recordID})
         {
             my @a = ();
             $nine07{$recordID} = \@a;
+            push(@{$nine07{$recordID}},new recordItem('907','','',@row[1]));
         }
-        push(@{$nine07{$recordID}},new recordItem('907','','',$subA.@row[3]));
     }
 
     $self->{'nine07'} = \%nine07;
+}
+
+sub stuff902
+{
+    my ($self) = @_[0];
+    my $dbHandler = $self->{'dbhandler'};
+    my $log = $self->{'log'};
+    my %nineHundreds = %{$self->{'nine02'}};
+    my $mobiusUtil = $self->{'mobiusutil'};
+    my $selects = $self->{'selects'};
+
+    my $query = "SELECT
+svbr.id,
+concat('|a',svbr.id) as \"a\",
+concat('|b',svbr.is_suppressed) as \"b\"
+from
+sierra_view.bib_record svbr,
+sierra_view.bib_record_item_record_link svbrir,
+(
+    $selects
+)
+as selects
+WHERE
+svbr.record_id = selects.record_id AND
+svbrir.bib_record_id=svbr.id
+group by 1,2
+";
+    # print "$query\n";
+    my $pidfile = $self->{'pidfile'};
+    $pidfile->truncFile($query);
+    recordQuery($self, $query);
+
+    my $previousTime=DateTime->now;
+    my @results = @{$dbHandler->query($query)};
+    updateQueryDuration($self,$previousTime,$query);
+
+    foreach(@results)
+    {
+        my $row = $_;
+        my @row = @{$row};
+        if(!$nineHundreds{ @row[0] })
+        {
+            my @a = ();
+            push(@a, new recordItem('902',' ',' ',@row[1] . @row[2]) );
+            $nineHundreds{@row[0]} = \@a;
+        }
+    }
+
+    $self->{'nine02'} = \%nineHundreds;
 }
 
 sub stuff998
@@ -1371,7 +1414,7 @@ sub stuff998alternate
     my $log = $self->{'log'};
     my $mobiusUtil = $self->{'mobiusutil'};
     my %leader = %{$self->{'leader'}};
-    my @try = ('nine45','nine07','nine98','specials','standard');
+    my @try = ('nine02','nine45','nine07','nine98','specials','standard');
     my @marcFields;
 
     foreach(@try)
@@ -1411,7 +1454,6 @@ sub stuff998alternate
     if(exists $group{$recID})
     {
         #print "Creating MARC for $recID\n";
-        #print Dumper(\%group);
         @fields = $group{$recID};
         for my $i (0..$#fields)
         {
@@ -1471,6 +1513,7 @@ sub stuff998alternate
     {
         $results = $test;
     }
+    $self->{'log'}->addLine($results);
     $self->{'selects'}  = $results;
 
  }
@@ -1492,124 +1535,6 @@ sub stuff998alternate
     }
     return $checkDigit;
  }
-
- sub getBridgesFiscalInfo
- {
-    my $self = @_[0];
-    my $selects = $self->{'selects'};
-    my $log = $self->{'log'};
-    my $dbHandler = $self->{'dbhandler'};
-    my $outputPath = @_[1];
-
-
-    my $dt   = DateTime->now;
-
-    # Useful for testing.
-    # my $dt = DateTime->new(
-    #     year       => 2018,
-    #     month      => 07,
-    #     day        => 31,
-    #     hour       => 16,
-    #     minute     => 12,
-    #     second     => 47,
-    #     nanosecond => 500000000,
-    #     time_zone  => 'US/Central',
-    # );
-
-    my $ymd    = $dt->ymd;
-
-    my $cyear  = $dt->year;
-    my $cmonth = $dt->month;
-    my $fy = '';
-    if ($cmonth >= 6) {
-       $fy = $cyear.'-06-01'
-    }
-    else {
-       $fy = ($cyear-1).'-06-01';
-    }
-
-
-
-    my $query = '';
-    if(-d $outputPath)
-    {
-        $query = "SELECT
-            i.invoice_number_text        AS \"invoice_number\",
-            il.vendor_code            AS \"vendor\",
-            i.subtotal_amt            AS \"subtotal\",
-            i.grand_total_amt        AS \"grand_total\",
-            i.shipping_amt            AS \"shipping\",
-            il.paid_amt            AS \"paid\",
-            i.record_creation_date_gmt    AS \"invoice_date\",
-            i.record_type_code        AS \"record_type\",
-            i.record_num            AS \"record_number\",
-            i.posted_date_gmt        AS \"posted_date\",
-            il.title            AS \"title\"
-            FROM sierra_view.invoice_view i
-            JOIN sierra_view.invoice_record ir ON ir.record_id = i.id
-            JOIN sierra_view.invoice_record_line il ON il.invoice_record_id = ir.record_id
-            WHERE ir.accounting_unit_code_num = '9'
-            AND ir.posted_data_gmt BETWEEN '".${fy}."' AND '".${ymd}."'
-            ORDER BY i.record_num
-            ";
-
-            $log->addLogLine($query);
-        my @results = @{$dbHandler->query($query)};
-        my @output;
-        my $recordCount = 0;
-
-        foreach(@results)
-        {
-            $recordCount++;
-            my $row = $_;
-            my @row = @{$row};
-
-            my $addThis;
-
-            for my $i (0..$#row)
-            {
-                my $thisVal = @row[$i];
-
-                if($thisVal eq '')
-                {
-                    $thisVal ="(no data)";
-                }
-                $addThis.=$thisVal.'|';
-            }
-            push(@output,$addThis);
-            $addThis=undef;
-        }
-
-        if($#output > -1)
-        {
-            my $datestamp = UnixDate("today", "%Y-%m-%d");
-            my $mobiusUtil = new Mobiusutil();
-            my $header = "invoice_number|vendor|subtotal|grand_total|shipping|paid|invoice_date|record_type|record_num|posted_date|title";
-            my $dt   = DateTime->now;
-            my @outputFiles = ("bridgesFiscal.$datestamp.csv");
-            foreach(@outputFiles)
-            {
-                my $bursarOut = new Loghandler($outputPath.'/'.$_);
-                $bursarOut->deleteFile();
-                $bursarOut->addLine($header);
-                foreach(@output)
-                {
-                    $bursarOut->addLine(substr($_,0,length($_)-1));
-                }
-                $log->addLogLine("Outputted $recordCount record(s) into $outputPath/$_");
-            }
-
-            return 1;
-        }
-    }
-    else
-    {
-        $log->addLogLine("bridgesFiscal - output path does not exist ($outputPath)");
-    }
-    return 0;
-
- }
-
 
  sub updateQueryDuration
  {
@@ -1681,7 +1606,7 @@ sub stuff998alternate
             #print Dumper(@newDump);
         }
 
-        my @try = ('nine45','nine07','nine98','specials','standard');
+        my @try = ('nine02','nine45','nine07','nine98','specials','standard');
         #print "Getting all marc\n";
         my @both = @{getAllMARC($self)};
         my @marc = @{@both[0]};
@@ -1736,7 +1661,7 @@ sub stuff998alternate
         {
             $title=$title."_";
         }
-        my $fileName = $mobUtil->chooseNewFileName("/tmp/temp",$title."tempmarc","mrc");
+        my $fileName = $mobUtil->chooseNewFileName("/mnt/evergreen/tmp/temp",$title."tempmarc","mrc");
         #print "Decided on $fileName \n";
         my $marcout = new Loghandler($fileName);
         $marcout->appendLine($output);

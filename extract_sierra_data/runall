@@ -1,0 +1,22 @@
+#!/bin/bash
+
+./cleantmp
+boxes=("server1" "server2" )
+
+for box in ${boxes[@]}; do
+  echo running $box
+  echo scrubbing previously created folder
+  rm -Rf ${box}
+  rm ${box}.tar.gz
+
+  echo           bibs
+
+  echo ./summon_or_ebsco.pl ${box}.conf full && \
+  time ./summon_or_ebsco.pl ${box}.conf full &> /dev/null  && \
+  echo           non-bibs && \
+  echo ./extract_sierra.pl --config ${box}.conf --schema l_${box} && \
+  time ./extract_sierra.pl --config ${box}.conf --schema l_${box} && \
+  echo Taring it up.... && \
+  tar -zcvf ${box}_$(date +%F).tar.gz ${box} &
+
+done
