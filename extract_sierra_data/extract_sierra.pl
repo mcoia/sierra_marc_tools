@@ -202,6 +202,7 @@ item.location_code,
 item.item_status_code,
 item.inventory_gmt,
 item.copy_num,
+(case when pmetarecord.record_num is not null then concat('p',pmetarecord.record_num) else '' end) "LPATRON",
 item.icode2,
 item.use3_count,
 item.internal_use_count,
@@ -214,28 +215,76 @@ metarecord.record_last_updated_gmt
 
 from
 sierra_view.item_view item
-left join sierra_view.item_view item_omit on(item_omit.id=item.id and item_omit.location_code in (!!!sierrapreviouslocationcodes!!!))
 join sierra_view.bib_record_item_record_link bib_item_link on ( bib_item_link.item_record_id = item.id)
 join sierra_view.bib_view bib on ( bib.id = bib_item_link.bib_record_id )
 join sierra_view.record_metadata metarecord on(metarecord.record_num=item.record_num and metarecord.record_type_code='i')
+left join sierra_view.record_metadata pmetarecord on(pmetarecord.id=item.last_patron_record_metadata_id and pmetarecord.record_type_code='p')
 left join sierra_view.item_record_property item_prop on(item_prop.item_record_id=item.id)
 left join sierra_view.varfield_view bib_call on(bib_call.record_id = bib.id and bib_call.record_type_code='b' and bib_call.marc_tag in( '090', '092' ) and bib_call.field_content ~'^\|a' )
 where
-item_omit.id is null and
-(!!!sierralocationcodes!!!)
-group by 1,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19
+!!!sierralocationcodes!!!
+group by 1,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20
 splitter
 
     my $t = $sierralocationcodes;
     $t =~ s/^brbl/item/g;
-    $query =~ s/!!!sierrapreviouslocationcodes!!!/$sierrapreviouslocationcodes/g;
     $query =~ s/!!!sierralocationcodes!!!/$t/g;
     setupEGTable($query,"folio_items", $firstrun);
 
-  
+
+    #FOLIO Patron File
+    my $query =<<'splitter';
+ select
+concat('p', patron.record_num) "patron_num", -- RECORD #(PATRON)
+string_agg(
+pname.last_name||', '||
+(case when pname.prefix is not null and btrim(pname.prefix) !='' then pname.prefix||' ' else '' end)||
+pname.first_name||
+(case when pname.middle_name is not null and btrim(pname.middle_name) !='' then ' '||pname.middle_name else '' end)||
+(case when pname.suffix is not null and btrim(pname.suffix) !='' then ' '||pname.suffix else '' end),
+';'
+),
+patron.expiration_date_gmt,
+patron.pcode1,
+patron.pcode2,
+patron.pcode3,
+patron.ptype_code,
+patron.checkout_total,
+patron.renewal_total,
+patron.checkout_count,
+patron.home_library_code,
+patron.patron_message_code,
+patron.mblock_code,
+patron.claims_returned_total,
+patron.owed_amt,
+patron.block_until_date_gmt,
+patron.itema_count,
+patron.itemb_count,
+patron.overdue_penalty_count,
+patron.activity_gmt,
+patron.notification_medium_code,
+pmetarecord.creation_date_gmt,
+pmetarecord.record_last_updated_gmt,
+pmetarecord.num_revisions,
+patron.patron_message_code,
+string_agg(pemail.field_content,';') "email"
+from
+sierra_view.patron_view patron
+join sierra_view.record_metadata pmetarecord on(pmetarecord.id=patron.id and pmetarecord.record_type_code='p')
+left join sierra_view.patron_record_fullname pname on(pname.patron_record_id=patron.id)
+left join (select * from sierra_view.varfield_view where record_type_code='p' and field_content~'[^@]+@[^\.]+\.\D{2,}') as pemail on(pemail.record_id=patron.id)
+where
+!!!patronlocationcodes!!!
+group by 1,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25
+splitter
+
+    my $t = "patron.$patronlocationcodes";
+    $query =~ s/!!!patronlocationcodes!!!/$t/g;
+    setupEGTable($query,"folio_patrons", $firstrun);
+
 	#get patrons
 	my $query = "
-		select * from sierra_view.patron_view where ($patronlocationcodes) 
+		select * from sierra_view.patron_view pview join sierra_view.record_metadata precord on(precord.id=pview.id and precord.record_type_code='p') where ($patronlocationcodes) 
 	";
 	setupEGTable($query,"patron_view", $firstrun);
 	
@@ -301,8 +350,25 @@ splitter
 	";
 	setupEGTable($query,"fines_paid", $firstrun);
 	
-	#get bibs
-	my $query = "select * from sierra_view.bib_view where id in
+	#get bibs - minus title column
+	my $query = "select id,
+    record_type_code,
+    record_num,
+    language_code,
+    bcode1,
+    bcode2,
+    bcode3,
+    country_code,
+    is_available_at_library,
+    index_change_count,
+    allocation_rule_code,
+    is_on_course_reserve,
+    is_right_result_exact,
+    skip_num,
+    cataloging_date_gmt,
+    marc_type_code,
+    record_creation_date_gmt
+    from sierra_view.bib_view where id in
 	(
 		SELECT brbl.BIB_RECORD_ID FROM
         SIERRA_VIEW.BIB_RECORD_LOCATION brbl
@@ -592,7 +658,7 @@ sub getRemoteSierraData
         $data = 0 if($#theseRows < 0 );
         push @allRows, @theseRows if ($#theseRows > -1 );
         $loops++;
-        $offset = ($loops * $limit) + 1;
+        $offset = ($loops * $limit);
         $data = 0 if $sample;
         undef @theseRows;
     }
