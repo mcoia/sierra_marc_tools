@@ -251,7 +251,7 @@
 									print "There were some files to process";
 									my @dumpedFiles = @{@all[1]};
 									foreach(@dumpedFiles)
-									{	
+									{
 										@marc =();
 										my $marcfile = $_;
 										my $check = new Loghandler($marcfile);
@@ -378,6 +378,7 @@
 	my $barcodes;
 	my $couldNotBeCut='';
 	my $recCount=0;
+    my $output = '';
 	foreach(@marc)
 	{
 		my $marc = $_;
@@ -425,11 +426,13 @@
 				$barcodes.=" - ".$marc->subfield('245',"a");
 			}
 			$barcodes.="\r\n";
-			#$output.=$marc->as_usmarc();
-			$marcout->appendLine($marc->as_usmarc());
+			$output .= $marc->as_usmarc();
+			# $marcout->appendLine($marc->as_usmarc());
 			$recCount++;
 		}
 	}
+    $marcout->appendLine($output);
+    undef $output;
 	$extraInformationOutput = substr($extraInformationOutput,0,-1);
 	my @ret=($extraInformationOutput,$barcodes,$couldNotBeCut,$recCount);
 	return \@ret;

@@ -226,7 +226,7 @@ package sierraScraper;
     my $currentRecordCount = scalar keys %standard;
     #print "currentRecordCount = $currentRecordCount\n";
     my @dumpedFiles = (0);
-    @dumpedFiles = @{dumpRamToDisk($self, \@dumpedFiles,1)};
+    @dumpedFiles = @{dumpRamToDisk($self, \@dumpedFiles, 0)};
     $self->{'diskdump'}=\@dumpedFiles;
     #print "Dumped files\n";
     return $currentRecordCount;
