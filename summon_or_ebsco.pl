@@ -30,7 +30,7 @@
 # blake@mobiusconsortium.org
 # 2013-1-24
 
- use lib qw(../);
+ use lib qw(./ ../);
  use strict; 
  use Loghandler;
  use Mobiusutil;
