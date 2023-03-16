@@ -84,68 +84,47 @@ make_path($conf->{"marcoutdir"},
 
   
   #get itype meanings
-	my $query = "
-		select * from sierra_view.itype_property_myuser";
+	my $query = "select * from sierra_view.itype_property_myuser";
 	setupEGTable($query,"itype_property_myuser", 1);
 
 	#get patron types
-	my $query = "
-		select * from sierra_view.ptype_property_myuser
-	";
+	my $query = "select * from sierra_view.ptype_property_myuser";
 	setupEGTable($query,"ptype_property_myuser", 1);
 	
 	#get patron types
-	my $query = "
-		select * from sierra_view.user_defined_pcode1_myuser
-	";
+	my $query = "select * from sierra_view.user_defined_pcode1_myuser";
 	setupEGTable($query,"user_defined_pcode1_myuser", 1);
 	
 	#get patron types
-	my $query = "
-		select * from sierra_view.user_defined_pcode2_myuser
-	";
+	my $query = "select * from sierra_view.user_defined_pcode2_myuser";
 	setupEGTable($query,"user_defined_pcode2_myuser", 1);
 	
 	#get patron types
-	my $query = "
-		select * from sierra_view.user_defined_pcode3_myuser
-	";
+	my $query = "select * from sierra_view.user_defined_pcode3_myuser";
 	setupEGTable($query,"user_defined_pcode3_myuser", 1);
   
     #get Item Status codes
-	my $query = "
-        select * from sierra_view.item_status_property_myuser
-	";
+	my $query = "select * from sierra_view.item_status_property_myuser";
 	setupEGTable($query,"item_status_property_myuser", 1);
   
     #get Item material types
-	my $query = "
-        select * from sierra_view.material_property_myuser
-	";
+	my $query = "select * from sierra_view.material_property_myuser";
 	setupEGTable($query,"material_property_myuser", 1);
   
     #get Item material types
-	my $query = "
-        select * from sierra_view.material_property_name
-	";
+	my $query = "select * from sierra_view.material_property_name";
 	setupEGTable($query,"material_property_name", 1);
   
     #get user_defined_bcode1_myuser
-	my $query = "
-        select * from sierra_view.user_defined_bcode1_myuser
-	";
+	my $query = "select * from sierra_view.user_defined_bcode1_myuser";
 	setupEGTable($query,"user_defined_bcode1_myuser", 1);
   
     #get user_defined_bcode2_myuser
-	my $query = "
-        select * from sierra_view.user_defined_bcode2_myuser
-	";
+	my $query = "select * from sierra_view.user_defined_bcode2_myuser";
 	setupEGTable($query,"user_defined_bcode2_myuser", 1);
 
     #get user_defined_bcode3_myuser
-	my $query = "
-        select * from sierra_view.user_defined_bcode3_myuser
-	";
+	my $query = "select * from sierra_view.user_defined_bcode3_myuser";
 	setupEGTable($query,"user_defined_bcode3_myuser", 1);
 
 
@@ -192,38 +171,66 @@ where
     # FOLIO Item File
     my $query =<<'splitter';
 select
-concat('i', item.record_num) "item_num", --RECORD #(Item)
-string_agg( concat('b',bib.record_num),';') "connected_bibs", -- RECORD #(Bibliographic)
-regexp_replace(regexp_replace(string_agg(item_prop.call_number,''),'\|.',';','g'),'^;','','g') "item_call_number", --CALL #(Item)
-regexp_replace(regexp_replace(string_agg(bib_call.field_content,''),'\|.',';','g'),'^;','','g') "bib_call_number", --CALL #(Bibliographic)
+string_agg( concat('b',bib.record_num),'!delem!' order by bib.record_num) "bib_ids", -- RECORD #(Bibliographic)
+concat('i', item.record_num) "record_num", --RECORD #(Item)
+regexp_replace(
+regexp_replace(regexp_replace(string_agg(item_prop.call_number,'!delem!'),'\|.','!delem!','g'),'^!delem!','','g'),
+'!delem!!delem!','!delem!','g')
+"item_call_no", --CALL #(Item)
+regexp_replace(
+regexp_replace(regexp_replace(string_agg(bib_call.field_content,'!delem!'  order by bib_call.record_num),'\|.','!delem!','g'),'^!delem!','','g'),
+'!delem!!delem!','!delem!','g')
+"bib_call_nos", --CALL #(Bibliographic)
 item.barcode,
+item.icode1,
+item.icode2,
 item.itype_code_num,
 item.location_code,
 item.item_status_code,
+item.price,
+item.last_checkin_gmt,
 item.inventory_gmt,
+item.checkout_total,
+item.renewal_total,
+item.last_year_to_date_checkout_total,
+item.year_to_date_checkout_total,
 item.copy_num,
-(case when pmetarecord.record_num is not null then concat('p',pmetarecord.record_num) else '' end) "LPATRON",
-item.icode2,
+regexp_replace(
+regexp_replace(regexp_replace(string_agg(distinct item_volume.field_content,'!delem!' ),'\|.','!delem!','g'),'^!delem!','','g'),
+'!delem!!delem!','!delem!','g')
+"volume",
 item.use3_count,
+item.last_checkout_gmt,
 item.internal_use_count,
 item.copy_use_count,
 item.item_message_code,
 item.opac_message_code,
+item.holdings_code,
+item.is_suppressed,
 item.last_year_to_date_checkout_total,
 item.record_creation_date_gmt,
-metarecord.record_last_updated_gmt
+regexp_replace(
+regexp_replace(regexp_replace(string_agg(distinct item_message.field_content,'!delem!' ),'\|.','!delem!','g'),'^!delem!','','g'),
+'!delem!!delem!','!delem!','g')
+"message",
+regexp_replace(
+regexp_replace(regexp_replace(string_agg(distinct item_note.field_content,'!delem!' ),'\|.','!delem!','g'),'^!delem!','','g'),
+'!delem!!delem!','!delem!','g')
+"note"
 
 from
 sierra_view.item_view item
 join sierra_view.bib_record_item_record_link bib_item_link on ( bib_item_link.item_record_id = item.id)
 join sierra_view.bib_view bib on ( bib.id = bib_item_link.bib_record_id )
-join sierra_view.record_metadata metarecord on(metarecord.record_num=item.record_num and metarecord.record_type_code='i')
-left join sierra_view.record_metadata pmetarecord on(pmetarecord.id=item.last_patron_record_metadata_id and pmetarecord.record_type_code='p')
+join sierra_view.record_metadata metarecord on(metarecord.id=item.id)
 left join sierra_view.item_record_property item_prop on(item_prop.item_record_id=item.id)
 left join sierra_view.varfield_view bib_call on(bib_call.record_id = bib.id and bib_call.record_type_code='b' and bib_call.marc_tag in( '090', '092' ) and bib_call.field_content ~'^\|a' )
+left join sierra_view.varfield_view item_message on(item_message.record_id = item.id and item_message.varfield_type_code='m' and item_message.marc_tag is null)
+left join sierra_view.varfield_view item_note on(item_note.record_id = item.id and item_note.varfield_type_code in ('x','n') and item_note.marc_tag is null)
+left join sierra_view.varfield_view item_volume on(item_volume.record_id = item.id and item_volume.varfield_type_code = 'v' and item_volume.marc_tag is null)
 where
 !!!sierralocationcodes!!!
-group by 1,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20
+group by 2,5,6,7,8,9,10,11,12,13,14,15,16,17,18,20,21,22,23,24,25,26,27,28,29
 splitter
 
     my $t = $sierralocationcodes;
@@ -234,48 +241,162 @@ splitter
 
     #FOLIO Patron File
     my $query =<<'splitter';
+
  select
-concat('p', patron.record_num) "patron_num", -- RECORD #(PATRON)
-string_agg(
-pname.last_name||', '||
-(case when pname.prefix is not null and btrim(pname.prefix) !='' then pname.prefix||' ' else '' end)||
-pname.first_name||
-(case when pname.middle_name is not null and btrim(pname.middle_name) !='' then ' '||pname.middle_name else '' end)||
-(case when pname.suffix is not null and btrim(pname.suffix) !='' then ' '||pname.suffix else '' end),
-';'
-),
+concat('p', patron.record_num) "patron_num",
+
+-- Names
+regexp_replace(
+regexp_replace(regexp_replace(string_agg(pname.last_name,'!delem!' ORDER BY pname.display_order),'\|.','!delem!','g'),'^!delem!','','g'),
+'!delem!!delem!','!delem!','g')
+"last_name",
+
+
+regexp_replace(
+regexp_replace(regexp_replace(string_agg(pname.first_name,'!delem!' ORDER BY pname.id),'\|.','!delem!','g'),'^!delem!','','g'),
+'!delem!!delem!','!delem!','g')
+"first_name",
+
+regexp_replace(
+regexp_replace(regexp_replace(string_agg(pname.middle_name,'!delem!' ORDER BY pname.id),'\|.','!delem!','g'),'^!delem!','','g'),
+'!delem!!delem!','!delem!','g')
+"middle_name",
+
+patron.barcode,
+
+regexp_replace(
+regexp_replace(regexp_replace(string_agg(distinct pvisibleid.field_content,'!delem!'),'\|.','!delem!','g'),'^!delem!','','g'),
+'!delem!!delem!','!delem!','g')
+"visible_patron_id",
+
+regexp_replace(
+regexp_replace(regexp_replace(string_agg(distinct pphone.phone_number,'!delem!'),'\|.','!delem!','g'),'^!delem!','','g'),
+'!delem!!delem!','!delem!','g')
+"phone_number",
+
+regexp_replace(
+regexp_replace(regexp_replace(string_agg(distinct pemail.field_content,'!delem!'),'\|.','!delem!','g'),'^!delem!','','g'),
+'!delem!!delem!','!delem!','g')
+"email",
+patron.ptype_code,
+patron.home_library_code,
 patron.expiration_date_gmt,
 patron.pcode1,
 patron.pcode2,
 patron.pcode3,
-patron.ptype_code,
+patron.pcode4,
+patron.birth_date_gmt,
+patron.mblock_code,
+patron.block_until_date_gmt,
 patron.checkout_total,
 patron.renewal_total,
 patron.checkout_count,
-patron.home_library_code,
 patron.patron_message_code,
-patron.mblock_code,
+patron.highest_level_overdue_num,
 patron.claims_returned_total,
 patron.owed_amt,
-patron.block_until_date_gmt,
 patron.itema_count,
 patron.itemb_count,
 patron.overdue_penalty_count,
+patron.ill_checkout_total,
+patron.debit_amt,
+patron.itemc_count,
+patron.itemd_count,
 patron.activity_gmt,
 patron.notification_medium_code,
+patron.registration_count,
+patron.registration_total,
+patron.attendance_total,
+patron.waitlist_count,
+patron.is_reading_history_opt_in,
+
+regexp_replace(
+regexp_replace(regexp_replace(string_agg(distinct pnote.field_content,'!delem!'),'\|.','!delem!','g'),'^!delem!','','g'),
+'!delem!!delem!','!delem!','g')
+"notes",
+
 pmetarecord.creation_date_gmt,
+pmetarecord.deletion_date_gmt,
+pmetarecord.campus_code,
 pmetarecord.record_last_updated_gmt,
-pmetarecord.num_revisions,
-patron.patron_message_code,
-string_agg(pemail.field_content,';') "email"
+pmetarecord.previous_last_updated_gmt,
+
+-- Address
+paddress.patron_record_address_type_id,
+paddress.addr1,
+paddress.addr2,
+paddress.addr3,
+paddress.village,
+paddress.city,
+paddress.region,
+paddress.postal_code,
+paddress.country
+
+
 from
 sierra_view.patron_view patron
 join sierra_view.record_metadata pmetarecord on(pmetarecord.id=patron.id and pmetarecord.record_type_code='p')
 left join sierra_view.patron_record_fullname pname on(pname.patron_record_id=patron.id)
-left join (select * from sierra_view.varfield_view where record_type_code='p' and field_content~'[^@]+@[^\.]+\.\D{2,}') as pemail on(pemail.record_id=patron.id)
+left join sierra_view.varfield_view pemail on(pemail.record_type_code='p' and pemail.field_content~'[^@]+@[^\.]+\.\D{2,}' and pemail.record_id=patron.id)
+left join sierra_view.patron_record_phone pphone on(pphone.patron_record_id=patron.id)
+left join sierra_view.varfield_view pnote on(pnote.varfield_type_code='x' and pnote.record_id=patron.id)
+left join sierra_view.varfield_view pvisibleid on(pvisibleid.varfield_type_code='u' and pvisibleid.record_id=patron.id)
+left join (select 
+
+-- Address section
+patron_record_id,
+regexp_replace(
+regexp_replace(string_agg(patron_record_address_type_id::text,'!delem!' order by display_order),'^!delem!','','g'),
+'!delem!!delem!','!delem!','g')
+"patron_record_address_type_id",
+
+regexp_replace(
+regexp_replace(string_agg(addr1,'!delem!' order by display_order),'^!delem!','','g'),
+'!delem!!delem!','!delem!','g')
+"addr1",
+regexp_replace(
+regexp_replace(string_agg(addr2,'!delem!' order by display_order),'^!delem!','','g'),
+'!delem!!delem!','!delem!','g')
+"addr2",
+
+regexp_replace(
+regexp_replace(string_agg(addr3,'!delem!' order by display_order),'^!delem!','','g'),
+'!delem!!delem!','!delem!','g')
+"addr3",
+
+regexp_replace(
+regexp_replace(string_agg(village,'!delem!' order by display_order),'^!delem!','','g'),
+'!delem!!delem!','!delem!','g')
+"village",
+
+regexp_replace(
+regexp_replace(string_agg(city,'!delem!' order by display_order),'^!delem!','','g'),
+'!delem!!delem!','!delem!','g')
+"city",
+
+regexp_replace(
+regexp_replace(string_agg(region,'!delem!' order by display_order),'^!delem!','','g'),
+'!delem!!delem!','!delem!','g')
+"region",
+
+regexp_replace(
+regexp_replace(string_agg(postal_code,'!delem!' order by display_order),'^!delem!','','g'),
+'!delem!!delem!','!delem!','g')
+"postal_code",
+
+regexp_replace(
+regexp_replace(string_agg(country,'!delem!' order by display_order),'^!delem!','','g'),
+'!delem!!delem!','!delem!','g')
+"country"
+from
+sierra_view.patron_record_address paddress_internal
+group by patron_record_id
+) as paddress on (paddress.patron_record_id=patron.id)
+
 where
 !!!patronlocationcodes!!!
-group by 1,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25
+group by 1,5,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,41,42,43,44,45,46,47,48,49,50,51,52,53,54
+
 splitter
 
     my $t = "patron.$patronlocationcodes";
@@ -382,24 +503,7 @@ splitter
 	setupEGTable($query,"bib_view", $firstrun);
 	
 	#get items
-	my $query = "select * from sierra_view.item_view where id in
-	(
-		select item_record_id from sierra_view.bib_record_item_record_link where bib_record_id
-		in
-		(
-			select id from sierra_view.bib_view where id in
-			(
-				SELECT brbl.BIB_RECORD_ID FROM
-                SIERRA_VIEW.BIB_RECORD_LOCATION brbl
-                left join SIERRA_VIEW.BIB_RECORD_LOCATION svbrl on(brbl.bib_record_id=svbrl.bib_record_id and svbrl.LOCATION_CODE in ($sierrapreviouslocationcodes))
-                WHERE
-                ($sierralocationcodes) and
-                svbrl.bib_record_id is null
-                !!orderlimit!!
-			)
-		)
-	) 
-	";
+	my $query = "select * from sierra_view.item_view brbl where ($sierralocationcodes)";
 	setupEGTable($query,"item_view", $firstrun);
 	
 	#get items bib links
@@ -480,33 +584,6 @@ splitter
         )
 	";
 	setupEGTable($query,"record_metadata", $firstrun);	
-      
-    #get Item Status
-	my $query = "
-        select id,item_status_code from 
-        sierra_view.item_record
-        where
-        id in
-        (
-            select item_record_id from sierra_view.bib_record_item_record_link where bib_record_id
-            in
-            (
-                select id from sierra_view.bib_view where id in
-                (
-                    SELECT brbl.BIB_RECORD_ID FROM
-                    SIERRA_VIEW.BIB_RECORD_LOCATION brbl
-                    left join SIERRA_VIEW.BIB_RECORD_LOCATION svbrl on(brbl.bib_record_id=svbrl.bib_record_id and svbrl.LOCATION_CODE in ($sierrapreviouslocationcodes))
-                    WHERE
-                    ($sierralocationcodes) and
-                    svbrl.bib_record_id is null
-                    !!orderlimit!!
-                )
-            )
-        )
-        and
-        item_status_code !='-'
-	";
-	setupEGTable($query,"non_available_item", $firstrun);	
 
 	$firstrun = 0;
     while ( (my $filename, my $fhandle) = each(%fileHandles) )
@@ -672,10 +749,28 @@ sub getRemoteSierraData
 sub getLocationCodes
 {
     my $query = <<'splitter';
-        select location_code
-        from
-        sierra_view.bib_record_location
-        group by 1
+select * from
+(
+	select code from sierra_view.location
+	group by 1
+	union all
+	select location_code
+	from
+	sierra_view.bib_record_location
+	group by 1
+	union all
+	select location_code
+	from
+	sierra_view.item_view
+	group by 1
+    union all
+	select home_library_code
+	from
+	sierra_view.patron_view
+	group by 1
+) as a
+group by 1
+order by 1
 
 splitter
 
