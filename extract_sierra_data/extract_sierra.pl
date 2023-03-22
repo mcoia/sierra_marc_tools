@@ -171,15 +171,26 @@ where
     # FOLIO Item File
     my $query =<<'splitter';
 select
-string_agg( concat('b',bib.record_num),'!delem!' order by bib.record_num) "bib_ids", -- RECORD #(Bibliographic)
+regexp_replace(
+regexp_replace(regexp_replace(string_agg(distinct 'b'||bib.record_num,'!delem!' order by 'b'||bib.record_num),'\|.','!delem!','g'),'^!delem!','','g'),
+'!delem!!delem!','!delem!','g')
+"bib_ids",
 concat('i', item.record_num) "record_num", --RECORD #(Item)
+item_prop.call_number "item_call_no", --CALL #(Item)
+(
+select
+btrim(
 regexp_replace(
-regexp_replace(regexp_replace(string_agg(item_prop.call_number,'!delem!'),'\|.','!delem!','g'),'^!delem!','','g'),
+regexp_replace(regexp_replace(string_agg("bcall",'!delem!')
+,'\|.',' ','g'),'^!delem!','','g'),
 '!delem!!delem!','!delem!','g')
-"item_call_no", --CALL #(Item)
-regexp_replace(
-regexp_replace(regexp_replace(string_agg(bib_call.field_content,'!delem!'  order by bib_call.record_num),'\|.','!delem!','g'),'^!delem!','','g'),
-'!delem!!delem!','!delem!','g')
+)
+from
+(
+select
+string_agg(btrim(field_content),'' order by occ_num) "bcall",record_id
+from sierra_view.varfield_view bib_call where record_id = any (('{'||string_agg(distinct bib.id::text,','::text)||'}')::bigint[]) and record_type_code='b' and marc_tag in( '090', '092' ) and field_content ~'^\|a'  group by 2) as b
+) as  
 "bib_call_nos", --CALL #(Bibliographic)
 item.barcode,
 item.icode1,
@@ -213,24 +224,31 @@ regexp_replace(
 regexp_replace(regexp_replace(string_agg(distinct item_message.field_content,'!delem!' ),'\|.','!delem!','g'),'^!delem!','','g'),
 '!delem!!delem!','!delem!','g')
 "message",
-regexp_replace(
-regexp_replace(regexp_replace(string_agg(distinct item_note.field_content,'!delem!' ),'\|.','!delem!','g'),'^!delem!','','g'),
-'!delem!!delem!','!delem!','g')
-"note"
+item_note.note
 
 from
 sierra_view.item_view item
 join sierra_view.bib_record_item_record_link bib_item_link on ( bib_item_link.item_record_id = item.id)
 join sierra_view.bib_view bib on ( bib.id = bib_item_link.bib_record_id )
 join sierra_view.record_metadata metarecord on(metarecord.id=item.id)
-left join sierra_view.item_record_property item_prop on(item_prop.item_record_id=item.id)
-left join sierra_view.varfield_view bib_call on(bib_call.record_id = bib.id and bib_call.record_type_code='b' and bib_call.marc_tag in( '090', '092' ) and bib_call.field_content ~'^\|a' )
+left join (
+select
+regexp_replace(
+regexp_replace(regexp_replace(string_agg(btrim(call_number_norm),'!delem!'),'\|.','!delem!','g'),'^!delem!','','g'),
+'!delem!!delem!','!delem!','g') "call_number",item_record_id
+ from sierra_view.item_record_property group by 2
+) as "item_prop" on(item_prop.item_record_id=item.id)
 left join sierra_view.varfield_view item_message on(item_message.record_id = item.id and item_message.varfield_type_code='m' and item_message.marc_tag is null)
-left join sierra_view.varfield_view item_note on(item_note.record_id = item.id and item_note.varfield_type_code in ('x','n') and item_note.marc_tag is null)
+left join (
+select
+regexp_replace(
+regexp_replace(regexp_replace(string_agg(distinct item_note.field_content,'!delem!' ),'\|.','!delem!','g'),'^!delem!','','g'),
+'!delem!!delem!','!delem!','g')
+"note", record_id from sierra_view.varfield_view item_note where item_note.varfield_type_code in ('x','n') and item_note.marc_tag is null group by 2) item_note on(item_note.record_id = item.id )
 left join sierra_view.varfield_view item_volume on(item_volume.record_id = item.id and item_volume.varfield_type_code = 'v' and item_volume.marc_tag is null)
 where
 !!!sierralocationcodes!!!
-group by 2,5,6,7,8,9,10,11,12,13,14,15,16,17,18,20,21,22,23,24,25,26,27,28,29
+group by 2,3,5,6,7,8,9,10,11,12,13,14,15,16,17,18,20,21,22,23,24,25,26,27,28,29,31
 splitter
 
     my $t = $sierralocationcodes;
