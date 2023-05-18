@@ -64,14 +64,42 @@ sub scrape
     {
         $self->updateThisJobStatus("On Custom MARC Express file Page");
         print "On Search Grid Page\n" if($self->{debug});    
+
+        my $idValues = '';
+        $idValues .= $_.',' foreach(@titleIDs);
+        $idValues = substr($idValues,0,-1);
+        # Shrinking it to a much smaller data set so we don't have to wait so long
+        # This should be removed for production
+        $idValues = substr($idValues,0,100); # an arbitrary amount of ID numbers. It's ok if it gets cutoff in the middle of an ID. The interface will ignore
+        $self->{log}->addLine($idValues);
+        $self->{log}->addLine("Setting Description: '$key'");
+
         $self->handleDOMTriggerOrSetValue('action', 'CreateFileBtn', 'click()');
         $self->handleDOMTriggerOrSetValue('action', 'btnTitleIds', 'click()');
+        $self->handleDOMTriggerOrSetValue('setval', 'CrossRefIds', $idValues);
+        $self->handleDOMTriggerOrSetValue('action', 'CrossRefIds', 'dispatchEvent(new Event("keyup"))');
+        my $idtracker = substr($key, 0, 49); # The website doesn't allow more than 50 characters
+        $self->handleDOMTriggerOrSetValue('setval', 'Description', $idtracker);
+        $self->handleDOMTriggerOrSetValue('action', 'submitCreateFile', 'click()');
+        # the UI has a load time here, 2 seconds is plenty
+        sleep 2;
+        $self->handleDOMTriggerOrSetValue('action', 'submitConfirmCreation', 'click()');
+        waitAndDownloadExpressMARC($self, $idtracker);
+        exit;
 
     }
     # We've made it to the end of execution
     # whether there were files or not, we need to mark this source as having had a successful scrape
     $self->updateSourceScrapeDate();
     $self->finishThisJob("Downloaded $fileCount file(s)");
+}
+
+sub waitAndDownloadExpressMARC
+{
+    my $self = shift;
+    my $ID = shift;
+    $self->handleOverDriveTableReadyCheck($ID);
+    
 }
 
 sub getTitleIDs

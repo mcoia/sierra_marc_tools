@@ -480,6 +480,43 @@ sub findElementByAttributes
     return 0;
 }
 
+sub handleOverDriveTableReadyCheck
+{
+    my $self = shift;
+    my $key = shift;
+    $key = escapeStringForJSRegEX($self, $key);
+    my $js = "
+        var doms = document.getElementsByTagName('div');
+        var matched = 0;
+        for(var i=0;i<doms.length;i++)
+        {
+            if(doms[i].parentElement && doms[i].parentElement.tagName.match(/td/i))
+            {
+                if(doms[i].textContent.match(/$key/i))
+                {
+                    matched = 1;
+                }
+                if(matched)
+                {
+                    for(var j=0;j<doms[i].parentElement.previousElementSibling.children;j++)
+                    {
+                        if(doms[i].parentElement.previousElementSibling.children[j].tagName.match(/div/i))
+                        {
+                            return doms[i].parentElement.previousElementSibling.children[j].textContent();
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+        return 0;
+    ";
+    $self->{log}->addLine("Executing: $js");
+    my $worked = $self->{driver}->execute_script($js);
+    takeScreenShot($self, "overdrive_readyCheck");
+    return $worked;
+}
+
 sub doWebActionAfewTimes
 {
     my $self = shift;
@@ -912,7 +949,7 @@ sub getFileID
     my $ret = 0;
     my $query = "select max(id) from $self->{prefix}"."_file_track file
     where
-    source = " .$self->{sourceID}. " 
+    source = " .$self->{sourceID}. "
     and client = " .$self->{clientID};
     if($file)
     {
