@@ -14,3 +14,7 @@ META.yml
 MYMETA.yml
 nytprof.out
 pm_to_blib
+auto_rec_load/.idea
+auto_rec_load/db_seed.db
+auto_rec_load/vars.yml
+auto_rec_load/auto_rec_load.conf

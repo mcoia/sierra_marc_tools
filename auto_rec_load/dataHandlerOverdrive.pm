@@ -60,6 +60,7 @@ sub scrape
         $self->waitForPageLoad();
         $self->takeScreenShot($self, "CreateCustomFile");
     }
+    my $idtracker;
     if($continue)
     {
         $self->updateThisJobStatus("On Custom MARC Express file Page");
@@ -78,15 +79,20 @@ sub scrape
         $self->handleDOMTriggerOrSetValue('action', 'btnTitleIds', 'click()');
         $self->handleDOMTriggerOrSetValue('setval', 'CrossRefIds', $idValues);
         $self->handleDOMTriggerOrSetValue('action', 'CrossRefIds', 'dispatchEvent(new Event("keyup"))');
-        my $idtracker = substr($key, 0, 49); # The website doesn't allow more than 50 characters
+        $idtracker = substr($key, 0, 49); # The website doesn't allow more than 50 characters
         $self->handleDOMTriggerOrSetValue('setval', 'Description', $idtracker);
         $self->handleDOMTriggerOrSetValue('action', 'submitCreateFile', 'click()');
         # the UI has a load time here, 2 seconds is plenty
         sleep 2;
         $self->handleDOMTriggerOrSetValue('action', 'submitConfirmCreation', 'click()');
-        waitAndDownloadExpressMARC($self, $idtracker);
-        exit;
+        sleep 3;
+        $continue = waitAndDownloadExpressMARC($self, $idtracker);
 
+    }
+    if ($continue) # continue is the fine name if we have one. 
+    {
+        print "downloaded filename: $continue\n";
+        processDownloadedFile($self, $idtracker, $continue);
     }
     # We've made it to the end of execution
     # whether there were files or not, we need to mark this source as having had a successful scrape
@@ -97,9 +103,80 @@ sub scrape
 sub waitAndDownloadExpressMARC
 {
     my $self = shift;
-    my $ID = shift;
-    $self->handleOverDriveTableReadyCheck($ID);
+    my $hashID = shift;
+    my $searchCount = 0;
+    my $maxSearchCount = 100;
+    my $secondsUntilNextCheckCycle = 5;
+    $self->takeScreenShot('waitAndDownloadExpressMARC');
+    $self->updateThisJobStatus("waitAndDownloadExpressMARC");
+    my $tableRows = $self->{driver}->execute_script("return document.getElementsByTagName('tr').length - 1;");
+    $self->{log}->addLine("tableRows: $tableRows");
+    while ($searchCount < $maxSearchCount)
+    {
+        $self->{log}->addLine("Checking for hash: [$hashID]");
+        foreach $row (reverse 0 .. $tableRows)
+        {
+            my $rowText = $self->{driver}->execute_script("return document.getElementsByTagName('tr')[$row].textContent;");
+            if ($rowText =~ $hashID)
+            {
+                $self->{log}->addLine("row:[$row] Checking HashID:[$hashID] rowText:[$rowText]");
+                if ($rowText =~ 'In progress')
+                {
+                    $self->{log}->addLine("Reloading Page! HashID:[$hashID] is pending. Check count[$searchCount]");
+                    $self->reloadPage();
+                    $self->waitForPageLoad();
+                }
+                if ($rowText =~ 'Ready')
+                {
+                    $self->{log}->addLine("Clicking checkbox");
+                    $self->addTrace("scrape", "clicking file checkbox");
+                    $self->updateThisJobStatus("executing javascript checkbox code");
     
+                    my $js = $self->hammerTime($hashID);
+                    $self->{log}->addLine($js);
+                    $self->{log}->addLine("executing javascript event trigger code.");
+                    $self->{driver}->execute_script($js);
+                    $self->addTrace("scrape", "checkbox javascript has been executed");
+                    $self->{log}->addLine("waiting for page to load...");
+                    $self->waitForPageLoad();
+                    $self->{log}->addLine("done waiting...");
+                    $self->takeScreenShot("click_checkbox");
+                    $self->{log}->addLine("screenshot taken");
+                    $self->{log}->addLine("Downloading File");
+                    $self->addTrace("scrape", "Downloading File");
+                    $self->updateThisJobStatus("Downloading File");
+                    # $self->{driver}->execute_script("document.getElementsByClassName('x-toolbar')[0].getElementsByClassName('downloadfilesbutton')[0].click();");
+                    $self->readSaveFolder(1); # read the contents of the download folder to get a baseline
+                    # $self->handleDOMTriggerOrSetValue('action', 'submitCreateFile', 'click()');
+                    $self->{driver}->execute_script("document.getElementsByClassName('downloadfilesbutton')[0].click();");
+                    $self->takeScreenShot("file_download");
+
+                    # wait for file to download 
+                    my $newFile = 0;
+                    my $maxSleepCount = 300; # wait 5 minutes before breaking out of the loop 
+                    my $sleepCount = 0;
+                    while (!$newFile && $sleepCount < $maxSleepCount)
+                    {
+                        $newFile = $self->seeIfNewFile();
+                        print "Waiting for file to download\n";
+                        sleep 1;
+                        $sleepCount++;
+                    }
+
+                    return $newFile;
+
+                }
+
+            }
+
+        }
+
+        $searchCount++;
+        sleep $secondsUntilNextCheckCycle;
+
+    }
+
+    return 0;
 }
 
 sub getTitleIDs
@@ -236,11 +313,14 @@ sub getTitleIDs
     if($continue)
     {
         $continue = $self->handleParentAnchorClick("span", "Update", "innerHTML", "Displaying 1", 'a');
+        $self->waitForPageLoad();
+        $self->waitForPageLoad();
     }
     my $newFile = 0;
     if($continue)
     {
         $self->handleParentAnchorClick("span", "Create worksheet", "innerHTML", "Displaying 1", 'a');
+        $self->waitForPageLoad();
         my $tries = 0;
         while(!$newFile && $tries < 120) # sometimes Overdrive can take a whole minute to generate the file
         {
@@ -302,9 +382,10 @@ sub processDownloadedFile
     my $self = shift;
     my $key = shift;
     my $file = shift;
-    my @fileTypes = ("mrc", "xml");
+    my @fileTypes = ("mrc");
     $self->addTrace("processDownloadedFile","$key -> $file");
     my @files = @{$self->extractCompressedFile($file,\@fileTypes)};
+
     my $job;
     if($#files > -1)
     {
@@ -315,8 +396,6 @@ sub processDownloadedFile
         {
             my $thisFile = $_;
             my $bareFileName = $self->getFileNameWithoutPath($thisFile);
-            if($self->decideToProcessFile($bareFileName))
-            {
                 my $fileID = $self->createFileEntry($bareFileName, $key);
                 if($fileID)
                 {
@@ -329,7 +408,6 @@ sub processDownloadedFile
                     $self->setError("Couldn't create a DB entry for $file");
                 }
             }
-        }
         $self->readyJob($job);
     }
 }

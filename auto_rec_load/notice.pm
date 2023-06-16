@@ -165,7 +165,7 @@ sub _insertNotice
     values(?,?,?)";
     my @vars = ($noticeTemplateID, $job, $data);
     $self->doUpdateQuery($query, undef, \@vars);
-    my $id = getLastNoticeIDForJob($job, 1);
+    my $id = getLastNoticeIDForJob($self, $job, 1);
     if($id)
     {
         $self->{noticeID} = $id;

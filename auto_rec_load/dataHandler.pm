@@ -533,6 +533,7 @@ sub doWebActionAfewTimes
         eval $actionCode;
         $loops++;
     }
+    $self->setError(0) if ($result);
     return $result;
 }
 
@@ -702,6 +703,7 @@ sub readSaveFolder
     my $init = shift || 0;
 
     %filesOnDisk = () if $init;
+    my @files = ();
     my $pwd = $self->{downloadDIR};
     # print "Opening '".$self->{downloadDIR}."'\n";
     opendir(DIR,$pwd) or die "Cannot open $pwd\n";
@@ -728,6 +730,7 @@ sub readSaveFolder
             }
         }
     }
+    $self->{log}->addLine("Files on disk: " . Dumper(\@files)) if $self->{debug};
     return \@files;
 }
 
@@ -758,6 +761,7 @@ sub extractCompressedFile
     my @ret;
     my @extensionExtracts = @{@_[0]};
 
+    $self->{log}->addLine("extractCompressFile file: [$file]") if $self->{debug};
     # lowercase all of the extensions
     for my $b(0..$#extensionExtracts)
     {
@@ -789,6 +793,7 @@ sub extractCompressedFile
             return 'error reading zip';
         }
         my @list = $zip->memberNames();
+        my %fileDedupe = ();
         foreach(@list)
         {
             my $thisMember = $_;
@@ -797,6 +802,7 @@ sub extractCompressedFile
             {
                 foreach(@extensionExtracts)
                 {
+                    print "checking extention $_ \n";
                     @splitdots = split(/\./, $thisMember);
                     my $thisExt = getFileExt($self, $thisMember);
                     $extract = 1 if(lc $thisExt =~ m/$_/g);
@@ -806,10 +812,20 @@ sub extractCompressedFile
             {
                 $extract = 1;
             }
-            if($extract)
+            if($extract && !$fileDedupe{$thisMember})
             {
-                $zip->extractMember($thisMember, $extractFolder . "/$thisMember");
-                push (@ret, $extractFolder . "/$thisMember");
+                my $outputMemberFilename = $thisMember;
+                $outputMemberFilename =~ s/\?//g;
+                $outputMemberFilename =~ s/\///g;
+                $outputMemberFilename =~ s/\[//g;
+                $outputMemberFilename =~ s/\]//g;
+                $outputMemberFilename =~ s/\(//g;
+                $outputMemberFilename =~ s/\)//g;
+                $outputMemberFilename =~ s/\s//g;
+                $outputMemberFilename =~ s/\\/\//g;
+                $zip->extractMember($thisMember, $extractFolder . "/$outputMemberFilename");
+                $fileDedupe{$thisMember} = 1;
+                push (@ret, $extractFolder . "/$outputMemberFilename");
             }
         }
     }
@@ -1293,5 +1309,121 @@ sub DESTROY
     undef $self->{postgresConnector};
 }
 
+sub hammerTime
+{
+    my $self = shift;
+    my $hashID = shift;
+my $js = "
+function triggerEventsOnElement(element, hash) {
+    
+    var matched = 0;
+    for(let i = element.length-1; i >= 0; i--) {
+        if (element[i].parentElement && element[i].parentElement.tagName.match(/td/i)) {
+                if (element[i].textContent.match(hash)) {
+                matched = 1;
+            }
+            if (matched) {
+                dispatchCustomEvents(element[i].parentElement.parentElement.parentElement.parentElement);
+                dispatchCustomEvents(element[i].parentElement.parentElement.parentElement);
+                dispatchCustomEvents(element[i].parentElement.parentElement);
+                dispatchCustomEvents(element[i].parentElement);
+                break;
+            }
+        }
+    }
+}
+
+function dispatchCustomEvents(element) {
+    console.log(element);
+    var selection = window.getSelection();
+    var range = document.createRange();
+    range.selectNode(element);
+    selection.addRange(range);
+    if (document.selection) {
+        document.selection.empty();
+    }
+    console.log(window.getSelection());
+    console.log(document.activeElement);
+    element.tabIndex = '-1';
+    element.focus();
+    element.dispatchEvent(new CustomEvent('focus'));
+    element.dispatchEvent(new CustomEvent('focusin'));
+    element.dispatchEvent(new CustomEvent('enter'));
+    element.dispatchEvent(new CustomEvent('pointerup'));
+    element.dispatchEvent(new CustomEvent('pointerover'));
+    var evt = new CustomEvent('keypress');
+    evt.which = 40;
+    evt.keyCode = 40;
+    element.dispatchEvent(evt);
+    element.dispatchEvent(new CustomEvent('change'));
+    element.dispatchEvent(new PointerEvent('pointerrawupdate', {
+        'width': element.getBoundingClientRect().left + window.scrollX,
+        'height': element.getBoundingClientRect().top + window.scrollY
+    }));
+    element.dispatchEvent(new PointerEvent('pointerover', {
+        'width': element.getBoundingClientRect().left + window.scrollX,
+        'height': element.getBoundingClientRect().top + window.scrollY
+    }));
+    element.dispatchEvent(new PointerEvent('pointerover', {
+        'width': element.getBoundingClientRect().left + window.scrollX,
+        'height': element.getBoundingClientRect().top + window.scrollY
+    }));
+    element.dispatchEvent(new PointerEvent('pointerenter', {
+        'width': element.getBoundingClientRect().left + window.scrollX,
+        'height': element.getBoundingClientRect().top + window.scrollY
+    }));
+    element.dispatchEvent(new PointerEvent('pointerdown', {
+        'width': element.getBoundingClientRect().left + window.scrollX,
+        'height': element.getBoundingClientRect().top + window.scrollY
+    }));
+    element.dispatchEvent(new PointerEvent('pointermove', {
+        'width': element.getBoundingClientRect().left + window.scrollX,
+        'height': element.getBoundingClientRect().top + window.scrollY
+    }));
+    element.dispatchEvent(new PointerEvent('pointerup', {
+        'width': element.getBoundingClientRect().left + window.scrollX,
+        'height': element.getBoundingClientRect().top + window.scrollY
+    }));
+    element.dispatchEvent(new PointerEvent('gotpointercapture', {
+        'width': element.getBoundingClientRect().left + window.scrollX,
+        'height': element.getBoundingClientRect().top + window.scrollY
+    }));
+    element.dispatchEvent(new FocusEvent('focusin', {
+        'width': element.getBoundingClientRect().left + window.scrollX,
+        'height': element.getBoundingClientRect().top + window.scrollY
+    }));
+    element.dispatchEvent(new WheelEvent(''));
+    element.dispatchEvent(new FocusEvent('focusout'));
+    element.dispatchEvent(new FocusEvent('focus'));
+    element.dispatchEvent(new MouseEvent('mouseover', {'bubbles': true, view: window}));
+    element.dispatchEvent(new MouseEvent('mousedown', {'bubbles': true, view: window}));
+    element.dispatchEvent(new MouseEvent('mousemove', {'bubbles': true, view: window}));
+    document.dispatchEvent(new MouseEvent('scroll', {'bubbles': true, view: window}));
+    element.dispatchEvent(new MouseEvent('mousemove'));
+    element.dispatchEvent(new MouseEvent('focus', {'bubbles': true, view: window}));
+    evt = new CustomEvent('click');
+    element.dispatchEvent(evt);
+
+    element.dispatchEvent(new MouseEvent('mouseover', {'bubbles': true, view: window}));
+    element.dispatchEvent(new MouseEvent('click', {'bubbles': true, view: window}));
+    element.dispatchEvent(new MouseEvent('click', {'bubbles': true, view: window, button: 2}));
+
+    element.dispatchEvent(new PointerEvent('pointerover'));
+    element.dispatchEvent(new PointerEvent('pointerenter'));
+    element.dispatchEvent(new PointerEvent('pointerdown'));
+
+    element.dispatchEvent(new MouseEvent('mouseover', {'bubbles': true, view: window}));
+    element.dispatchEvent(new MouseEvent('click', {'bubbles': true, view: window}));
+    element.dispatchEvent(new MouseEvent('click', {'bubbles': true, view: window, button: 2}));
+
+}
+
+triggerEventsOnElement(document.getElementsByTagName('div'),'$hashID');
+
+";
+    
+    return $js;
+    
+}
 
 1;

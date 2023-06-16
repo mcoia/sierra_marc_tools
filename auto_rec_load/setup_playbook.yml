@@ -83,6 +83,10 @@
     become: true
     ignore_errors: yes
     shell: export PERL_MM_USE_DEFAULT=1 && perl -MCPAN -e 'install "Email::Send"'
+  - name: Installing CPAN packages Email::Send
+    become: true
+    ignore_errors: yes
+    shell: export PERL_MM_USE_DEFAULT=1 && perl -MCPAN -e 'install "Email::Send"'
   - name: Installing CPAN packages YAML
     become: true
     ignore_errors: yes
