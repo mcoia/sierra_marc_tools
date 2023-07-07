@@ -1,0 +1,2 @@
+This sub-project is now here:
+https://github.com/mcoia/auto-record-load.git
