@@ -172,26 +172,12 @@ where
     my $query =<<'splitter';
 select
 regexp_replace(
-regexp_replace(regexp_replace(string_agg(distinct 'b'||bib.record_num,'!delem!' order by 'b'||bib.record_num),'\|.','!delem!','g'),'^!delem!','','g'),
-'!delem!!delem!','!delem!','g')
+regexp_replace(regexp_replace(string_agg(distinct 'b'||bib.record_num,'!delim!' order by 'b'||bib.record_num),'\|.','!delim!','g'),'^!delim!','','g'),
+'!delim!!delim!','!delim!','g')
 "bib_ids",
 concat('i', item.record_num) "record_num", --RECORD #(Item)
 item_prop.call_number "item_call_no", --CALL #(Item)
-(
-select
-btrim(
-regexp_replace(
-regexp_replace(regexp_replace(string_agg("bcall",'!delem!')
-,'\|.',' ','g'),'^!delem!','','g'),
-'!delem!!delem!','!delem!','g')
-)
-from
-(
-select
-string_agg(btrim(field_content),'' order by occ_num) "bcall",record_id
-from sierra_view.varfield_view bib_call where record_id = any (('{'||string_agg(distinct bib.id::text,','::text)||'}')::bigint[]) and record_type_code='b' and marc_tag in( '090', '092' ) and field_content ~'^\|a'  group by 2) as b
-) as  
-"bib_call_nos", --CALL #(Bibliographic)
+bib_call_k.subk as "bib_call_sub_k", --CALL #(Bibliographic)
 item.barcode,
 item.icode1,
 item.icode2,
@@ -207,8 +193,8 @@ item.last_year_to_date_checkout_total,
 item.year_to_date_checkout_total,
 item.copy_num,
 regexp_replace(
-regexp_replace(regexp_replace(string_agg(distinct item_volume.field_content,'!delem!' ),'\|.','!delem!','g'),'^!delem!','','g'),
-'!delem!!delem!','!delem!','g')
+regexp_replace(regexp_replace(string_agg(distinct item_volume.field_content,'!delim!' ),'\|.','!delim!','g'),'^!delim!','','g'),
+'!delim!!delim!','!delim!','g')
 "volume",
 item.use3_count,
 item.last_checkout_gmt,
@@ -221,38 +207,53 @@ item.is_suppressed,
 item.last_year_to_date_checkout_total,
 item.record_creation_date_gmt,
 regexp_replace(
-regexp_replace(regexp_replace(string_agg(distinct item_message.field_content,'!delem!' ),'\|.','!delem!','g'),'^!delem!','','g'),
-'!delem!!delem!','!delem!','g')
+regexp_replace(regexp_replace(string_agg(distinct item_message.field_content,'!delim!' ),'\|.','!delim!','g'),'^!delim!','','g'),
+'!delim!!delim!','!delim!','g')
 "message",
 item_note.note
 
 from
-sierra_view.item_view item
+(select * from sierra_view.item_view item2 where !!!sierralocationcodes!!! !!orderlimit!! ) item
 join sierra_view.bib_record_item_record_link bib_item_link on ( bib_item_link.item_record_id = item.id)
 join sierra_view.bib_view bib on ( bib.id = bib_item_link.bib_record_id )
 join sierra_view.record_metadata metarecord on(metarecord.id=item.id)
 left join (
 select
 regexp_replace(
-regexp_replace(regexp_replace(string_agg(btrim(call_number_norm),'!delem!'),'\|.','!delem!','g'),'^!delem!','','g'),
-'!delem!!delem!','!delem!','g') "call_number",item_record_id
+regexp_replace(regexp_replace(string_agg(btrim(regexp_replace(call_number,'\|.',' ','g')),'!delim!'),'\|.','!delim!','g'),'^!delim!','','g'),
+'!delim!!delim!','!delim!','g') "call_number",item_record_id
  from sierra_view.item_record_property group by 2
 ) as "item_prop" on(item_prop.item_record_id=item.id)
 left join sierra_view.varfield_view item_message on(item_message.record_id = item.id and item_message.varfield_type_code='m' and item_message.marc_tag is null)
 left join (
 select
 regexp_replace(
-regexp_replace(regexp_replace(string_agg(distinct item_note.field_content,'!delem!' ),'\|.','!delem!','g'),'^!delem!','','g'),
-'!delem!!delem!','!delem!','g')
+regexp_replace(regexp_replace(string_agg(distinct item_note.field_content,'!delim!' ),'\|.','!delim!','g'),'^!delim!','','g'),
+'!delim!!delim!','!delim!','g')
 "note", record_id from sierra_view.varfield_view item_note where item_note.varfield_type_code in ('x','n') and item_note.marc_tag is null group by 2) item_note on(item_note.record_id = item.id )
 left join sierra_view.varfield_view item_volume on(item_volume.record_id = item.id and item_volume.varfield_type_code = 'v' and item_volume.marc_tag is null)
-where
-!!!sierralocationcodes!!!
-group by 2,3,5,6,7,8,9,10,11,12,13,14,15,16,17,18,20,21,22,23,24,25,26,27,28,29,31
+left join (select item2.id, ('{'||string_agg(distinct bib_item_link2.bib_record_id::text,','::text)||'}')::bigint[] "bibarray" from sierra_view.item_view item2 join sierra_view.bib_record_item_record_link bib_item_link2 on ( bib_item_link2.item_record_id = item2.id) group by 1) bib_id_array on (bib_id_array.id=item.id)
+left join (
+	select
+	btrim(
+regexp_replace(
+regexp_replace(regexp_replace(string_agg(btrim(field_content),'!delim!' order by occ_num)
+,'\|k([^\|]*).*?','\1','g'),'^!delim!','','g'),
+'!delim!!delim!','!delim!','g')
+) "subk",
+	record_id
+	from sierra_view.varfield_view bib_call where record_type_code='b' and marc_tag in( '050', '082', '086', '090', '092', '099' ) and field_content ~'\|k'  group by 2
+) as bib_call_k on(bib_call_k.record_id = any (bib_id_array.bibarray) )
+
+-- when bib_call_sub_k is included
+group by 2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,20,21,22,23,24,25,26,27,28,29,31
+-- when bib_call_sub_k is NOT included
+-- group by 2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,19,20,21,22,23,24,25,26,27,28,30
+ORDER BY 1
 splitter
 
     my $t = $sierralocationcodes;
-    $t =~ s/^brbl/item/g;
+    $t =~ s/^brbl/item2/g;
     $query =~ s/!!!sierralocationcodes!!!/$t/g;
     setupEGTable($query,"folio_items", $firstrun);
 
@@ -265,36 +266,36 @@ concat('p', patron.record_num) "patron_num",
 
 -- Names
 regexp_replace(
-regexp_replace(regexp_replace(string_agg(pname.last_name,'!delem!' ORDER BY pname.display_order),'\|.','!delem!','g'),'^!delem!','','g'),
-'!delem!!delem!','!delem!','g')
+regexp_replace(regexp_replace(string_agg(pname.last_name,'!delim!' ORDER BY pname.display_order),'\|.','!delim!','g'),'^!delim!','','g'),
+'!delim!!delim!','!delim!','g')
 "last_name",
 
 
 regexp_replace(
-regexp_replace(regexp_replace(string_agg(pname.first_name,'!delem!' ORDER BY pname.id),'\|.','!delem!','g'),'^!delem!','','g'),
-'!delem!!delem!','!delem!','g')
+regexp_replace(regexp_replace(string_agg(pname.first_name,'!delim!' ORDER BY pname.id),'\|.','!delim!','g'),'^!delim!','','g'),
+'!delim!!delim!','!delim!','g')
 "first_name",
 
 regexp_replace(
-regexp_replace(regexp_replace(string_agg(pname.middle_name,'!delem!' ORDER BY pname.id),'\|.','!delem!','g'),'^!delem!','','g'),
-'!delem!!delem!','!delem!','g')
+regexp_replace(regexp_replace(string_agg(pname.middle_name,'!delim!' ORDER BY pname.id),'\|.','!delim!','g'),'^!delim!','','g'),
+'!delim!!delim!','!delim!','g')
 "middle_name",
 
 patron.barcode,
 
 regexp_replace(
-regexp_replace(regexp_replace(string_agg(distinct pvisibleid.field_content,'!delem!'),'\|.','!delem!','g'),'^!delem!','','g'),
-'!delem!!delem!','!delem!','g')
+regexp_replace(regexp_replace(string_agg(distinct pvisibleid.field_content,'!delim!'),'\|.','!delim!','g'),'^!delim!','','g'),
+'!delim!!delim!','!delim!','g')
 "visible_patron_id",
 
 regexp_replace(
-regexp_replace(regexp_replace(string_agg(distinct pphone.phone_number,'!delem!'),'\|.','!delem!','g'),'^!delem!','','g'),
-'!delem!!delem!','!delem!','g')
+regexp_replace(regexp_replace(string_agg(distinct pphone.phone_number,'!delim!'),'\|.','!delim!','g'),'^!delim!','','g'),
+'!delim!!delim!','!delim!','g')
 "phone_number",
 
 regexp_replace(
-regexp_replace(regexp_replace(string_agg(distinct pemail.field_content,'!delem!'),'\|.','!delem!','g'),'^!delem!','','g'),
-'!delem!!delem!','!delem!','g')
+regexp_replace(regexp_replace(string_agg(distinct pemail.field_content,'!delim!'),'\|.','!delim!','g'),'^!delim!','','g'),
+'!delim!!delim!','!delim!','g')
 "email",
 patron.ptype_code,
 patron.home_library_code,
@@ -329,8 +330,8 @@ patron.waitlist_count,
 patron.is_reading_history_opt_in,
 
 regexp_replace(
-regexp_replace(regexp_replace(string_agg(distinct pnote.field_content,'!delem!'),'\|.','!delem!','g'),'^!delem!','','g'),
-'!delem!!delem!','!delem!','g')
+regexp_replace(regexp_replace(string_agg(distinct pnote.field_content,'!delim!'),'\|.','!delim!','g'),'^!delim!','','g'),
+'!delim!!delim!','!delim!','g')
 "notes",
 
 pmetarecord.creation_date_gmt,
@@ -364,47 +365,47 @@ left join (select
 -- Address section
 patron_record_id,
 regexp_replace(
-regexp_replace(string_agg(patron_record_address_type_id::text,'!delem!' order by display_order),'^!delem!','','g'),
-'!delem!!delem!','!delem!','g')
+regexp_replace(string_agg(patron_record_address_type_id::text,'!delim!' order by display_order),'^!delim!','','g'),
+'!delim!!delim!','!delim!','g')
 "patron_record_address_type_id",
 
 regexp_replace(
-regexp_replace(string_agg(addr1,'!delem!' order by display_order),'^!delem!','','g'),
-'!delem!!delem!','!delem!','g')
+regexp_replace(string_agg(addr1,'!delim!' order by display_order),'^!delim!','','g'),
+'!delim!!delim!','!delim!','g')
 "addr1",
 regexp_replace(
-regexp_replace(string_agg(addr2,'!delem!' order by display_order),'^!delem!','','g'),
-'!delem!!delem!','!delem!','g')
+regexp_replace(string_agg(addr2,'!delim!' order by display_order),'^!delim!','','g'),
+'!delim!!delim!','!delim!','g')
 "addr2",
 
 regexp_replace(
-regexp_replace(string_agg(addr3,'!delem!' order by display_order),'^!delem!','','g'),
-'!delem!!delem!','!delem!','g')
+regexp_replace(string_agg(addr3,'!delim!' order by display_order),'^!delim!','','g'),
+'!delim!!delim!','!delim!','g')
 "addr3",
 
 regexp_replace(
-regexp_replace(string_agg(village,'!delem!' order by display_order),'^!delem!','','g'),
-'!delem!!delem!','!delem!','g')
+regexp_replace(string_agg(village,'!delim!' order by display_order),'^!delim!','','g'),
+'!delim!!delim!','!delim!','g')
 "village",
 
 regexp_replace(
-regexp_replace(string_agg(city,'!delem!' order by display_order),'^!delem!','','g'),
-'!delem!!delem!','!delem!','g')
+regexp_replace(string_agg(city,'!delim!' order by display_order),'^!delim!','','g'),
+'!delim!!delim!','!delim!','g')
 "city",
 
 regexp_replace(
-regexp_replace(string_agg(region,'!delem!' order by display_order),'^!delem!','','g'),
-'!delem!!delem!','!delem!','g')
+regexp_replace(string_agg(region,'!delim!' order by display_order),'^!delim!','','g'),
+'!delim!!delim!','!delim!','g')
 "region",
 
 regexp_replace(
-regexp_replace(string_agg(postal_code,'!delem!' order by display_order),'^!delem!','','g'),
-'!delem!!delem!','!delem!','g')
+regexp_replace(string_agg(postal_code,'!delim!' order by display_order),'^!delim!','','g'),
+'!delim!!delim!','!delim!','g')
 "postal_code",
 
 regexp_replace(
-regexp_replace(string_agg(country,'!delem!' order by display_order),'^!delem!','','g'),
-'!delem!!delem!','!delem!','g')
+regexp_replace(string_agg(country,'!delim!' order by display_order),'^!delim!','','g'),
+'!delim!!delim!','!delim!','g')
 "country"
 from
 sierra_view.patron_record_address paddress_internal
@@ -601,7 +602,7 @@ splitter
                 )
         )
 	";
-	setupEGTable($query,"record_metadata", $firstrun);	
+	setupEGTable($query,"record_metadata", $firstrun);
 
 	$firstrun = 0;
     while ( (my $filename, my $fhandle) = each(%fileHandles) )

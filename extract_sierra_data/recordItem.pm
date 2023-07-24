@@ -85,7 +85,7 @@ package recordItem;
 				my $field = substr($_,0,1);
                 if($field =~ /^[0-9|A-Z|a-z]$/)
                 {
-                    my $content = substr($_,1);			
+                    my $content = substr($_,1);
                     if($content ne '')
                     {	
                         my $temp = length($content);
@@ -101,7 +101,7 @@ package recordItem;
                 }
             }
 		}
-		
+
 		if($id eq '945')
 		{
 			my @tempArray;
@@ -143,41 +143,7 @@ package recordItem;
 			}
 			@brokenFields = @tempArray;
 		}
-		
-		#sort by subfield ID
-		my $changed = 1;
-		if($id ne '505')
-		{
-			my $i=0;
-			while($i<$#brokenFields)
-			{
-				
-				my $thisRec = @brokenFields[$i]->getID();
-				if($i+1 <= $#brokenFields)
-				{
-					my $thisRecordItem = @brokenFields[$i+1];
-					my $nextRec = $thisRecordItem->getID();
-					if($nextRec lt $thisRec)
-					{
-						#print "$nextRec was lower in the alphabet than $thisRec\n";
-						$thisRec = @brokenFields[$i];
-						@brokenFields[$i]=@brokenFields[$i+1];
-						@brokenFields[$i+1] = $thisRec;
-						$i-=2;
-					}
-				}
-				$i++;
-				if($i<0)
-				{
-					$i=0;
-				}
-				
-			}
-		}
-		#print "\n\n\n\n After sort:\n";
-		#print Dumper(\@brokenFields);
-		
-		
+        undef @fields;
 	}
 	else
 	{
@@ -261,10 +227,10 @@ package recordItem;
 		else
 		{
 			
-			if($id eq '001' || $id eq '002' || $id eq '003' || $id eq '004' || $id eq '005' || $id eq '006' || $id eq '007' || $id eq '008' || $id eq '009')
+			if($id =~ /00\d/)
 			{
 				#Different Constructor for these fields
-				$ret = MARC::Field->new($id,$data);
+				$ret = MARC::Field->new($id, $data);
 			}
 			else
 			{

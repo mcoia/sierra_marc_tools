@@ -856,7 +856,7 @@ package sierraScraper;
     my $query = "SELECT A.MARC_TAG,A.FIELD_CONTENT,
     (SELECT MARC_IND1 FROM SIERRA_VIEW.SUBFIELD_VIEW WHERE VARFIELD_ID=A.ID LIMIT 1),
     (SELECT MARC_IND2 FROM SIERRA_VIEW.SUBFIELD_VIEW WHERE VARFIELD_ID=A.ID LIMIT 1),
-    RECORD_ID FROM SIERRA_VIEW.VARFIELD_VIEW A WHERE A.RECORD_ID IN($selects) ORDER BY A.MARC_TAG, A.OCC_NUM";
+    RECORD_ID FROM SIERRA_VIEW.VARFIELD_VIEW A WHERE A.RECORD_ID IN($selects) ORDER BY A.MARC_TAG,A.VARFIELD_TYPE_CODE,A.OCC_NUM";
 
     recordQuery($self, $query);
     $pidfile->truncFile($query);
@@ -1426,7 +1426,7 @@ sub stuff998alternate
     my $ret = MARC::Record->new();
 
     #$ret->append_fields( @marcFields );
-    $ret->insert_fields_ordered( @marcFields );
+    $ret->insert_fields_ordered( reverse @marcFields );
     #Alter the Leader to match Sierra
     my $leaderString = $ret->leader();
     #print "Leader was $leaderString\n";

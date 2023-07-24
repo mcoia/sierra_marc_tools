@@ -625,7 +625,29 @@ _full~~SELECT $recordSearch
                 sierra_view.bib_record
                 join sierra_view.bib_record_location svbrl_inner on (sierra_view.bib_record.id = svbrl_inner.bib_record_id)
                 left join sierra_view.bib_record_location prev_svbrl_inner on(prev_svbrl_inner.bib_record_id=sierra_view.bib_record.id and prev_svbrl_inner.location_code in(!!prevl!!))
+                left join sierra_view.varfield svv on
+                (
+                    svv.record_id = sierra_view.bib_record.id and svv.marc_tag='001' and
+                    (
+                    svv.field_content~*'ebc' or
+                    svv.field_content~*'emoe' or
+                    svv.field_content~*'ewlebc' or
+                    svv.field_content~*'fod' or
+                    svv.field_content~*'jstor' or
+                    svv.field_content~*'jstoreba' or
+                    svv.field_content~*'kan' or
+                    svv.field_content~*'lccsd' or
+                    svv.field_content~*'lusafari' or
+                    svv.field_content~*'park' or
+                    svv.field_content~*'ruacls' or
+                    svv.field_content~*'safari' or
+                    svv.field_content~*'sage' or
+                    svv.field_content~*'xrc' or
+                    svv.field_content~*'emoeir'
+                    )
+                )
                 where
+                svv.record_id is null and
                 prev_svbrl_inner.bib_record_id is null
                 and svbrl_inner.location_code = $$!!loc!!$$
 splitter
