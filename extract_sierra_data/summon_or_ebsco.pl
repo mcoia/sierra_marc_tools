@@ -643,6 +643,7 @@ _full~~SELECT $recordSearch
                     svv.field_content~*'safari' or
                     svv.field_content~*'sage' or
                     svv.field_content~*'xrc' or
+                    svv.field_content~*'odn' or
                     svv.field_content~*'emoeir'
                     )
                 )

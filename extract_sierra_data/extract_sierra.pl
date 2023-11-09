@@ -217,6 +217,29 @@ from
 join sierra_view.bib_record_item_record_link bib_item_link on ( bib_item_link.item_record_id = item.id)
 join sierra_view.bib_view bib on ( bib.id = bib_item_link.bib_record_id )
 join sierra_view.record_metadata metarecord on(metarecord.id=item.id)
+join sierra_view.varfield svv on
+                (
+                    svv.record_id = bib_item_link.bib_record_id and
+                    svv.marc_tag='001' and
+                    (
+                    svv.field_content!~*'ebc' and
+                    svv.field_content!~*'emoe' and
+                    svv.field_content!~*'ewlebc' and
+                    svv.field_content!~*'fod' and
+                    svv.field_content!~*'jstor' and
+                    svv.field_content!~*'jstoreba' and
+                    svv.field_content!~*'kan' and
+                    svv.field_content!~*'lccsd' and
+                    svv.field_content!~*'lusafari' and
+                    svv.field_content!~*'park' and
+                    svv.field_content!~*'ruacls' and
+                    svv.field_content!~*'safari' and
+                    svv.field_content!~*'sage' and
+                    svv.field_content!~*'xrc' and
+                    svv.field_content!~*'odn' and
+                    svv.field_content!~*'emoeir'
+                    )
+                )
 left join (
 select
 regexp_replace(
