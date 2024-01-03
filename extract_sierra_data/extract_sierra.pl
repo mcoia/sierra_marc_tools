@@ -127,6 +127,7 @@ make_path($conf->{"marcoutdir"},
 	my $query = "select * from sierra_view.user_defined_bcode3_myuser";
 	setupEGTable($query,"user_defined_bcode3_myuser", 1);
 
+my $ctagportion = getCtagQueryPortion();
 
 my @sp = @{getLocationCodes()};
 my $firstrun = 1;
@@ -176,8 +177,12 @@ regexp_replace(regexp_replace(string_agg(distinct 'b'||bib.record_num,'!delim!' 
 '!delim!!delim!','!delim!','g')
 "bib_ids",
 concat('i', item.record_num) "record_num", --RECORD #(Item)
-item_prop.call_number "item_call_no", --CALL #(Item)
-bib_call_k.subk as "bib_call_sub_k", --CALL #(Bibliographic)
+-- item_prop.call_number "item_call_no", --CALL #(Item)
+regexp_replace(
+regexp_replace(regexp_replace(string_agg(distinct btrim(regexp_replace(item_prop.call_number,'\|.',' ','g')),'!delim!'),'\|.','!delim!','g'),'^!delim!','','g'),
+'!delim!!delim!','!delim!','g') "call_number",
+
+-- bib_call_k.subk as "bib_call_sub_k", --CALL #(Bibliographic)
 item.barcode,
 item.icode1,
 item.icode2,
@@ -210,74 +215,91 @@ regexp_replace(
 regexp_replace(regexp_replace(string_agg(distinct item_message.field_content,'!delim!' ),'\|.','!delim!','g'),'^!delim!','','g'),
 '!delim!!delim!','!delim!','g')
 "message",
-item_note.note
+regexp_replace(
+regexp_replace(regexp_replace(string_agg(distinct item_note.note,'!delim!' ),'\|.','!delim!','g'),'^!delim!','','g'),
+'!delim!!delim!','!delim!','g') "note",
+!!ctag_portion!!
+string_agg(distinct item_ctag.field_content,';')
 
 from
+
 (select * from sierra_view.item_view item2 where !!!sierralocationcodes!!! !!orderlimit!! ) item
 join sierra_view.bib_record_item_record_link bib_item_link on ( bib_item_link.item_record_id = item.id)
 join sierra_view.bib_view bib on ( bib.id = bib_item_link.bib_record_id )
 join sierra_view.record_metadata metarecord on(metarecord.id=item.id)
-join sierra_view.varfield svv on
-                (
-                    svv.record_id = bib_item_link.bib_record_id and
-                    svv.marc_tag='001' and
-                    (
-                    svv.field_content!~*'ebc' and
-                    svv.field_content!~*'emoe' and
-                    svv.field_content!~*'ewlebc' and
-                    svv.field_content!~*'fod' and
-                    svv.field_content!~*'jstor' and
-                    svv.field_content!~*'jstoreba' and
-                    svv.field_content!~*'kan' and
-                    svv.field_content!~*'lccsd' and
-                    svv.field_content!~*'lusafari' and
-                    svv.field_content!~*'park' and
-                    svv.field_content!~*'ruacls' and
-                    svv.field_content!~*'safari' and
-                    svv.field_content!~*'sage' and
-                    svv.field_content!~*'xrc' and
-                    svv.field_content!~*'odn' and
-                    svv.field_content!~*'emoeir'
-                    )
-                )
-left join (
-select
-regexp_replace(
-regexp_replace(regexp_replace(string_agg(btrim(regexp_replace(call_number,'\|.',' ','g')),'!delim!'),'\|.','!delim!','g'),'^!delim!','','g'),
-'!delim!!delim!','!delim!','g') "call_number",item_record_id
- from sierra_view.item_record_property group by 2
-) as "item_prop" on(item_prop.item_record_id=item.id)
+left join sierra_view.varfield svv on
+    (
+        svv.record_id = bib_item_link.bib_record_id and
+        svv.marc_tag='001' and
+        (
+        svv.field_content~*'ebc' or
+        svv.field_content~*'emoe' or
+        svv.field_content~*'ewlebc' or
+        svv.field_content~*'fod' or
+        svv.field_content~*'jstor' or
+        svv.field_content~*'jstoreba' or
+        svv.field_content~*'kan' or
+        svv.field_content~*'lccsd' or
+        svv.field_content~*'lusafari' or
+        svv.field_content~*'park' or
+        svv.field_content~*'ruacls' or
+        svv.field_content~*'safari' or
+        svv.field_content~*'sage' or
+        svv.field_content~*'xrc' or
+        svv.field_content~*'odn' or
+        svv.field_content~*'emoeir'
+        )
+    )
+-- left join (
+-- select
+-- regexp_replace(
+-- regexp_replace(regexp_replace(string_agg(distinct btrim(regexp_replace(call_number,'\|.',' ','g')),'!delim!'),'\|.','!delim!','g'),'^!delim!','','g'),
+-- '!delim!!delim!','!delim!','g') "call_number",item_record_id
+--  from sierra_view.item_record_property group by 2
+-- ) as "item_prop" on(item_prop.item_record_id=item.id)
+
+left join sierra_view.item_record_property item_prop on(item_prop.item_record_id=item.id)
+
 left join sierra_view.varfield_view item_message on(item_message.record_id = item.id and item_message.varfield_type_code='m' and item_message.marc_tag is null)
+
+left join sierra_view.varfield_view item_ctag on(item_ctag.record_id = item.id and item_ctag.marc_tag!='999' and item_ctag.varfield_type_code='c')
+
 left join (
 select
 regexp_replace(
 regexp_replace(regexp_replace(string_agg(distinct item_note.field_content,'!delim!' ),'\|.','!delim!','g'),'^!delim!','','g'),
 '!delim!!delim!','!delim!','g')
 "note", record_id from sierra_view.varfield_view item_note where item_note.varfield_type_code in ('x','n') and item_note.marc_tag is null group by 2) item_note on(item_note.record_id = item.id )
+
 left join sierra_view.varfield_view item_volume on(item_volume.record_id = item.id and item_volume.varfield_type_code = 'v' and item_volume.marc_tag is null)
-left join (select item2.id, ('{'||string_agg(distinct bib_item_link2.bib_record_id::text,','::text)||'}')::bigint[] "bibarray" from sierra_view.item_view item2 join sierra_view.bib_record_item_record_link bib_item_link2 on ( bib_item_link2.item_record_id = item2.id) group by 1) bib_id_array on (bib_id_array.id=item.id)
-left join (
-	select
-	btrim(
-regexp_replace(
-regexp_replace(regexp_replace(string_agg(btrim(field_content),'!delim!' order by occ_num)
-,'\|k([^\|]*).*?','\1','g'),'^!delim!','','g'),
-'!delim!!delim!','!delim!','g')
-) "subk",
-	record_id
-	from sierra_view.varfield_view bib_call where record_type_code='b' and marc_tag in( '050', '082', '086', '090', '092', '099' ) and field_content ~'\|k'  group by 2
-) as bib_call_k on(bib_call_k.record_id = any (bib_id_array.bibarray) )
+
+-- left join (select item2.id, ('{'||string_agg(distinct bib_item_link2.bib_record_id::text,','::text)||'}')::bigint[] "bibarray" from sierra_view.item_view item2 join sierra_view.bib_record_item_record_link bib_item_link2 on ( bib_item_link2.item_record_id = item2.id) group by 1) bib_id_array on (bib_id_array.id=item.id)
+-- left join (
+-- 	select
+-- 	btrim(
+-- regexp_replace(
+-- regexp_replace(regexp_replace(string_agg(distinct btrim(field_content),'!delim!' order by occ_num)
+-- ,'\|k([^\|]*).*?','\1','g'),'^!delim!','','g'),
+-- '!delim!!delim!','!delim!','g')
+-- ) "subk",
+-- 	record_id
+-- 	from sierra_view.varfield_view bib_call where record_type_code='b' and marc_tag in( '050', '082', '086', '090', '092', '099' ) and field_content ~'\|k'  group by 2
+-- ) as bib_call_k on(bib_call_k.record_id = any (bib_id_array.bibarray) )
 
 -- when bib_call_sub_k is included
-group by 2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,20,21,22,23,24,25,26,27,28,29,31
+-- group by 2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,20,21,22,23,24,25,26,27,28,29,31
 -- when bib_call_sub_k is NOT included
 -- group by 2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,19,20,21,22,23,24,25,26,27,28,30
+where
+svv.record_id is null
+group by 2,4,5,6,7,8,9,10,11,12,13,14,15,16,17,19,20,21,22,23,24,25,26,27,28
 ORDER BY 1
 splitter
 
     my $t = $sierralocationcodes;
     $t =~ s/^brbl/item2/g;
     $query =~ s/!!!sierralocationcodes!!!/$t/g;
+    $query =~ s/!!ctag_portion!!/$ctagportion/g;
     setupEGTable($query,"folio_items", $firstrun);
 
 
@@ -645,6 +667,46 @@ while ( (my $filename, my $fhandle) = each(%fileHandles) )
 }
 	$log->addLogLine(" ---------------- Script End ---------------- ");
 
+
+sub getCtagQueryPortion
+{
+    my $template = <<'splitter';
+(case when string_agg(regexp_replace(item_ctag.field_content,'.*?\|valplaceholder([^\|]*)\|?.*$','\1','g'),' - ') ~ '\|' then null else string_agg(distinct regexp_replace(item_ctag.field_content,'.*?\|valplaceholder([^\|]*)\|?.*$','\1','g'),' - ') end) "ctag_valplaceholder",
+splitter
+
+    my $query = <<'splitter';
+select regexp_replace(val,'^(.).*','\1','g'),count(*)
+from
+(
+select unnest(string_to_array(field_content,'|')) "val"
+from
+sierra_view.varfield_view item_ctag 
+where
+item_ctag.marc_tag!='999' and
+item_ctag.varfield_type_code='c' and
+item_ctag.record_type_code='i'
+) as a
+where
+a.val!=''
+group by 1
+splitter
+
+    my $ret = '';
+    my @results = @{$sierradbHandler->query($query)};
+    foreach(@results)
+    {
+        my $row = $_;
+        my @row = @{$row};
+        my $thisVal = @row[0];
+        $thisVal =~ s/[\t\s]*//g;
+        if( length($thisVal) == 1)
+        {
+            $ret .= $template;
+            $ret =~ s/valplaceholder/$thisVal/g;
+        }
+    }
+    return $ret;
+}
 
 sub setupEGTable
 {
