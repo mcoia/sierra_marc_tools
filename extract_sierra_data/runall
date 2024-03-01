@@ -3,20 +3,41 @@
 ./cleantmp
 boxes=("server1" "server2" )
 
+rm -Rf compressed
+rm -Rf logs/*
+sleep 5
+mkdir -p compressed/{all,bibs,patrons,items,checkouts,holds,fines}
+
 for box in ${boxes[@]}; do
   echo running $box
   echo scrubbing previously created folder
   rm -Rf ${box}
-  rm ${box}.tar.gz
+  sleep 10
 
-  echo           bibs
-
-  echo ./summon_or_ebsco.pl ${box}.conf full && \
-  time ./summon_or_ebsco.pl ${box}.conf full &> /dev/null  && \
-  echo           non-bibs && \
-  echo ./extract_sierra.pl --config ${box}.conf --schema l_${box} && \
+  # echo ${box} ./summon_or_ebsco.pl ${box}.conf full && \
+  # time ./summon_or_ebsco.pl ${box}.conf full > /dev/null 2>&1 && \
+  echo ${box} ./extract_sierra.pl --config ${box}.conf --schema m_${box} && \
   time ./extract_sierra.pl --config ${box}.conf --schema l_${box} && \
-  echo Taring it up.... && \
-  tar -zcvf ${box}_$(date +%F).tar.gz ${box} &
+  echo ${box} Taring it up.... && \
+  sleep 5 && \
+  pushd ${box} && \
+  tar -zcvf ../compressed/all/${box}_all_$(date +%F).tar.gz * ; \
+  sleep 1 && \
+  pushd bibs && \
+  tar -zcvf ../../compressed/bibs/${box}_bibs_$(date +%F).tar.gz * ; \
+  cp *.txt ../../compressed/bibs/ && \
+  popd && \
+  sleep 1 && \
+  tar -zcvf ../compressed/items/${box}_items_$(date +%F).tar.gz *folio_items* ; \
+  sleep 1 && \
+  tar -zcvf ../compressed/patrons/${box}_patrons_$(date +%F).tar.gz *folio_patrons* ; \
+  sleep 1 && \
+  tar -zcvf ../compressed/checkouts/${box}_checkouts_$(date +%F).tar.gz *folio_checkout* ; \
+  sleep 1 && \
+  tar -zcvf ../compressed/holds/${box}_holds_$(date +%F).tar.gz *folio_holds* ; \
+  sleep 1 && \
+  tar -zcvf ../compressed/fines/${box}_fines_$(date +%F).tar.gz *folio_fines* ; \
+  popd && \
+  echo "********" &
 
 done

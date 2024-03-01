@@ -708,7 +708,7 @@ package sierraScraper;
         my @row = @{$row};
         $max = @row[0];
     }
-    #print "max: $max\n";
+    # print "max: $max\n";
     # return 6000 if $max > 6000;
     return $max;
  }

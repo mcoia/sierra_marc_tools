@@ -28,7 +28,7 @@
 # Blake Graham-Henderson 
 # MOBIUS
 # blake@mobiusconsortium.org
-# 2013-1-24
+# 2024-2-24
 
  use lib qw(.);
  use strict; 
@@ -60,6 +60,10 @@
  our @allOutputFiles_bad = ();
  our @allOutputFiles_electric = ();
  our @previousLocs = ('');
+ our @fileHandles = ();
+
+my $dt   = DateTime->now(time_zone => "local"); 	
+our $fdate = $dt->ymd;
 
  my $configFile = @ARGV[0];
  if(!$configFile)
@@ -134,148 +138,86 @@ if($conf)
 
                 $log->addLogLine(" ---------------- Script Starting ---------------- ");
                 my $platform = $conf{"platform"};#ebsco or summon
-                my $fileNamePrefix = $school;
                 my $remoteDirectory = "/updates";
 
-                my $dt   = DateTime->now(time_zone => "local"); 	
-                my $fdate = $dt->ymd;
+                $log->addLogLine("$school $platform $type *STARTING*");
 
-                my $outputMarcFile = $mobUtil->chooseNewFileName($conf->{"marcoutdir"} . '/bibs',$fileNamePrefix."_".$fdate,"mrc");
-                my $outputMarcFile_bad = $mobUtil->chooseNewFileName($conf->{"marcoutdir"} . '/bibs',$fileNamePrefix."_".$fdate."_bad","mrc");
-                my $outputMarcFile_electronic = $mobUtil->chooseNewFileName($conf->{"marcoutdir"} . '/bibs',$fileNamePrefix."_".$fdate."_electronic","mrc");
+                my $sierraScraper;
+                $valid=1;
+                my $selectQuery = $mobUtil->findQuery($dbHandler,$school,$platform,$type,$queries,@ARGV[2]);
 
-                if($outputMarcFile ne "0")
+                # print "Path: $pathtothis\n";
+                # print $selectQuery."\n";
+                # exit;
+                local $@;
+                eval{$sierraScraper = new sierraScraper($dbHandler,$log,$selectQuery,0,$type,$school,$pathtothis,$configFile,$maxdbconnections, $conf{"libraryname"});};
+                if($@)
                 {
-                    #Logging and emailing
-                    $log->addLogLine("$school $platform $type *STARTING*");
-                    $dt    = DateTime->now(time_zone => "local");   # Stores current date and time as datetime object
-                    $fdate = $dt->ymd;   # Retrieves date as a string in 'yyyy-mm-dd' format
-                    my $ftime = $dt->hms;   # Retrieves time as a string in 'hh:mm:ss' format
-                    my $dateString = "$fdate $ftime";  # "2013-02-16 05:00:00";
-                    #Logging and emailing
+                    $valid=0;
+                    print "failed to get data\n";
+                    $log->addLogLine("Sierra Scraper didn't finish clean: $thisLoc");
+                    exit;
+                }
 
-                    my $marcOutFile = $outputMarcFile;
-                    my $marcOutFile_bad = $outputMarcFile_bad;
-                    my $marcOutFile_electronic = $outputMarcFile_electronic;
-                    my $sierraScraper;
-                    $valid=1;
-                    my $selectQuery = $mobUtil->findQuery($dbHandler,$school,$platform,$type,$queries,@ARGV[2]);
+                my $recCount=0;
+                my $badrecCount=0;
+                my $elecrecCount=0;
+                my $extraInformationOutput = "";
+                my $couldNotBeCut = "";
+                if($valid)
+                {
+                    my @all = @{$sierraScraper->getAllMARC()};
+                    my @marc = @{@all[0]}; 
+                    my @tobig = @{$sierraScraper->getTooBigList()};
+                    $extraInformationOutput = @tobig[0];
+                    $couldNotBeCut = @tobig[1];
+                    my @back = @{processMARC(\@marc,$platform,$type,$school)};
+                    # print Dumper(@back);
+                    $extraInformationOutput.=@back[0];
+                    $couldNotBeCut.=@back[1];
 
-                    # print "Path: $pathtothis\n";
-                    # print $selectQuery."\n";
-                    # exit;
-                    my $gatherTime = DateTime->now();
-                    local $@;
-                    eval{$sierraScraper = new sierraScraper($dbHandler,$log,$selectQuery,0,$type,$school,$pathtothis,$configFile,$maxdbconnections, $conf{"libraryname"});};
-                    if($@)
+                    if(ref @all[1] eq 'ARRAY')
                     {
-                        $valid=0;
-                        print "failed to get data\n";
-                        $failString = "Scrape Fail";
-                    }
-
-                    my $recCount=0;
-                    my $badrecCount=0;
-                    my $elecrecCount=0;
-                    my $format = DateTime::Format::Duration->new
-                    (
-                        pattern => '%M:%S' #%e days, %H hours,
-                    );
-                    my $gatherTime = $sierraScraper->calcTimeDiff($gatherTime);
-                    $gatherTime = $gatherTime / 60;
-                    #$gatherTime = $format->format_duration($gatherTime);
-                    my $afterProcess = DateTime->now(time_zone => "local");
-                    my $difference = $afterProcess - $dt;
-                    my $duration =  $format->format_duration($difference);
-                    my $extraInformationOutput = "";
-                    my $couldNotBeCut = "";
-                    my $rps;
-                    if($valid)
-                    {
-                        my @all = @{$sierraScraper->getAllMARC()};
-                        my @marc = @{@all[0]}; 
-                        my @tobig = @{$sierraScraper->getTooBigList()};
-                        $extraInformationOutput = @tobig[0];
-                        $couldNotBeCut = @tobig[1];
-                        unlink $marcOutFile;
-                        unlink $marcOutFile_bad;
-                        unlink $marcOutFile_electronic;
-                        open($finalMARCOutHandle, '>> '.$marcOutFile);
-                        binmode($finalMARCOutHandle, ":utf8");
-                        open($finalMARCOutHandle_bad, '>> '.$marcOutFile_bad);
-                        binmode($finalMARCOutHandle_bad, ":utf8");
-                        open($finalMARCOutHandle_electronic, '>> '.$marcOutFile_electronic);
-                        binmode($finalMARCOutHandle_electronic, ":utf8");
-                        my $output;
-                        my $barcodes="";
-                        my @back = @{processMARC(\@marc,$platform,$type,$school)};
-                        # print Dumper(@back);
-                        $extraInformationOutput.=@back[0];
-                        $barcodes.=@back[1];
-                        $couldNotBeCut.=@back[2];
-                        $recCount+=@back[3];
-                        $badrecCount+=@back[4];
-                        $elecrecCount+=@back[5];
-
-                        if(ref @all[1] eq 'ARRAY')
+                        print "There were some files to process";
+                        my @dumpedFiles = @{@all[1]};
+                        foreach(@dumpedFiles)
                         {
-                            print "There were some files to process";
-                            my @dumpedFiles = @{@all[1]};
-                            foreach(@dumpedFiles)
+                            @marc = ();
+                            my $marcfile = $_;
+                            my $check = new Loghandler($marcfile);
+                            if($check->fileExists())
                             {
-                                @marc =();
-                                my $marcfile = $_;
-                                my $check = new Loghandler($marcfile);
-                                if($check->fileExists())
+                                my $file = MARC::File::USMARC->in( $marcfile );
+                                my $r =0;
+                                while ( my $marc = $file->next() ) 
                                 {
-                                    my $file = MARC::File::USMARC->in( $marcfile );
-                                    my $r =0;
-                                    while ( my $marc = $file->next() ) 
-                                    {
-                                        $r++;
-                                        push(@marc,$marc);
-                                    }
-                                    $file->close();
-                                    undef $file;
-                                    print "Read $r records from $_\n";
-                                    $check->deleteFile();
+                                    $r++;
+                                    push(@marc,$marc);
                                 }
-                                my @back = @{processMARC(\@marc,$platform,$type,$school)};
-                                $extraInformationOutput.=@back[0];
-                                $barcodes.=@back[1];
-                                $couldNotBeCut.=@back[2];
-                                $recCount+=@back[3];
-                                $badrecCount+=@back[4];
-                                $elecrecCount+=@back[5];
+                                $file->close();
+                                undef $file;
+                                print "Read $r records from $_\n";
+                                $check->deleteFile();
                             }
-
-                        }
-                        close($finalMARCOutHandle);
-                        close($finalMARCOutHandle_bad);
-                        close($finalMARCOutHandle_electronic);
-                        unlink $marcOutFile if $recCount<1;
-                        unlink $marcOutFile_bad if $badrecCount<1;
-                        unlink $marcOutFile_electronic if $elecrecCount<1;
-						push(@allOutputFiles, $marcOutFile) if $recCount>0;
-						push(@allOutputFiles_bad, $marcOutFile_bad) if $badrecCount>0;
-                        push(@allOutputFiles_electric, $marcOutFile_electronic) if $elecrecCount>0;
-
-                        if(length($extraInformationOutput)>0)
-                        {
-                            $extraInformationOutput="These records were TRUNCATED due to the 100000 size limits: $extraInformationOutput \r\n\r\n";
-                        }
-                        if(length($couldNotBeCut)>0)
-                        {
-                            $couldNotBeCut="These records were OMITTED due to the 100000 size limits: $couldNotBeCut \r\n\r\n";
+                            my @back = @{processMARC(\@marc,$platform,$type,$school)};
+                            $extraInformationOutput.=@back[0];
+                            $couldNotBeCut.=@back[1];
                         }
                     }
+                    closeHandles();
+                    if(length($extraInformationOutput)>0)
+                    {
+                        $log->addLogLine("These records were TRUNCATED due to the 100000 size limits: $extraInformationOutput");
+                        $extraInformationOutput="These records were TRUNCATED due to the 100000 size limits: $extraInformationOutput \r\n\r\n";
+                    }
+                    if(length($couldNotBeCut)>0)
+                    {
+                        $log->addLogLine("These records were OMITTED due to the 100000 size limits: $couldNotBeCut");
+                        $couldNotBeCut="These records were OMITTED due to the 100000 size limits: $couldNotBeCut \r\n\r\n";
+                    }
+                }
 
-                    $log->addLogLine("$school $platform $type *ENDING*");
-                }
-                else
-                {
-                    $log->addLogLine("Output directory does not exist: ".$conf{"marcoutdir"} . '/bibs' );
-                }
+                $log->addLogLine("$school $platform $type *ENDING*");
 
             }
             $log->addLogLine(" ---------------- Script Ending ---------------- ");
@@ -290,79 +232,44 @@ else
  
 sub combineOutput
 {
-	my $dt   = DateTime->now(time_zone => "local"); 	
-	my $fdate = $dt->ymd;
-	my $combinedMarcFile = $mobUtil->chooseNewFileName($conf->{"marcoutdir"} . '/bibs',$conf{"libraryname"}."_".$fdate,"mrc");
-	my $combinedMarcFile_bad = $mobUtil->chooseNewFileName($conf->{"marcoutdir"} . '/bibs',$conf{"libraryname"}."_".$fdate."_bad","mrc");
-	my $combinedMarcFile_electric = $mobUtil->chooseNewFileName($conf->{"marcoutdir"} . '/bibs',$conf{"libraryname"}."_".$fdate."_electronic","mrc");
+    my $pos = 0;
+    foreach(@fileHandles)
+    {
+        my %thisHandle = %{$_};
+        if(!$thisHandle{'final'})
+        {
+            my $file = MARC::File::USMARC->in( $thisHandle{'filepath'} );
+            while ( my $marc = $file->next() )
+            {
+                writeMARCToDeterminedOutputFile($marc, $thisHandle{'location'}, 1);
+            }
+            # zero out the count for the temp files, so they will be deleted by the closeHandles function
+            $thisHandle{'count'} = 0;
+            print Dumper(\%thisHandle);
+            @fileHandles[$pos] = \%thisHandle;
+        }
+        $pos++;
+    }
+    closeHandles();
     my $output_counts = $mobUtil->chooseNewFileName($conf->{"marcoutdir"} . '/bibs',$conf{"libraryname"}."_".$fdate."_bib_counts","txt");
-    my %counts = (
-    'good' => 0,
-    'electronic' => 0,
-    'bad' => 0,
-    );
-	my $combinedMarcFile_handle;
-	my $combinedMarcFile_bad_handle;
-	my $combinedMarcFile_elec_handle;
-    my $output_counts_handle;
-	unlink $combinedMarcFile;
-	unlink $combinedMarcFile_bad;
-	unlink $combinedMarcFile_electric;
-    
-	open($combinedMarcFile_handle, '>> '.$combinedMarcFile);
-	binmode($combinedMarcFile_handle, ":utf8");
-	open($combinedMarcFile_bad_handle, '>> '.$combinedMarcFile_bad);
-	binmode($combinedMarcFile_bad_handle, ":utf8");
-	open($combinedMarcFile_elec_handle, '>> '.$combinedMarcFile_electric);
-	binmode($combinedMarcFile_elec_handle, ":utf8");
-	foreach(@allOutputFiles)
-	{
-		my $file = MARC::File::USMARC->in( $_ );
-		while ( my $marc = $file->next() )
-		{
-			eval{ print $combinedMarcFile_handle $marc->as_usmarc(); };
-            $counts{'good'}++;
-		}
-		$file->close();
-		undef $file;
-        unlink $_;
-	}
-	foreach(@allOutputFiles_bad)
-	{
-		my $file = MARC::File::USMARC->in( $_ );
-		while ( my $marc = $file->next() )
-		{
-			eval{ print $combinedMarcFile_bad_handle $marc->as_usmarc(); };
-            $counts{'bad'}++;
-		}
-		$file->close();
-		undef $file;
-        unlink $_;
-	}
-    foreach(@allOutputFiles_electric)
-	{
-		my $file = MARC::File::USMARC->in( $_ );
-		while ( my $marc = $file->next() )
-		{
-			eval{ print $combinedMarcFile_elec_handle $marc->as_usmarc(); };
-            $counts{'electronic'}++;
-		}
-		$file->close();
-		undef $file;
-        unlink $_;
-	}
-	close($combinedMarcFile_handle);
-	close($combinedMarcFile_bad_handle);
-	close($combinedMarcFile_elec_handle);
-    
-    unlink $output_counts;
-	open($output_counts_handle, '>> '.$output_counts);
-	binmode($output_counts_handle, ":utf8");
-    print $output_counts_handle "Good: " . $counts{'good'} . "\n";
-    print $output_counts_handle "Electronic: " . $counts{'electronic'} . "\n";
-    print $output_counts_handle "Bad: " . $counts{'bad'} . "\n";
-    close($output_counts_handle);
+    my $output_counts_file = new Loghandler($output_counts);
+    foreach(@fileHandles)
+    {
+        if($_->{'final'})
+        {
+            my $bareName = getBareFilename($_->{'filepath'});
+            $output_counts_file->addLine("$bareName: " . $_->{'count'});
+        }
+    }
 }
+
+sub getBareFilename
+{
+    my $fullFile = shift;
+    my @s        = split( /\//, $fullFile );
+    return pop @s;
+}
+
 
  sub processMARC
  {
@@ -372,7 +279,6 @@ sub combineOutput
 	my $school = @_[3];
 	my $marcout = @_[4];
 	my $extraInformationOutput='';
-	my $barcodes;
 	my $couldNotBeCut='';
 	my $recCount=0;
     my $badrecCount=0;
@@ -395,28 +301,115 @@ sub combineOutput
             $couldNotBeCut.=$marc->subfield('907',"a");
 		}
         $marcout->appendLine($marc->as_usmarc()) if($marcout);
-        if(!$marcout)
-        {
-            if(isMARCElectronic($marc))
-            {
-                appendFinalMARCFileLine_electronic($marc->as_usmarc());
-                $electricrecCount++;
-            }
-            elsif( $marc->field('001') && $marc->field('008') && $marc->field('245') && $marc->field('907') )
-            {
-                appendFinalMARCFileLine($marc->as_usmarc());
-                $recCount++;
-            }
-            else
-            {
-                appendFinalMARCFileLine_bad($marc->as_usmarc());
-                $badrecCount++;
-            }
-        }
+        writeMARCToDeterminedOutputFile($marc, $school) if(!$marcout);
 	}
 	$extraInformationOutput = substr($extraInformationOutput,0,-1);
-	my @ret=($extraInformationOutput,$barcodes,$couldNotBeCut,$recCount,$badrecCount,$electricrecCount);
+	my @ret=($extraInformationOutput,$couldNotBeCut);
 	return \@ret;
+ }
+ 
+ sub writeMARCToDeterminedOutputFile
+ {
+     my $marc = shift;
+     my $location = shift;
+     my $final = shift || 0;
+     my $filename;
+     if(!$final) # just needs to be unique, might as well use the locationcode
+     {
+         $filename = $conf->{"marcoutdir"} . '/bibs/' . $location . "_" . $fdate . ".mrc";
+     }
+     else
+     {
+         $filename = figureFileName($marc, $location);
+     }
+     my $handlePos = startFile($filename, $final);
+     my %thisHandle = %{@fileHandles[$handlePos]};
+     $thisHandle{'location'} = $location if !($thisHandle{'location'});
+
+     my $handle = $thisHandle{'handle'};
+
+     print $handle $marc->as_usmarc();
+     $thisHandle{'count'} = $thisHandle{'count'} + 1;
+     @fileHandles[$handlePos] = \%thisHandle;
+ }
+ 
+ sub startFile
+ {
+     my $filePath = shift;
+     my $final = shift || 0;
+     my $pos = 0;
+     foreach(@fileHandles)
+     {
+         my %thisHandle = %{$_};
+         if($thisHandle{'filepath'} eq $filePath)
+         {
+             my $FH = $thisHandle{'handle'};
+             if (!$thisHandle{'handlestatus'})
+             {
+                 open($FH, '>>', $filePath);
+                 binmode($FH, ":utf8");
+                 $thisHandle{'handlestatus'} = 1;
+             }
+             @fileHandles[$pos] = \%thisHandle;
+             return $pos;
+         }
+         $pos++;
+     }
+     unlink $filePath;
+     my %t = ( 'filepath' => $filePath, 'count' => 0, 'handlestatus' => 1, 'final' => $final );
+     my $FH;
+     open($FH, '>>', $filePath);
+     $t{'handle'} = $FH;
+     binmode($t{'handle'}, ":utf8");
+     push(@fileHandles, \%t);
+     return $#fileHandles;
+ }
+ 
+ sub closeHandles
+ {
+     my %removed = ();
+     my $pos = 0;
+     foreach(@fileHandles)
+     {
+         my %thisHandle = %{$_};
+         if($thisHandle{'handlestatus'})
+         {
+             close($thisHandle{'handle'});
+             $thisHandle{'handlestatus'} = 0;
+         }
+         if($thisHandle{'count'} < 1)
+         {
+             unlink $thisHandle{'filepath'};
+             $removed{$pos} = 1;
+         }
+         @fileHandles[$pos] = \%thisHandle;
+         $pos++;
+     }
+     my @handleReplacement = ();
+     $pos = 0;
+     foreach(@fileHandles)
+     {
+         push (@handleReplacement, $_) if !($removed{$pos});
+         $pos++;
+     }
+     undef @fileHandles;
+     @fileHandles = @handleReplacement;
+ }
+ 
+ sub figureFileName
+ {
+     my $marc = shift;
+     my $location = shift;
+     my $ret = $conf{"libraryname"};
+     my $supp = '';
+     if($conf{"libraryname"} eq 'explore' || $conf{"libraryname"} eq 'swbts')
+     {
+         $supp = isMARCSuppressed($marc);
+         $supp = ".suppressed" if $supp;
+         $supp = ".unsuppressed" if !$supp;
+         $ret .= "." . getFOLIOInstitutionName($location) if($conf{"libraryname"} eq 'explore');
+     }
+     return $conf->{"marcoutdir"} . '/bibs/' . $ret.$supp.".mrc";
  }
  
  sub isMARCElectronic
@@ -439,6 +432,23 @@ sub combineOutput
      }
     return 1 if $linkfound && $headerfound;
     return 0;
+ }
+
+ sub isMARCSuppressed
+ {
+     my $marc = shift;
+     my $suppressed = 0; # defaulting to not-suppressed
+     my @f907 = $marc->field('907');
+     foreach(@f907)
+     {
+         my $thisField = $_;
+         my @zs = $thisField->subfield('z');
+         foreach(@zs)
+         {
+             $suppressed = 1 if($_ eq 't');
+         }
+     }
+    return $suppressed;
  }
 
  sub thread
@@ -596,8 +606,10 @@ sub combineOutput
             select location_code
             from
             sierra_view.bib_record_location
+            -- where location_code !~'^\d'
             group by 1
             order by 1
+            -- limit 3
 
 splitter
 
@@ -644,7 +656,9 @@ _full~~SELECT $recordSearch
                     svv.field_content~*'sage' or
                     svv.field_content~*'xrc' or
                     svv.field_content~*'odn' or
-                    svv.field_content~*'emoeir'
+                    svv.field_content~*'emoeir' or
+                    svv.field_content~*'ebr' or
+                    svv.field_content~*'ruacls'
                     )
                 )
                 where
@@ -661,23 +675,116 @@ splitter
         $qfile->truncFile($newQuery);
     
     }
-
-sub appendFinalMARCFileLine
-{
-    my $marc = shift;
-    print $finalMARCOutHandle "$marc";
-}
-
-sub appendFinalMARCFileLine_bad
-{
-    my $marc = shift;
-    print $finalMARCOutHandle_bad "$marc";
-}
-sub appendFinalMARCFileLine_electronic
-{
-    my $marc = shift;
-    print $finalMARCOutHandle_electronic "$marc";
-}
-
+    
+    sub getFOLIOInstitutionName
+    {
+        my $location = shift;
+        my %mapping =
+        (
+        'a' => 'SLAM',
+        'aauc' => 'SLAM',
+        'agar' => 'SLAM',
+        'agcl' => 'SLAM',
+        'agen' => 'SLAM',
+        'agfo' => 'SLAM',
+        'agpa' => 'SLAM',
+        'agpr' => 'SLAM',
+        'agrf' => 'SLAM',
+        'agrs' => 'SLAM',
+        'agsc' => 'SLAM',
+        'agst' => 'SLAM',
+        'aper' => 'SLAM',
+        'apmu' => 'SLAM',
+        'au' => 'SLAM',
+        'auwi' => 'SLAM',
+        'b' => 'MBG',
+        'bcewa' => 'MBG',
+        'bo' => 'MBG',
+        'boatl' => 'MBG',
+        'bobry' => 'MBG',
+        'bocom' => 'MBG',
+        'bogen' => 'MBG',
+        'bomap' => 'MBG',
+        'bomic' => 'MBG',
+        'boper' => 'MBG',
+        'boref' => 'MBG',
+        'boslh' => 'MBG',
+        'bovid' => 'MBG',
+        'boxls' => 'MBG',
+        'br' => 'MBG',
+        'brfol' => 'MBG',
+        'brlfo' => 'MBG',
+        'brlin' => 'MBG',
+        'brprl' => 'MBG',
+        'brprm' => 'MBG',
+        'brprs' => 'MBG',
+        'brprx' => 'MBG',
+        'brrar' => 'MBG',
+        'bs' => 'MBG',
+        'bsarc' => 'MBG',
+        'bscat' => 'MBG',
+        'bscon' => 'MBG',
+        'bu' => 'MBG',
+        'buwi' => 'MBG',
+        'c' => 'MHS',
+        'cp' => 'MHS',
+        'ct' => 'MHS',
+        'cv' => 'MHS',
+        'g' => 'GSN',
+        'garch' => 'GSN',
+        'gav' => 'GSN',
+        'gelec' => 'GSN',
+        'gmbmc' => 'GSN',
+        'gper' => 'GSN',
+        'gref' => 'GSN',
+        'gres' => 'GSN',
+        'gstk' => 'GSN',
+        'gths' => 'GSN',
+        'gu' => 'GSN',
+        'guwi' => 'GSN',
+        'h' => 'MHS',
+        'ha' => 'MHS',
+        'har1' => 'MHS',
+        'hd' => 'MHS',
+        'he' => 'MHS',
+        'hf' => 'MHS',
+        'hfg1' => 'MHS',
+        'hm' => 'MHS',
+        'hmg2' => 'MHS',
+        'hmgeo' => 'MHS',
+        'hn' => 'MHS',
+        'hng1' => 'MHS',
+        'hng2' => 'MHS',
+        'hng4' => 'MHS',
+        'hnmf' => 'MHS',
+        'hp' => 'MHS',
+        'hpd' => 'MHS',
+        'hpgef' => 'MHS',
+        'hpgeg' => 'MHS',
+        'hpgem' => 'MHS',
+        'hpgeo' => 'MHS',
+        'hpmc' => 'MHS',
+        'hpmf' => 'MHS',
+        'hppp' => 'MHS',
+        'hpr1' => 'MHS',
+        'hpr2' => 'MHS',
+        'hpr3' => 'MHS',
+        'hpr6' => 'MHS',
+        'hpsc' => 'MHS',
+        'hpscf' => 'MHS',
+        'hs' => 'MHS',
+        'ht' => 'MHS',
+        'htgef' => 'MHS',
+        'hu' => 'MHS',
+        'huwi' => 'MHS',
+        'hv' => 'MHS',
+        'hx' => 'MHS',
+        'hy' => 'MHS',
+        'hygeo' => 'MHS',
+        'hz' => 'MHS',
+        );
+        return 'MCO' if !($mapping{$location});
+        return $mapping{$location};
+    }
 
 exit;
