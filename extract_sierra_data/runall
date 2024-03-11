@@ -13,9 +13,9 @@ for box in ${boxes[@]}; do
   echo scrubbing previously created folder
   rm -Rf ${box}
   sleep 10
-
-  # echo ${box} ./summon_or_ebsco.pl ${box}.conf full && \
-  # time ./summon_or_ebsco.pl ${box}.conf full > /dev/null 2>&1 && \
+  ( \
+  echo ${box} ./summon_or_ebsco.pl ${box}.conf full && \
+  time ./summon_or_ebsco.pl ${box}.conf full > /dev/null 2>&1 && \
   echo ${box} ./extract_sierra.pl --config ${box}.conf --schema m_${box} && \
   time ./extract_sierra.pl --config ${box}.conf --schema l_${box} && \
   echo ${box} Taring it up.... && \
@@ -37,7 +37,8 @@ for box in ${boxes[@]}; do
   tar -zcvf ../compressed/holds/${box}_holds_$(date +%F).tar.gz *folio_holds* ; \
   sleep 1 && \
   tar -zcvf ../compressed/fines/${box}_fines_$(date +%F).tar.gz *folio_fines* ; \
-  popd && \
-  echo "********" &
+  popd ; \
+  echo "********" \
+  ) &
 
 done

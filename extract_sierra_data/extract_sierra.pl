@@ -745,7 +745,7 @@ splitter
 sub getCallNumberPortion
 {
     my $template = <<'splitter';
-(case when string_agg(regexp_replace(item_ctag.field_content,'.*?\|valplaceholder([^\|]*)\|?.*$','\1','g'),' - ') ~ '\|' then null else string_agg(distinct regexp_replace(item_ctag.field_content,'.*?\|valplaceholder([^\|]*)\|?.*$','\1','g'),' - ') end) "nameplaceholder"
+(case when string_agg(distinct regexp_replace(item_ctag.field_content,'.*?\|valplaceholder([^\|]*)\|?.*$','\1','g'),' - ') ~ '\|' then null else string_agg(distinct regexp_replace(item_ctag.field_content,'.*?\|valplaceholder([^\|]*)\|?.*$','\1','g'),' - ') end) "nameplaceholder"
 splitter
 
     my @prefixLetters = ();
@@ -842,13 +842,13 @@ splitter
             $callnum =~ s/placeholder/$_/g;
         }
     }
-    $callnum = "string_agg(regexp_replace($callnum,'\\|.',' ','g'), ' ')";
+    $callnum = "string_agg(distinct regexp_replace($callnum,'\\|.',' ','g'), ' ')";
     $callnum = "(case when $callnum ~ '^\\s*\$' then null else $callnum  end) \"call_number\"";
 
 
 # in case I screwed up the logic above, this is what works
     # my $callnum = <<'splitter';
-    # (case when string_agg(
+    # (case when string_agg( distinct
     # regexp_replace(
     # -- remove f
     # regexp_replace(item_ctag.field_content,'.*?\|f[^\|]*\|?.*$','','g'),
@@ -1056,7 +1056,6 @@ select * from
 	sierra_view.patron_view
 	group by 1
 ) as a
-where code!~'^\d'
 group by 1
 order by 1
 
