@@ -566,7 +566,7 @@ concat('i', item.record_num) "record_num", --RECORD #(Item)
 -- '!delim!!delim!','!delim!','g') "call_number",
 
 -- bib_call_k.subk as "bib_call_sub_k", --CALL #(Bibliographic)
-item.barcode,
+coalesce(item.barcode, (CASE WHEN svv_item_barcode.field_content IS NULL THEN NULL ELSE btrim(svv_item_barcode.field_content) END)) "barcode",
 item.icode1,
 item.icode2,
 item.itype_code_num,
@@ -618,6 +618,7 @@ from
 join sierra_view.bib_record_item_record_link bib_item_link on ( bib_item_link.item_record_id = item.id)
 join sierra_view.bib_view bib on ( bib.id = bib_item_link.bib_record_id )
 join sierra_view.record_metadata metarecord on(metarecord.id=item.id)
+left join sierra_view.varfield svv_item_barcode on ( svv_item_barcode.varfield_type_code='b' and svv_item_barcode.marc_tag is null and btrim(svv_item_barcode.field_content) !='' and item.id=svv_item_barcode.record_id )
 left join sierra_view.varfield svv on
     (
         svv.record_id = bib_item_link.bib_record_id and
@@ -640,7 +641,8 @@ left join sierra_view.varfield svv on
         svv.field_content~*'odn' or
         svv.field_content~*'emoeir' or
         svv.field_content~*'ebr' or
-        svv.field_content~*'ruacls'
+        svv.field_content~*'ruacls' or
+        svv.field_content~*'asp'
         )
     )
 -- left join (
@@ -745,7 +747,7 @@ splitter
 sub getCallNumberPortion
 {
     my $template = <<'splitter';
-(case when string_agg(distinct regexp_replace(item_ctag.field_content,'.*?\|valplaceholder([^\|]*)\|?.*$','\1','g'),' - ') ~ '\|' then null else string_agg(distinct regexp_replace(item_ctag.field_content,'.*?\|valplaceholder([^\|]*)\|?.*$','\1','g'),' - ') end) "nameplaceholder"
+(case when string_agg(distinct regexp_replace(item_ctag.field_content,'.*?\|valplaceholder([^\|]*)\|?.*$','\1','g'),' - ') ~ '\|' then null else btrim(string_agg(distinct regexp_replace(item_ctag.field_content,'.*?\|valplaceholder([^\|]*)\|?.*$','\1','g'),' - ')) end) "nameplaceholder"
 splitter
 
     my @prefixLetters = ();
@@ -829,13 +831,13 @@ splitter
     {
         my $thisval = pop @all;
         $callnum = <<'splitter';
-            regexp_replace(item_ctag.field_content,'.*?\|placeholder[^\|]*\|?.*$','','g')
+            regexp_replace(item_ctag.field_content,'(.*?)\|placeholder[^\|]*(\|?.*)$','\1\2','g')
 splitter
         $callnum =~ s/placeholder/$thisval/g;
         foreach(@all)
         {
             my $temp = <<'splitter';
-            regexp_replace(previous, '.*?\|placeholder[^\|]*\|?.*$','','g')
+            regexp_replace(previous, '(.*?)\|placeholder[^\|]*(\|?.*)$','\1\2','g')
 splitter
             $temp =~ s/previous/$callnum/g;
             $callnum = $temp;
@@ -843,7 +845,7 @@ splitter
         }
     }
     $callnum = "string_agg(distinct regexp_replace($callnum,'\\|.',' ','g'), ' ')";
-    $callnum = "(case when $callnum ~ '^\\s*\$' then null else $callnum  end) \"call_number\"";
+    $callnum = "(case when $callnum ~ '^\\s*\$' then null else btrim($callnum)  end) \"call_number\"";
 
 
 # in case I screwed up the logic above, this is what works
