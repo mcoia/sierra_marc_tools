@@ -867,29 +867,26 @@ package sierraScraper;
     {
         my $row = $_;
         my @row = @{$row};
-        if(@row[0] ne '970' &&@row[0] ne '971' &&@row[0] ne '972')
+        my $recordID = @row[4];
+        if(!exists $standard{$recordID})
         {
-            my $recordID = @row[4];
-            if(!exists $standard{$recordID})
-            {
-                my @a = ();
-                $standard{$recordID} = \@a;
-            }
-            my $ind1 = @row[2];
-            my $ind2 = @row[3];
-
-            if(length($ind1)<1)
-            {
-                $ind1=' ';
-            }
-
-            if(length($ind2)<1)
-            {
-                $ind2=' ';
-            }
-            # print "Pushing ".@row[1]."\n";
-            push(@{$standard{$recordID}},new recordItem(@row[0],$ind1,$ind2,@row[1]));
+            my @a = ();
+            $standard{$recordID} = \@a;
         }
+        my $ind1 = @row[2];
+        my $ind2 = @row[3];
+
+        if(length($ind1)<1)
+        {
+            $ind1=' ';
+        }
+
+        if(length($ind2)<1)
+        {
+            $ind2=' ';
+        }
+        # print "Pushing ".@row[1]."\n";
+        push(@{$standard{$recordID}},new recordItem(@row[0],$ind1,$ind2,@row[1]));
     }
     $self->{'standard'} = \%standard;
 

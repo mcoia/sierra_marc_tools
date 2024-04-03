@@ -659,11 +659,23 @@ _full~~SELECT $recordSearch
                     svv.field_content~*'emoeir' or
                     svv.field_content~*'ebr' or
                     svv.field_content~*'ruacls' or
-                    svv.field_content~*'asp'
+                    svv.field_content~*'asp' or
+                    svv.field_content~*'pg'
+                    )
+                )
+                
+                left join sierra_view.varfield svv_710 on
+                (
+                    svv_710.record_id = bib_item_link2.bib_record_id and
+                    svv_710.marc_tag='710' and
+                    (
+                    svv_710.field_content~*'netlibrary' or
+                    svv_710.field_content~*'gutenberg'
                     )
                 )
                 where
                 svv.record_id is null and
+                svv_710.record_id is null and
                 prev_svbrl_inner.bib_record_id is null
                 and svbrl_inner.location_code = $$!!loc!!$$
 splitter

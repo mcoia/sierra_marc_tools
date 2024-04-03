@@ -174,6 +174,18 @@ where
 	setupEGTable($query,"location_branch_info", $firstrun);
 
     # FOLIO Item File unsuppressed
+    my $explore_hack = "";
+    if($conf{"libraryname"} eq 'explore')
+    {
+        $explore_hack =<<'splitter';
+left join (
+	select
+regexp_replace(
+regexp_replace(regexp_replace(string_agg(distinct bib_099_call_number_internal.field_content,'!delim!' ),'\|.','!delim!','g'),'^!delim!','','g'),
+'!delim!!delim!','!delim!','g') "bib_099_call_num", record_id
+	from sierra_view.varfield_view bib_099_call_number_internal where bib_099_call_number_internal.marc_tag = '099' group by 2 ) "bib_099_call_number" on(bib_099_call_number.record_id = bib_item_link.bib_record_id)
+splitter
+    }
     my $query = getFOLIOItemQuery('false');
 
     my $t = $sierralocationcodes;
@@ -182,6 +194,7 @@ where
     # $query =~ s/!!ctag_portion!!/$ctagportion/g;
     $query =~ s/!!ctag_portion!!//g;
     $query =~ s/!!callnum_portion!!/$callnumPortion/g;
+    $query =~ s/!!explore_call_number_hack!!/$explore_hack/g;
 
     setupEGTable($query, $institutionName . ".unsuppressed_folio_items", $firstrun);
 
@@ -192,6 +205,7 @@ where
     # $query =~ s/!!ctag_portion!!/$ctagportion/g;
     $query =~ s/!!ctag_portion!!//g;
     $query =~ s/!!callnum_portion!!/$callnumPortion/g;
+    $query =~ s/!!explore_call_number_hack!!/$explore_hack/g;
 
     setupEGTable($query, $institutionName . ".suppressed_folio_items", $firstrun);
 
@@ -560,12 +574,6 @@ regexp_replace(regexp_replace(string_agg(distinct 'b'||bib.record_num,'!delim!' 
 '!delim!!delim!','!delim!','g')
 "bib_ids",
 concat('i', item.record_num) "record_num", --RECORD #(Item)
--- item_prop.call_number "item_call_no", --CALL #(Item)
--- regexp_replace(
--- regexp_replace(regexp_replace(string_agg(distinct btrim(regexp_replace(item_prop.call_number,'\|.',' ','g')),'!delim!'),'\|.','!delim!','g'),'^!delim!','','g'),
--- '!delim!!delim!','!delim!','g') "call_number",
-
--- bib_call_k.subk as "bib_call_sub_k", --CALL #(Bibliographic)
 coalesce(item.barcode, (CASE WHEN svv_item_barcode.field_content IS NULL THEN NULL ELSE btrim(svv_item_barcode.field_content) END)) "barcode",
 item.icode1,
 item.icode2,
@@ -609,19 +617,16 @@ string_agg(item_ctag.marc_tag,' ') "call_num_index",
 
 !!callnum_portion!!
 
--- !!ctag_portion!!
--- string_agg(distinct item_ctag.field_content,';')
-
 from
 
-(select * from sierra_view.item_view item2 where is_suppressed is !!!suppressed!!! and !!!sierralocationcodes!!! !!orderlimit!! ) item
-join sierra_view.bib_record_item_record_link bib_item_link on ( bib_item_link.item_record_id = item.id)
-join sierra_view.bib_view bib on ( bib.id = bib_item_link.bib_record_id )
-join sierra_view.record_metadata metarecord on(metarecord.id=item.id)
-left join sierra_view.varfield svv_item_barcode on ( svv_item_barcode.varfield_type_code='b' and svv_item_barcode.marc_tag is null and btrim(svv_item_barcode.field_content) !='' and item.id=svv_item_barcode.record_id )
+(
+select item2.* from sierra_view.item_view item2
+join sierra_view.bib_record_item_record_link bib_item_link2 on ( bib_item_link2.item_record_id = item2.id)
+join sierra_view.bib_view bib2 on ( bib2.id = bib_item_link2.bib_record_id )
+join sierra_view.record_metadata metarecord on(metarecord.id=item2.id)
 left join sierra_view.varfield svv on
     (
-        svv.record_id = bib_item_link.bib_record_id and
+        svv.record_id = bib_item_link2.bib_record_id and
         svv.marc_tag='001' and
         (
         svv.field_content~*'ebc' or
@@ -642,16 +647,27 @@ left join sierra_view.varfield svv on
         svv.field_content~*'emoeir' or
         svv.field_content~*'ebr' or
         svv.field_content~*'ruacls' or
-        svv.field_content~*'asp'
+        svv.field_content~*'asp' or
+        svv.field_content~*'pg'
         )
     )
--- left join (
--- select
--- regexp_replace(
--- regexp_replace(regexp_replace(string_agg(distinct btrim(regexp_replace(call_number,'\|.',' ','g')),'!delim!'),'\|.','!delim!','g'),'^!delim!','','g'),
--- '!delim!!delim!','!delim!','g') "call_number",item_record_id
---  from sierra_view.item_record_property group by 2
--- ) as "item_prop" on(item_prop.item_record_id=item.id)
+left join sierra_view.varfield svv_710 on
+    (
+        svv_710.record_id = bib_item_link2.bib_record_id and
+        svv_710.marc_tag='710' and
+        (
+        svv_710.field_content~*'netlibrary' or
+        svv_710.field_content~*'gutenberg'
+        )
+    )
+where
+svv.record_id is null and
+svv_710.record_id is null and
+item2.is_suppressed is !!!suppressed!!! and !!!sierralocationcodes!!! !!orderlimit!!
+) item
+join sierra_view.bib_record_item_record_link bib_item_link on ( bib_item_link.item_record_id = item.id)
+join sierra_view.bib_view bib on ( bib.id = bib_item_link.bib_record_id )
+left join sierra_view.varfield svv_item_barcode on ( svv_item_barcode.varfield_type_code='b' and svv_item_barcode.marc_tag is null and btrim(svv_item_barcode.field_content) !='' and item.id=svv_item_barcode.record_id )
 
 left join sierra_view.item_record_property item_prop on(item_prop.item_record_id=item.id)
 
@@ -675,25 +691,8 @@ regexp_replace(regexp_replace(string_agg(distinct item_note.field_content,'!deli
 
 left join sierra_view.varfield_view item_volume on(item_volume.record_id = item.id and item_volume.varfield_type_code = 'v' and item_volume.marc_tag is null)
 
--- left join (select item2.id, ('{'||string_agg(distinct bib_item_link2.bib_record_id::text,','::text)||'}')::bigint[] "bibarray" from sierra_view.item_view item2 join sierra_view.bib_record_item_record_link bib_item_link2 on ( bib_item_link2.item_record_id = item2.id) group by 1) bib_id_array on (bib_id_array.id=item.id)
--- left join (
--- 	select
--- 	btrim(
--- regexp_replace(
--- regexp_replace(regexp_replace(string_agg(distinct btrim(field_content),'!delim!' order by occ_num)
--- ,'\|k([^\|]*).*?','\1','g'),'^!delim!','','g'),
--- '!delim!!delim!','!delim!','g')
--- ) "subk",
--- 	record_id
--- 	from sierra_view.varfield_view bib_call where record_type_code='b' and marc_tag in( '050', '082', '086', '090', '092', '099' ) and field_content ~'\|k'  group by 2
--- ) as bib_call_k on(bib_call_k.record_id = any (bib_id_array.bibarray) )
+!!explore_call_number_hack!!
 
--- when bib_call_sub_k is included
--- group by 2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,20,21,22,23,24,25,26,27,28,29,31
--- when bib_call_sub_k is NOT included
--- group by 2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,19,20,21,22,23,24,25,26,27,28,30
-where
-svv.record_id is null
 group by 2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,20,21,22,23,24,25,26,27
 ORDER BY 1
 splitter
@@ -845,8 +844,13 @@ splitter
         }
     }
     $callnum = "string_agg(distinct regexp_replace($callnum,'\\|.',' ','g'), ' ')";
-    $callnum = "(case when $callnum ~ '^\\s*\$' then null else btrim($callnum)  end) \"call_number\"";
-
+    $callnum = "(case when $callnum ~ '^\\s*\$' then null else btrim($callnum)  end)";
+    if($conf{"libraryname"} eq 'explore')
+    {
+        $callnum = "case when ($callnum) is null then btrim(string_agg(distinct bib_099_call_number.bib_099_call_num, ' ')) else
+        $callnum end";
+    }
+    $callnum .= " \"call_number\"";
 
 # in case I screwed up the logic above, this is what works
     # my $callnum = <<'splitter';
