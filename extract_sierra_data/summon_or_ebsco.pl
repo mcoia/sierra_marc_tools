@@ -666,7 +666,7 @@ _full~~SELECT $recordSearch
                 
                 left join sierra_view.varfield svv_710 on
                 (
-                    svv_710.record_id = bib_item_link2.bib_record_id and
+                    svv_710.record_id = sierra_view.bib_record.id and
                     svv_710.marc_tag='710' and
                     (
                     svv_710.field_content~*'netlibrary' or
