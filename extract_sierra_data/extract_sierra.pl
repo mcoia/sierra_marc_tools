@@ -310,7 +310,7 @@ regexp_replace(regexp_replace(string_agg(distinct pexternalid.field_content,'!de
 
 from
 sierra_view.patron_view patron
-join sierra_view.record_metadata pmetarecord on(pmetarecord.id=patron.id and pmetarecord.record_type_code='p')
+join sierra_view.record_metadata pmetarecord on(pmetarecord.id=patron.id)
 left join sierra_view.patron_record_fullname pname on(pname.patron_record_id=patron.id)
 left join sierra_view.varfield_view pemail on(pemail.record_type_code='p' and pemail.field_content~'[^@]+@[^\.]+\.\D{2,}' and pemail.record_id=patron.id)
 left join sierra_view.patron_record_phone pphone on(pphone.patron_record_id=patron.id)
@@ -646,7 +646,7 @@ left join sierra_view.varfield svv on
         svv.field_content~*'odn' or
         svv.field_content~*'emoeir' or
         svv.field_content~*'ebr' or
-        svv.field_content~*'ruacls' or
+        svv.field_content~*'covreligion' or
         svv.field_content~*'asp' or
         svv.field_content~*'pg'
         )

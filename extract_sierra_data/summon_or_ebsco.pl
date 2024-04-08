@@ -658,7 +658,7 @@ _full~~SELECT $recordSearch
                     svv.field_content~*'odn' or
                     svv.field_content~*'emoeir' or
                     svv.field_content~*'ebr' or
-                    svv.field_content~*'ruacls' or
+                    svv.field_content~*'covreligion' or
                     svv.field_content~*'asp' or
                     svv.field_content~*'pg'
                     )
