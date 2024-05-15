@@ -9,6 +9,7 @@ use XML::TreeBuilder;
 use Getopt::Long;
 use DBhandler;
 use File::Path qw(make_path);
+use DateTime::Format::Duration;
 
 my $xmlconf = "/openils/conf/opensrf.xml";
 our $schema;
@@ -186,28 +187,27 @@ regexp_replace(regexp_replace(string_agg(distinct bib_099_call_number_internal.f
 	from sierra_view.varfield_view bib_099_call_number_internal where bib_099_call_number_internal.marc_tag = '099' group by 2 ) "bib_099_call_number" on(bib_099_call_number.record_id = bib_item_link.bib_record_id)
 splitter
     }
-    my $query = getFOLIOItemQuery('false');
-
     my $t = $sierralocationcodes;
     $t =~ s/^brbl/item2/g;
-    $query =~ s/!!!sierralocationcodes!!!/$t/g;
-    # $query =~ s/!!ctag_portion!!/$ctagportion/g;
-    $query =~ s/!!ctag_portion!!//g;
-    $query =~ s/!!callnum_portion!!/$callnumPortion/g;
-    $query =~ s/!!explore_call_number_hack!!/$explore_hack/g;
+    my %substitutions =
+    (
+        "sierralocationcodes" => $t,
+        "ctag_portion" => "",
+        "callnum_portion" => $callnumPortion,
+        "explore_call_number_hack" => $explore_hack,
+        "suppressed" => 'false'
+    );
+    my %itemQueries = %{getFOLIOItemQuery(\%substitutions)};
+    my $query = $itemQueries{"query"};
 
-    setupEGTable($query, $institutionName . ".unsuppressed_folio_items", $firstrun);
+    setupEGTable($query, $institutionName . ".unsuppressed_folio_items", $firstrun, \%itemQueries);
 
     # FOLIO Item File suppressed
-    my $query = getFOLIOItemQuery('true');
+    $substitutions{"suppressed"} = 'true';
+    my %itemQueries = %{getFOLIOItemQuery(\%substitutions)};
+    my $query = $itemQueries{"query"};
 
-    $query =~ s/!!!sierralocationcodes!!!/$t/g;
-    # $query =~ s/!!ctag_portion!!/$ctagportion/g;
-    $query =~ s/!!ctag_portion!!//g;
-    $query =~ s/!!callnum_portion!!/$callnumPortion/g;
-    $query =~ s/!!explore_call_number_hack!!/$explore_hack/g;
-
-    setupEGTable($query, $institutionName . ".suppressed_folio_items", $firstrun);
+    setupEGTable($query, $institutionName . ".suppressed_folio_items", $firstrun, \%itemQueries);
 
     #FOLIO Patron File
     my $query =<<'splitter';
@@ -566,7 +566,9 @@ while ( (my $filename, my $fhandle) = each(%fileHandles) )
 
 sub getFOLIOItemQuery
 {
-    my $suppressed = shift || 'false';
+    my $subs = shift;
+    my %substitutions = %{$subs};
+    my $suppressed = $substitutions{"suppressed"} || 'false';
     my $query =<<'splitter';
 select
 regexp_replace(
@@ -574,7 +576,7 @@ regexp_replace(regexp_replace(string_agg(distinct 'b'||bib.record_num,'!delim!' 
 '!delim!!delim!','!delim!','g')
 "bib_ids",
 concat('i', item.record_num) "record_num", --RECORD #(Item)
-coalesce(item.barcode, (CASE WHEN svv_item_barcode.field_content IS NULL THEN NULL ELSE btrim(svv_item_barcode.field_content) END)) "barcode",
+coalesce(NULLIF(btrim(item.barcode),''), (CASE WHEN svv_item_barcode.field_content IS NULL THEN NULL ELSE btrim(svv_item_barcode.field_content) END)) "barcode",
 item.icode1,
 item.icode2,
 item.itype_code_num,
@@ -615,7 +617,7 @@ regexp_replace(regexp_replace(string_agg(distinct public_item_note.note,'!delim!
 
 string_agg(item_ctag.marc_tag,' ') "call_num_index",
 
-!!callnum_portion!!
+!!!callnum_portion!!!
 
 from
 
@@ -623,32 +625,33 @@ from
 select item2.* from sierra_view.item_view item2
 join sierra_view.bib_record_item_record_link bib_item_link2 on ( bib_item_link2.item_record_id = item2.id)
 join sierra_view.bib_view bib2 on ( bib2.id = bib_item_link2.bib_record_id )
-join sierra_view.record_metadata metarecord on(metarecord.id=item2.id)
 left join sierra_view.varfield svv on
     (
         svv.record_id = bib_item_link2.bib_record_id and
         svv.marc_tag='001' and
         (
-        svv.field_content~*'ebc' or
-        svv.field_content~*'emoe' or
-        svv.field_content~*'ewlebc' or
-        svv.field_content~*'fod' or
-        svv.field_content~*'jstor' or
-        svv.field_content~*'jstoreba' or
-        svv.field_content~*'kan' or
-        svv.field_content~*'lccsd' or
-        svv.field_content~*'lusafari' or
-        svv.field_content~*'park' or
-        svv.field_content~*'ruacls' or
-        svv.field_content~*'safari' or
-        svv.field_content~*'sage' or
-        svv.field_content~*'xrc' or
-        svv.field_content~*'odn' or
-        svv.field_content~*'emoeir' or
-        svv.field_content~*'ebr' or
-        svv.field_content~*'covreligion' or
-        svv.field_content~*'asp' or
-        svv.field_content~*'pg'
+            svv.field_content ~* '^emoe' or
+            svv.field_content ~* '^fod' or
+            svv.field_content ~* '^jstor' or
+            svv.field_content ~* '^kan' or
+            svv.field_content ~* '^lccsd' or
+            svv.field_content ~* '^lusafari' or
+            svv.field_content ~* '^park' or
+            svv.field_content ~* '^ruacls' or
+            svv.field_content ~* '^safari' or
+            !!!filter_001!!!
+            svv.field_content ~* '^xrc' or
+            svv.field_content ~* '^odn' or
+            svv.field_content ~* '^emoeir' or
+            svv.field_content ~* '.*?emoeir$' or
+            svv.field_content ~* '^covreligion' or
+            svv.field_content ~* '^asp' or
+            svv.field_content ~* '^pg' or
+            svv.field_content ~* '^ebr' or
+            svv.field_content ~* '^ebc' or
+            svv.field_content ~* '^credo' or
+            svv.field_content ~* '^ewlapa' or
+            svv.field_content ~* '^muse'
         )
     )
 left join sierra_view.varfield svv_710 on
@@ -657,13 +660,14 @@ left join sierra_view.varfield svv_710 on
         svv_710.marc_tag='710' and
         (
         svv_710.field_content~*'netlibrary' or
+        svv_710.field_content~*'jstor' or
         svv_710.field_content~*'gutenberg'
         )
     )
 where
 svv.record_id is null and
 svv_710.record_id is null and
-item2.is_suppressed is !!!suppressed!!! and !!!sierralocationcodes!!! !!orderlimit!!
+!!!itemspecific!!!
 ) item
 join sierra_view.bib_record_item_record_link bib_item_link on ( bib_item_link.item_record_id = item.id)
 join sierra_view.bib_view bib on ( bib.id = bib_item_link.bib_record_id )
@@ -691,14 +695,54 @@ regexp_replace(regexp_replace(string_agg(distinct item_note.field_content,'!deli
 
 left join sierra_view.varfield_view item_volume on(item_volume.record_id = item.id and item_volume.varfield_type_code = 'v' and item_volume.marc_tag is null)
 
-!!explore_call_number_hack!!
+!!!explore_call_number_hack!!!
 
 group by 2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,20,21,22,23,24,25,26,27
 ORDER BY 1
 splitter
 
-    $query =~ s/!!!suppressed!!!/$suppressed/g;
-    return $query;
+my $filter_001 = "svv.field_content~*'^sage' or";
+$filter_001 = "" if($conf{"libraryname"} eq 'kctowers');
+$filter_001 .= "\nsvv.field_content~*'^aas' or" if($conf{"libraryname"} eq 'avalon');
+
+$query =~ s/!!!filter_001!!!/$filter_001/g;
+
+
+my $itemSpecific = <<'splitter';
+!!!sierralocationcodes!!!
+and item2.is_suppressed is !!!suppressed!!!
+!!orderlimit!!
+splitter
+
+my $manualItemID = <<'splitter';
+select id from sierra_view.item_view item2
+where
+!!!sierralocationcodes!!!
+and item2.is_suppressed is !!!suppressed!!!
+!!orderlimit!!
+splitter
+
+
+    $itemSpecific =~ s/!!!suppressed!!!/$suppressed/g;
+    $itemSpecific =~ s/!!!sierralocationcodes!!!/$substitutions{'sierralocationcodes'}/g;
+    $manualItemID =~ s/!!!suppressed!!!/$suppressed/g;
+    $manualItemID =~ s/!!!sierralocationcodes!!!/$substitutions{'sierralocationcodes'}/g;
+
+    $query =~ s/!!!explore_call_number_hack!!!/$substitutions{'explore_call_number_hack'}/g;
+    $query =~ s/!!!ctag_portion!!!/$substitutions{'ctag_portion'}/g;
+    $query =~ s/!!!callnum_portion!!!/$substitutions{'callnum_portion'}/g;
+    
+    # save the template with the item portion still a variable
+    my $queryTemplate = $query;
+    $query =~ s/!!!itemspecific!!!/$itemSpecific/g;
+
+    $substitutions{"query"} = $query;
+    $substitutions{"querytemplate"} = $queryTemplate;
+    $substitutions{"itemspecific"} = $itemSpecific;
+    $substitutions{"manualitemid"} = $manualItemID;
+    $substitutions{"manualitemidquery"} = "item2.id in(!!!ids!!!)";
+
+    return \%substitutions;
 }
 
 sub getCtagQueryPortion
@@ -899,6 +943,7 @@ sub setupEGTable
 	my $query = shift;
 	my $tablename = shift;
     my $resetTable = shift;
+    my $subs = shift;
     my $tabFile = $conf{'marcoutdir'} . "/$tablename.tsv";
     my $tabOutput = '';
     my $thisFhandle;
@@ -908,7 +953,7 @@ sub setupEGTable
 
     my $insertChunkSize = 500;
 
-    my @ret = @{getRemoteSierraData($query)};
+    my @ret = @{getRemoteSierraData($query, $subs)};
 
 	my @allRows = @{@ret[0]};
 	my @cols = @{@ret[1]};
@@ -1001,7 +1046,8 @@ sub setupEGTable
 
 sub getRemoteSierraData
 {
-    my $queryTemplate = @_[0];
+    my $queryTemplate = shift;
+    my $subs = shift;
     my $offset = 0;
     my @ret = ();
     my $limit = 10000;
@@ -1018,25 +1064,156 @@ sub getRemoteSierraData
     my @cols;
     my $data = 1;
     my @allRows = ();
+    my @loopRows = ();
 
     while($data)
     {
         my $query = $queryTemplate;
         $query =~ s/!OFFSET!/$offset/g;
         $log->addLine($query);
-        my @theseRows = @{$sierradbHandler->query($query)};
-        $data = 0 if($#theseRows < 0 );
-        push @allRows, @theseRows if ($#theseRows > -1 );
+        my $dt = DateTime->now(time_zone => "local");
+        my @brute = @{bruteForceDatabase($query, $subs)};
+        my @theseRows = @{@brute[0]};
+        if(@brute[1]) # detected the forked query strategy
+        {
+            $data = 0;
+            @loopRows = @{@brute[0]};
+        }
+        else
+        {
+            push @loopRows, @theseRows if ($#theseRows > -1 );
+            $data = 0 if($#theseRows < 0 );
+        }
         $loops++;
         $offset = ($loops * $limit);
         $data = 0 if $sample;
         undef @theseRows;
+        undef @brute;
     }
+    push @allRows, @loopRows if ($#loopRows > -1 );
     @cols = @{$sierradbHandler->getColumnNames()} if !(@cols);
 
     push @ret, [@allRows];
     push @ret, [@cols];
     return \@ret;
+}
+
+sub bruteForceDatabase
+{
+    my $query = shift;
+    my $subs = shift;
+    my $tries = 0;
+    my $duration = "1";
+    my @ret = ();
+    my $usedQuerySurgery = 0;
+    while($tries < 10 && $#ret == -1 && !($duration =~ /^00:.*/) )
+    {
+        my $dt = DateTime->now(time_zone => "local");
+        @ret = @{$sierradbHandler->query($query)};
+        $duration = reportTime($dt);
+        # fall into the item-query-specific timeout resolution
+        # this whole thing is just for one location in swan
+        # the query template design works but for this one location in swan scenario, it times out consistently
+        # so, we're going to have to break the query down and do each section separate, then stitch it together
+        if($subs && !($duration =~ /^00:.*/) && $#ret == -1)
+        {
+            $dt = DateTime->now(time_zone => "local");
+            @ret = @{itemQuerySurgury($subs)};
+            $log->addLogLine("Surgery timer:");
+            reportTime($dt);
+            $log->addLogLine("Surgery results: " . $#ret);
+            $usedQuerySurgery = 1;
+            $tries = 11; # short circuit when we used surgury method
+        }
+        undef $dt;
+        $tries++;
+    }
+    $log->addLogLine("NO DATA, POSSIBLE TIMEOUT") if($#ret == -1 && !($duration =~ /^00:.*/) && !$usedQuerySurgery );
+    undef $duration;
+    my @full = (\@ret, $usedQuerySurgery);
+    return \@full;
+}
+
+sub itemQuerySurgury
+{
+    my $subs = shift;
+    my $offset = 0;
+    my @ret = ();
+    my $limit = 1000;
+    my $ids = '0';
+    my $loops = 0;
+
+    while($ids ne '')
+    {
+        my $thisChunk = $subs->{"manualitemid"};
+        $thisChunk =~ s/!!orderlimit!!/ORDER BY 1 LIMIT $limit OFFSET $offset/g ;
+        $ids = getIncludedItemIDs($thisChunk);
+        if($ids ne '')
+        {
+            my $idQueryChunk = $subs->{"querytemplate"};
+            $idQueryChunk =~ s/!!!itemspecific!!!/$subs->{'manualitemidquery'}/g;
+            $idQueryChunk =~ s/!!!ids!!!/$ids/g;
+            $log->addLogLine($idQueryChunk);
+            my $dt = DateTime->now(time_zone => "local");
+            my @theseRows = @{$sierradbHandler->query($idQueryChunk)};
+            my $duration = reportTime($dt);
+            my $timeoutCount = 0;
+            while($#theseRows == -1 && $duration =~ /^1/g)
+            {
+                print "Surgury chunk timing out! looping: $offset\n";
+                $log->addLogLine("Surgury chunk timing out! looping: $offset");
+                $dt = DateTime->now(time_zone => "local");
+                @theseRows = @{$sierradbHandler->query($idQueryChunk)};
+                $duration = reportTime($dt);
+                $timeoutCount++;
+            }
+            $log->addLine($#theseRows . " results");
+            push @ret, @theseRows if ($#theseRows > -1);
+            undef @theseRows;
+            undef $idQueryChunk;
+        }
+        else
+        {
+            # we're done, but we need to query the database one more time in order to set the columns for the calling code
+            my $idQueryChunk = $subs->{"querytemplate"};
+            $idQueryChunk =~ s/!!!itemspecific!!!/$subs->{'manualitemidquery'}/g;
+            $idQueryChunk =~ s/!!!ids!!!/-1/g;
+            $log->addLine($idQueryChunk);
+            my $dt = DateTime->now(time_zone => "local");
+            $sierradbHandler->query($idQueryChunk);
+            reportTime($dt);
+        }
+        $loops++;
+        $offset = ($loops * $limit);
+        undef $thisChunk;
+    }
+    return \@ret;
+}
+
+sub getIncludedItemIDs
+{
+    my $query = shift;
+    my $dt = DateTime->now(time_zone => "local");
+    $log->addLine($query);
+    my @results = @{$sierradbHandler->query($query)};
+    reportTime($dt);
+    my $ids = '';
+    $ids .= $_->[0] . ',' foreach(@results);
+    $ids = substr($ids,0,-1);
+    $log->addLine($#results . " ids");
+
+    return $ids;
+}
+
+sub reportTime
+{
+    my $before = shift;
+    my $afterProcess = DateTime->now(time_zone => "local");
+    my $difference = $afterProcess - $before;
+    my $format = DateTime::Format::Duration->new(pattern => '%M:%S');
+    my $duration =  $format->format_duration($difference);
+    $log->addLogLine("timer: " . $duration);
+    return $duration;
 }
 
 sub getLocationCodes

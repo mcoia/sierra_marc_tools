@@ -467,6 +467,7 @@ package sierraScraper;
                                 print "Got 0 records $zeroAdded times\n";
                                 if($zeroAdded>1200) #we have looped 2400 times (20 minutes) and not a single record added to the collection. Time to quit.
                                 {
+                                    $self->{'log'}->addLogLine("1200 loops no records, quitting");
                                     $finishedRecordCount = $max;
                                 }
                             }
@@ -721,6 +722,7 @@ package sierraScraper;
     my $thisOff = @_[3];
     my $thisPidfile = @_[4];
     print "Splitting Chunk $thisOff - $thisInc \n";
+    $self->{'log'}->addLogLine("Splitting Chunk $thisOff - $thisInc");
     my $dif = $thisInc - $thisOff;
     if($dif > 1) # for those peski records that will not parse out of the database, we'll just have to leave them behind
     {
@@ -857,7 +859,7 @@ package sierraScraper;
     (SELECT MARC_IND1 FROM SIERRA_VIEW.SUBFIELD_VIEW WHERE VARFIELD_ID=A.ID LIMIT 1),
     (SELECT MARC_IND2 FROM SIERRA_VIEW.SUBFIELD_VIEW WHERE VARFIELD_ID=A.ID LIMIT 1),
     RECORD_ID FROM SIERRA_VIEW.VARFIELD_VIEW A WHERE A.RECORD_ID IN($selects) ORDER BY A.MARC_TAG,A.VARFIELD_TYPE_CODE,A.OCC_NUM";
-
+    # $self->{'log'}->addLine($query);
     recordQuery($self, $query);
     $pidfile->truncFile($query);
     my @results = @{$dbHandler->query($query)};
@@ -888,6 +890,7 @@ package sierraScraper;
         # print "Pushing ".@row[1]."\n";
         push(@{$standard{$recordID}},new recordItem(@row[0],$ind1,$ind2,@row[1]));
     }
+    # $self->{'log'}->addLine(Dumper(\%standard));
     $self->{'standard'} = \%standard;
 
  }
@@ -909,7 +912,7 @@ package sierraScraper;
     }
     $concatPhrase=substr($concatPhrase,0,length($concatPhrase)-1).")";
     my $query = "SELECT CONTROL_NUM,$concatPhrase,RECORD_ID FROM SIERRA_VIEW.CONTROL_FIELD WHERE RECORD_ID IN($selects)";
-    #print "$query\n";
+    # $self->{'log'}->addLine($query);
     recordQuery($self, $query);
     $pidfile->truncFile($query);
     my $previousTime=DateTime->now;
@@ -939,7 +942,7 @@ package sierraScraper;
             push(@{$specials{$recordID}},new recordItem('008','','',$mobiusUtil->makeEvenWidth(@row[1],40)));
         }
     }
-    #print Dumper(\%specials);
+    # $self->{'log'}->addLine(Dumper(\%specials));
     $self->{'specials'} = \%specials;
 }
 

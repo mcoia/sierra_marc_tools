@@ -641,26 +641,28 @@ _full~~SELECT $recordSearch
                 (
                     svv.record_id = sierra_view.bib_record.id and svv.marc_tag='001' and
                     (
-                    svv.field_content~*'ebc' or
-                    svv.field_content~*'emoe' or
-                    svv.field_content~*'ewlebc' or
-                    svv.field_content~*'fod' or
-                    svv.field_content~*'jstor' or
-                    svv.field_content~*'jstoreba' or
-                    svv.field_content~*'kan' or
-                    svv.field_content~*'lccsd' or
-                    svv.field_content~*'lusafari' or
-                    svv.field_content~*'park' or
-                    svv.field_content~*'ruacls' or
-                    svv.field_content~*'safari' or
-                    svv.field_content~*'sage' or
-                    svv.field_content~*'xrc' or
-                    svv.field_content~*'odn' or
-                    svv.field_content~*'emoeir' or
-                    svv.field_content~*'ebr' or
-                    svv.field_content~*'covreligion' or
-                    svv.field_content~*'asp' or
-                    svv.field_content~*'pg'
+                        svv.field_content ~* '^emoe' or
+                        svv.field_content ~* '^fod' or
+                        svv.field_content ~* '^jstor' or
+                        svv.field_content ~* '^kan' or
+                        svv.field_content ~* '^lccsd' or
+                        svv.field_content ~* '^lusafari' or
+                        svv.field_content ~* '^park' or
+                        svv.field_content ~* '^ruacls' or
+                        svv.field_content ~* '^safari' or
+                        !!!filter_001!!!
+                        svv.field_content ~* '^xrc' or
+                        svv.field_content ~* '^odn' or
+                        svv.field_content ~* '^emoeir' or
+                        svv.field_content ~* '.*?emoeir$' or
+                        svv.field_content ~* '^covreligion' or
+                        svv.field_content ~* '^asp' or
+                        svv.field_content ~* '^pg' or
+                        svv.field_content ~* '^ebr' or
+                        svv.field_content ~* '^ebc' or
+                        svv.field_content ~* '^credo' or
+                        svv.field_content ~* '^ewlapa' or
+                        svv.field_content ~* '^muse'
                     )
                 )
                 
@@ -670,6 +672,7 @@ _full~~SELECT $recordSearch
                     svv_710.marc_tag='710' and
                     (
                     svv_710.field_content~*'netlibrary' or
+                    svv_710.field_content~*'jstor' or
                     svv_710.field_content~*'gutenberg'
                     )
                 )
@@ -683,10 +686,15 @@ splitter
         $newQuery =~ s/!!loc!!/$loc/g;
         $newQuery =~ s/!!prevl!!/$prevl/g;
 
+        my $filter_001 = "svv.field_content~*'^sage' or";
+        $filter_001 = "" if($conf{"libraryname"} eq 'kctowers');
+        $filter_001 .= "\nsvv.field_content~*'^aas' or" if($conf{"libraryname"} eq 'avalon');
+        $newQuery =~ s/!!!filter_001!!!/$filter_001/g;
+
         my $qfile = new Loghandler($conf{'queryfile'});
 
         $qfile->truncFile($newQuery);
-    
+
     }
     
     sub getFOLIOInstitutionName
