@@ -863,6 +863,27 @@ sub Ebrary_SPST
     return $marc;
 }
 
+sub swap970to505
+{
+    my $marc = @_[0];
+
+    my @ft970 = $marc->field('970');
+	foreach(@ft970)
+	{
+		my @subs = $_->subfields();
+		my @newsubs = ();
+		foreach(@subs)
+		{
+			push @newsubs, $_->[0] => $_->[1];
+		}
+	    my $newfiled505 = MARC::Field->new('505', $_->indicator(1), $_->indicator(2), @newsubs);
+	    $marc->insert_grouped_field($newfiled505);
+	}
+    $marc->delete_fields(@ft970);
+
+    return $marc;
+}
+
 sub prefix856u
 {
     my $marc = @_[0];
