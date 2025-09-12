@@ -181,9 +181,9 @@ where
         $explore_hack =<<'splitter';
 left join (
 	select
-regexp_replace(
-regexp_replace(regexp_replace(string_agg(distinct bib_099_call_number_internal.field_content,'!delim!' ),'\|.','!delim!','g'),'^!delim!','','g'),
-'!delim!!delim!','!delim!','g') "bib_099_call_num", record_id
+split_part(regexp_replace(
+regexp_replace(regexp_replace(string_agg(distinct bib_099_call_number_internal.field_content,'!!!!' ),'\|.',' ','g'),'^\s*','','g'),
+'\s+',' ','g') || '!!!!', '!!!!', 1) "bib_099_call_num", record_id
 	from sierra_view.varfield_view bib_099_call_number_internal where bib_099_call_number_internal.marc_tag = '099' group by 2 ) "bib_099_call_number" on(bib_099_call_number.record_id = bib_item_link.bib_record_id)
 splitter
     }
@@ -384,11 +384,12 @@ splitter
 
 select
 svc.id "checkout_id",
+concat('i', item.record_num) "legacy_item_id",
+coalesce(NULLIF(btrim(item.barcode),''), (CASE WHEN svv_item_barcode.field_content IS NULL THEN NULL ELSE btrim(svv_item_barcode.field_content) END)) "item_barcode",
 patron.barcode "patron_barcode",
 concat('p', patron.record_num) "patron_num",
 patron.ptype_code,
 (case when map_folio_patron.newname is null then '!!!institutionName!!!' else map_folio_patron.newname end) "patron_home_library",
-item.barcode "item_barcode",
 item.location_code "item_location_code",
 svc.checkout_gmt,
 svc.due_gmt,
@@ -403,6 +404,7 @@ left join sierra_view.statistic_group svsg on(svsg.code_num=item.checkout_statis
 left join (!!!sierra_folio_location_map!!!) as map_folio_patron on(map_folio_patron.oldname=patron.home_library_code)
 left join (!!!sierra_folio_location_map!!!) as map_folio_item on(map_folio_item.oldname=item.location_code)
 left join (!!!sierra_folio_location_map!!!) as map_folio_item_service_loc on(map_folio_item_service_loc.oldname=svsg.location_code)
+left join sierra_view.varfield svv_item_barcode on ( svv_item_barcode.varfield_type_code='b' and svv_item_barcode.marc_tag is null and btrim(svv_item_barcode.field_content) !='' and item.id=svv_item_barcode.record_id )
 where
 svc.patron_record_id in
 (
@@ -425,7 +427,7 @@ splitter
 select
 svc.id "checkout_id",
 concat('i', item.record_num) "legacy_item_id",
-item.barcode "item_barcode",
+coalesce(NULLIF(btrim(item.barcode),''), (CASE WHEN svv_item_barcode.field_content IS NULL THEN NULL ELSE btrim(svv_item_barcode.field_content) END)) "item_barcode",
 (case when map_folio_patron.newname is null then '!!!institutionName!!!' else map_folio_patron.newname end) "patron_home_library",
 (case when map_folio_item.newname is null then '!!!institutionName!!!' else map_folio_item.newname end) "item_checkout_library",
 concat('p', patron.record_num) "patron_num",
@@ -441,6 +443,7 @@ left join sierra_view.statistic_group svsg on(svsg.code_num=item.checkout_statis
 left join (!!!sierra_folio_location_map!!!) as map_folio_patron on(map_folio_patron.oldname=patron.home_library_code)
 left join (!!!sierra_folio_location_map!!!) as map_folio_item on(map_folio_item.oldname=item.location_code)
 left join (!!!sierra_folio_location_map!!!) as map_folio_item_service_loc on(map_folio_item_service_loc.oldname=svsg.location_code)
+left join sierra_view.varfield svv_item_barcode on ( svv_item_barcode.varfield_type_code='b' and svv_item_barcode.marc_tag is null and btrim(svv_item_barcode.field_content) !='' and item.id=svv_item_barcode.record_id )
 where
 svc.patron_record_id in
 (
@@ -530,7 +533,7 @@ select '9' "charge_code", 'notice' "charge_code_word" union all
 select 'a' "charge_code", 'manual charge' "charge_code_word" union all
 select 'b' "charge_code", 'credit card' "charge_code_word" union all
 select 'p' "charge_code", 'program (i.e., Program Registration)' "charge_code_word"
-) charge_code_mapping on (charge_code_mapping.charge_code_word = fines.charge_code)
+) charge_code_mapping on (charge_code_mapping.charge_code = fines.charge_code)
 left join (!!!sierra_folio_location_map!!!) as map_folio_charge_loc on(map_folio_charge_loc.oldname=fines.charge_location_code)
 left join sierra_view.item_view item on(item.id=fines.item_record_metadata_id)
 where
@@ -1218,6 +1221,8 @@ sub reportTime
 
 sub getLocationCodes
 {
+    # my @ret = ('77er0');
+    # return \@ret;
     my $query = <<'splitter';
 select * from
 (
