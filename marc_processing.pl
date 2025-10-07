@@ -34,7 +34,7 @@ our $pidfile = "/tmp/marc_processing.pl.pid";
         else
         {
             #I'm really not running
-            unlink $pidFile;
+            unlink $pidfile;
         }
     }
 
@@ -65,7 +65,8 @@ my %functionMaps = (
     'SWAN FOD OTC/' => 'SWAN_FOD_OTC',
     'SWAN FOD SBU/' => 'SWAN_FOD_SBU',
     'SWAN FOD MSU-WP/' => 'SWAN_FOD_MSU_WP',
-    'SWAN FOD MSU-SGF/' => 'SWAN_FOD_MSU_SGF'
+    'SWAN FOD MSU-SGF/' => 'SWAN_FOD_MSU_SGF',
+    'swap970to505/' => 'swap970to505'
     );
     my @emodirs = ("EMO\/New_Update","EMO\/Deletes");
 
@@ -153,7 +154,11 @@ while(1) #$loops==0)
             }
             if($functionCall)
             {
-                $functionCall = "\$finalmarc = $functionCall(\$marc);";
+                if ($functionCall eq 'swap970to505') {
+                    $functionCall = "\$finalmarc = $functionCall(\$marc, 0);"; # 0 for Formatted Contents Note by default
+                } else {
+                    $functionCall = "\$finalmarc = $functionCall(\$marc);";
+                }
                 # ensure that our final directory exists
                 ensureFinalFolderExists($finalpath);
                 $originalFileName = $baseFileName."_org.".$fExtension;
@@ -343,6 +348,107 @@ sub SWAN_FOD_MSU_SGF
     $marc->insert_grouped_field( $new_field_949 );
     return $marc;
 
+}
+
+=pod
+
+=head2 swap970to505
+
+Converts all MARC 970 fields in a record to a single 505 field (Contents Note),
+preserving any existing 505 field content.
+
+=over 4
+
+=item *
+Collects existing 505 field content to preserve it.
+
+=item *
+Collects all 970 fields, concatenates their subfields, and joins them with ' -- '.
+
+=item *
+Combines existing 505 content with new 970-derived content.
+
+=item *
+Creates a new 505 field (Enriched Contents Note, indicator1 = 8 by default) containing both existing and new content.
+
+=item *
+Deletes the original 505 and 970 fields after creating the consolidated field.
+
+=item *
+Returns the modified MARC record.
+
+=back
+
+=cut
+
+sub swap970to505{
+    my $marc = @_[0];
+    my $enriched_format = 1; # boolean flag: 1 for Enriched Contents Note, 0 for Formatted Contents Note
+    
+    # Get all 970 fields
+    my @field970s = $marc->field('970');
+    
+    # Return unchanged if no 970 fields found
+    return $marc unless @field970s;
+    
+    # Collect existing 505 field content
+    my @existing505s = $marc->field('505');
+    my @existing_contents = ();
+    foreach my $field505 (@existing505s) {
+        my $content = $field505->subfield('a');
+        push @existing_contents, $content if $content;
+    }
+    
+    # Remove existing 505 fields (we'll recreate with combined content)
+    $marc->delete_fields(@existing505s) if @existing505s;
+    
+    # Collect content from all 970 fields
+    my @contents = ();
+    foreach my $field970 (@field970s) {
+        my $content = '';
+        
+        # Get all subfields from the 970 field
+        my @subfields = $field970->subfields();
+        foreach my $subfield (@subfields) {
+            my ($code, $data) = @$subfield;
+            if ($content) {
+                $content .= ' ' . $data;
+            } else {
+                $content = $data;
+            }
+        }
+        
+        push @contents, $content if $content;
+    }
+    
+    # Create consolidated 505 field if we have content
+    if (@contents || @existing_contents) {
+        my $consolidated_content;
+        my $indicator1;
+        my $indicator2 = ' '; # Usually blank for 505 fields
+        
+        # Combine existing and new content
+        my @all_contents = (@existing_contents, @contents);
+        
+        if ($enriched_format) {
+            # Enriched Contents Note (505 8_)
+            $indicator1 = '8';
+            $consolidated_content = join(' -- ', @all_contents);
+        } else {
+            # Formatted Contents Note (505 0_)
+            $indicator1 = '0';
+            $consolidated_content = join(' -- ', @all_contents);
+        }
+        
+        # Create new 505 field
+        my $field505 = MARC::Field->new('505', $indicator1, $indicator2, 'a' => $consolidated_content);
+        $marc->insert_grouped_field($field505);
+        
+        # Remove the original 970 fields
+        $marc->delete_fields(@field970s);
+    }
+    
+    return $marc;
 }
 
 sub EMO_IR
@@ -1002,7 +1108,7 @@ sub dirtrav
 
 sub DESTROY
 {
-    print "I'm dying, deleting PID file $pidFile\n";
+    print "I'm dying, deleting PID file $pidfile\n";
     unlink $pidFile;
 }
 
