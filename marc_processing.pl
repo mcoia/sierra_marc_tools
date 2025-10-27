@@ -65,7 +65,6 @@ my %functionMaps = (
     'SWAN FOD OTC/' => 'SWAN_FOD_OTC',
     'SWAN FOD SBU/' => 'SWAN_FOD_SBU',
     'SWAN FOD MSU-WP/' => 'SWAN_FOD_MSU_WP',
-    'swap970to505/' => 'swap970to505',
     'SWAN FOD MSU-SGF/' => 'SWAN_FOD_MSU_SGF'
     );
     my @emodirs = ("EMO\/New_Update","EMO\/Deletes");
