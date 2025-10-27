@@ -154,11 +154,7 @@ while(1) #$loops==0)
             }
             if($functionCall)
             {
-                if ($functionCall eq 'swap970to505') {
-                    $functionCall = "\$finalmarc = $functionCall(\$marc, 0);"; # 0 for Formatted Contents Note by default
-                } else {
-                    $functionCall = "\$finalmarc = $functionCall(\$marc);";
-                }
+                $functionCall = "\$finalmarc = $functionCall(\$marc);";
                 # ensure that our final directory exists
                 ensureFinalFolderExists($finalpath);
                 $originalFileName = $baseFileName."_org.".$fExtension;
@@ -384,13 +380,13 @@ Returns the modified MARC record.
 sub swap970to505{
     my $marc = @_[0];
     my $enriched_format = 1; # boolean flag: 1 for Enriched Contents Note, 0 for Formatted Contents Note
-    
+
     # Get all 970 fields
     my @field970s = $marc->field('970');
-    
+
     # Return unchanged if no 970 fields found
     return $marc unless @field970s;
-    
+
     # Collect existing 505 field content
     my @existing505s = $marc->field('505');
     my @existing_contents = ();
@@ -401,12 +397,12 @@ sub swap970to505{
     
     # Remove existing 505 fields (we'll recreate with combined content)
     $marc->delete_fields(@existing505s) if @existing505s;
-    
+
     # Collect content from all 970 fields
     my @contents = ();
     foreach my $field970 (@field970s) {
         my $content = '';
-        
+
         # Get all subfields from the 970 field
         my @subfields = $field970->subfields();
         foreach my $subfield (@subfields) {
@@ -417,16 +413,16 @@ sub swap970to505{
                 $content = $data;
             }
         }
-        
+
         push @contents, $content if $content;
     }
-    
+
     # Create consolidated 505 field if we have content
     if (@contents || @existing_contents) {
         my $consolidated_content;
         my $indicator1;
         my $indicator2 = ' '; # Usually blank for 505 fields
-        
+
         # Combine existing and new content
         my @all_contents = (@existing_contents, @contents);
         
@@ -439,15 +435,15 @@ sub swap970to505{
             $indicator1 = '0';
             $consolidated_content = join(' -- ', @all_contents);
         }
-        
+
         # Create new 505 field
         my $field505 = MARC::Field->new('505', $indicator1, $indicator2, 'a' => $consolidated_content);
         $marc->insert_grouped_field($field505);
-        
+
         # Remove the original 970 fields
         $marc->delete_fields(@field970s);
     }
-    
+
     return $marc;
 }
 
