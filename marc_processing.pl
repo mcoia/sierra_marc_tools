@@ -346,57 +346,14 @@ sub SWAN_FOD_MSU_SGF
 
 }
 
-=pod
-
-=head2 swap970to505
-
-Converts all MARC 970 fields in a record to a single 505 field (Contents Note),
-preserving any existing 505 field content.
-
-=over 4
-
-=item *
-Collects existing 505 field content to preserve it.
-
-=item *
-Collects all 970 fields, concatenates their subfields, and joins them with ' -- '.
-
-=item *
-Combines existing 505 content with new 970-derived content.
-
-=item *
-Creates a new 505 field (Enriched Contents Note, indicator1 = 8 by default) containing both existing and new content.
-
-=item *
-Deletes the original 505 and 970 fields after creating the consolidated field.
-
-=item *
-Returns the modified MARC record.
-
-=back
-
-=cut
-
 sub swap970to505{
     my $marc = @_[0];
-    my $enriched_format = 1; # boolean flag: 1 for Enriched Contents Note, 0 for Formatted Contents Note
 
     # Get all 970 fields
     my @field970s = $marc->field('970');
 
     # Return unchanged if no 970 fields found
     return $marc unless @field970s;
-
-    # Collect existing 505 field content
-    my @existing505s = $marc->field('505');
-    my @existing_contents = ();
-    foreach my $field505 (@existing505s) {
-        my $content = $field505->subfield('a');
-        push @existing_contents, $content if $content;
-    }
-    
-    # Remove existing 505 fields (we'll recreate with combined content)
-    $marc->delete_fields(@existing505s) if @existing505s;
 
     # Collect content from all 970 fields
     my @contents = ();
@@ -417,26 +374,13 @@ sub swap970to505{
         push @contents, $content if $content;
     }
 
-    # Create consolidated 505 field if we have content
-    if (@contents || @existing_contents) {
-        my $consolidated_content;
-        my $indicator1;
+    # Create new 505 field if we have content from 970 fields
+    if (@contents) {
+        my $consolidated_content = join(' -- ', @contents);
+        my $indicator1 = '0'; # Formatted Contents Note
         my $indicator2 = ' '; # Usually blank for 505 fields
 
-        # Combine existing and new content
-        my @all_contents = (@existing_contents, @contents);
-        
-        if ($enriched_format) {
-            # Enriched Contents Note (505 8_)
-            $indicator1 = '8';
-            $consolidated_content = join(' -- ', @all_contents);
-        } else {
-            # Formatted Contents Note (505 0_)
-            $indicator1 = '0';
-            $consolidated_content = join(' -- ', @all_contents);
-        }
-
-        # Create new 505 field
+        # Create new 505 field (preserves any existing 505 fields)
         my $field505 = MARC::Field->new('505', $indicator1, $indicator2, 'a' => $consolidated_content);
         $marc->insert_grouped_field($field505);
 
