@@ -66,7 +66,7 @@ my %functionMaps = (
     'SWAN FOD SBU/' => 'SWAN_FOD_SBU',
     'SWAN FOD MSU-WP/' => 'SWAN_FOD_MSU_WP',
     'SWAN FOD MSU-SGF/' => 'SWAN_FOD_MSU_SGF',
-    'swap970to505/' => 'swap970to505'
+    'swap970to505_basic/' => 'swap970to505_basic'
     );
     my @emodirs = ("EMO\/New_Update","EMO\/Deletes");
 
@@ -346,7 +346,9 @@ sub SWAN_FOD_MSU_SGF
 
 }
 
-sub swap970to505{
+# https://help.mobiusconsortium.org/Ticket/Display.html?id=198947
+sub swap970to505_basic 
+{
     my $marc = @_[0];
 
     # Get all 970 fields
@@ -357,35 +359,33 @@ sub swap970to505{
 
     # Collect content from all 970 fields
     my @contents = ();
-    foreach my $field970 (@field970s) {
-        my $content = '';
-
-        # Get all subfields from the 970 field
-        my @subfields = $field970->subfields();
-        foreach my $subfield (@subfields) {
-            my ($code, $data) = @$subfield;
-            if ($content) {
-                $content .= ' ' . $data;
-            } else {
-                $content = $data;
-            }
-        }
-
-        push @contents, $content if $content;
+    foreach my $field970 (@field970s)
+    {
+        # we're only interested in these subfields: l,t,c,d,e
+        # and only the first occurance of them.
+        # the rest of the subfields are ignored
+        my $label = $field970->subfield('l') || '';
+        my $title = $field970->subfield('t') || '';
+        my $editor = $field970->subfield('c') || $field970->subfield('d') || $field970->subfield('e') || '';
+        my $content = "$label $title / $editor";
+        # Trim
+        $content =~ s/^\s+|\s+$//g;
+        # Remove slash mark and any spaces before that
+        $content =~ s/\s+\/$//g;
+        push (@contents, $content) if $content ne '';
+        undef $content;
+        undef $label;
+        undef $title;
+        undef $editor;
     }
 
     # Create new 505 field if we have content from 970 fields
-    if (@contents) {
+    if ($#contents > -1)
+    {
         my $consolidated_content = join(' -- ', @contents);
-        my $indicator1 = '0'; # Formatted Contents Note
-        my $indicator2 = ' '; # Usually blank for 505 fields
-
-        # Create new 505 field (preserves any existing 505 fields)
-        my $field505 = MARC::Field->new('505', $indicator1, $indicator2, 'a' => $consolidated_content);
+        $consolidated_content .= '.';
+        my $field505 = MARC::Field->new('505', '0', ' ', 'a' => $consolidated_content);
         $marc->insert_grouped_field($field505);
-
-        # Remove the original 970 fields
-        $marc->delete_fields(@field970s);
     }
 
     return $marc;
